@@ -1,0 +1,1445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bulk — Demo</title>
+<style>
+:root{
+  color-scheme:light;
+  --surface:#fcfcfb; --page:#f4f4f1; --raised:#fff; --sunk:#efeeea;
+  --ink:#0b0b0b; --ink2:#4d4c49; --muted:#84827c;
+  --grid:#e1e0d9; --axis:#c3c2b7; --line:rgba(11,11,11,.11);
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a;
+  --good:#0ca30c; --warn:#fab219; --crit:#d03b3b; --goodtx:#006300;
+  --r:14px;
+}
+@media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])){
+  color-scheme:dark;
+  --surface:#1a1a19; --page:#0d0d0d; --raised:#242423; --sunk:#111110;
+  --ink:#fff; --ink2:#c3c2b7; --muted:#8d8b84;
+  --grid:#2c2c2a; --axis:#3d3d3a; --line:rgba(255,255,255,.11);
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --goodtx:#0ca30c;
+}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{background:var(--page);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding-bottom:78px}
+.wrap{max-width:520px;margin:0 auto;padding:10px 12px 24px}
+h3{font-size:11.5px;margin:20px 0 8px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-weight:700}
+h3.tap{cursor:pointer;display:flex;align-items:center;gap:7px;user-select:none;-webkit-user-select:none}
+h3.tap::after{content:'⌄';font-size:15px;line-height:1;transition:transform .2s;margin-left:auto;opacity:.75}
+h3.tap.shut::after{transform:rotate(-90deg)}
+h3.tap .n{font-size:10.5px;font-weight:600;background:var(--sunk);color:var(--ink2);padding:1px 6px;border-radius:99px;letter-spacing:0;text-transform:none}
+p{margin:0 0 10px;color:var(--ink2);font-size:13.5px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:13px;margin-bottom:11px}
+.card.flush{padding:0;overflow:hidden}
+.demo{background:var(--s2);color:#fff;text-align:center;font-size:11.5px;font-weight:700;padding:6px;letter-spacing:.04em}
+
+/* header */
+.top{position:sticky;top:0;z-index:20;background:var(--page);padding:11px 12px 8px;border-bottom:1px solid var(--line)}
+.top .row{max-width:520px;margin:0 auto;display:flex;align-items:center;gap:10px}
+.top h1{font-size:17px;margin:0;flex:1;letter-spacing:-.01em}
+.chip{font-size:11.5px;color:var(--ink2);background:var(--raised);border:1px solid var(--line);padding:4px 9px;border-radius:999px;white-space:nowrap}
+.gear{background:none;border:0;padding:4px;cursor:pointer;color:var(--ink2);display:grid;place-items:center}
+.gear svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8}
+.back{background:none;border:0;color:var(--s1);font:inherit;font-size:14px;font-weight:600;cursor:pointer;padding:0;margin-bottom:10px}
+
+/* nav */
+nav{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--surface);border-top:1px solid var(--line);padding:6px 0 max(6px,env(safe-area-inset-bottom));display:flex}
+nav button{flex:1;background:none;border:0;padding:6px 2px 4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--muted);font:inherit;font-size:10.5px;font-weight:650}
+nav button.on{color:var(--s1)}
+nav svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+
+/* session head */
+.shead{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:11px}
+.shead .lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-weight:700}
+.shead .nm{font-size:20px;font-weight:700;margin:3px 0 5px;letter-spacing:-.015em}
+.shead .why{font-size:13px;color:var(--ink2);margin:0}
+.bar{height:6px;background:var(--grid);border-radius:99px;overflow:hidden;margin-top:12px}
+.bar i{display:block;height:100%;background:var(--s1);border-radius:99px;transition:width .3s}
+.meta{display:flex;gap:14px;margin-top:8px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* exercise block */
+.ex{border-bottom:1px solid var(--grid)}
+.ex:last-child{border-bottom:0}
+.ex.open{background:var(--sunk)}
+.exhead{display:flex;align-items:center;gap:11px;padding:13px;cursor:pointer}
+.tick{flex:0 0 auto;width:24px;height:24px;border-radius:50%;border:2px solid var(--axis);display:grid;place-items:center;font-size:12px;color:#fff;font-weight:700}
+.tick.done{background:var(--good);border-color:var(--good)}
+.tick.part{border-color:var(--s1);color:var(--s1);font-size:10.5px;background:none}
+.exnm{flex:1;min-width:0}
+.exnm b{display:block;font-size:14.5px;font-weight:650;line-height:1.3}
+.exnm .sc{display:block;font-size:12px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+.car{color:var(--muted);font-size:17px;transition:transform .2s}
+.ex.open .car{transform:rotate(90deg)}
+.badge{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.06em;padding:2px 5px;border-radius:4px;margin-left:5px;vertical-align:2px}
+.badge.idx{background:var(--s1);color:#fff}
+.badge.amr{background:var(--s2);color:#fff}
+.exbody{display:none;padding:0 13px 14px}
+.ex.open .exbody{display:block}
+
+/* set rows */
+.setrow{display:flex;align-items:center;gap:7px;padding:9px 0;border-top:1px solid var(--grid)}
+.setrow.logged{background:transparent}
+.sn{flex:0 0 22px;font-size:11.5px;color:var(--muted);font-weight:700;text-align:center}
+.sn.f{color:var(--crit)}
+.fld{flex:1;text-align:center;background:var(--raised);border:1px solid var(--line);border-radius:9px;padding:5px 2px;cursor:pointer;min-width:0}
+.fld.pres{border-style:dashed;border-color:var(--axis)}
+.fld .v{font-size:15.5px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.fld.pres .v{color:var(--muted);font-weight:500}
+.fld.empty .v{color:var(--axis)}
+.fld .k{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:1px;font-weight:600}
+.setok{flex:0 0 auto;width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--raised);color:var(--muted);font-size:18px;cursor:pointer;display:grid;place-items:center}
+.setok.done{background:var(--good);border-color:var(--good);color:#fff}
+.e1{font-size:10.5px;color:var(--muted);text-align:right;padding:0 48px 6px 0;font-variant-numeric:tabular-nums;margin-top:-4px}
+.e1 b{color:var(--s1);font-weight:700}
+.hint{font-size:11.5px;color:var(--muted);margin:9px 0 0;font-variant-numeric:tabular-nums;line-height:1.5}
+.hint b{color:var(--ink2);font-weight:650}
+.cue{font-size:12.5px;color:var(--ink2);background:var(--raised);border-radius:9px;padding:9px 11px;margin-top:10px;border-left:3px solid var(--s1);line-height:1.5}
+.mini{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.mini button{font-size:12px;padding:7px 11px;border-radius:8px;border:1px solid var(--line);background:var(--raised);color:var(--ink2);cursor:pointer;font-family:inherit;font-weight:600}
+.mini button.warn{color:var(--s2);border-color:var(--s2)}
+
+/* sheet */
+.sheet{position:fixed;inset:0;z-index:60;display:none}
+.sheet.on{display:block}
+.sheet .bg{position:absolute;inset:0;background:rgba(0,0,0,.5)}
+.sheet .pan{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:20px 20px 0 0;padding:18px 16px max(20px,env(safe-area-inset-bottom));max-width:520px;margin:0 auto;max-height:88vh;overflow:auto}
+.sheet .ttl{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-weight:700;text-align:center}
+.stp{display:flex;align-items:center;justify-content:center;gap:12px;margin:16px 0 8px}
+.stp button{width:54px;height:56px;border-radius:14px;border:1px solid var(--line);background:var(--raised);color:var(--ink);font-size:26px;cursor:pointer;font-family:inherit;flex:0 0 auto}
+.stp input{width:126px;font-size:34px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums;letter-spacing:-.02em;border:1px solid var(--line);border-radius:12px;padding:8px 4px;background:var(--raised);color:var(--ink)}
+.eff{text-align:center;font-size:12.5px;color:var(--ink2);margin-bottom:14px;line-height:1.6}
+.eff b{color:var(--ink)}
+.big{width:100%;padding:14px;border-radius:12px;border:0;background:var(--s1);color:#fff;font:inherit;font-size:15px;font-weight:700;cursor:pointer}
+.big.ghost{background:var(--raised);color:var(--ink);border:1px solid var(--line)}
+.big.danger{background:var(--crit)}
+.picklist button{display:block;width:100%;text-align:left;padding:12px;border:0;border-bottom:1px solid var(--grid);background:none;font:inherit;font-size:14px;color:var(--ink);cursor:pointer}
+.picklist button span{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
+
+/* rest */
+.rest{position:fixed;left:12px;right:12px;bottom:86px;max-width:496px;margin:0 auto;z-index:25;background:var(--s1);color:#fff;border-radius:12px;padding:10px 14px;display:none;align-items:center;justify-content:space-between;box-shadow:0 6px 22px rgba(0,0,0,.25)}
+.rest.on{display:flex}
+.rest .t{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.rest .l{font-size:11px;opacity:.85;text-transform:uppercase;letter-spacing:.07em;font-weight:700}
+.rest button{background:rgba(255,255,255,.22);border:0;color:#fff;font:inherit;font-size:12.5px;font-weight:650;padding:7px 12px;border-radius:8px;cursor:pointer}
+
+/* tiles / flags */
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:11px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px}
+.tile .k{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin-bottom:5px}
+.tile .v{font-size:25px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.tile .v small{font-size:13px;font-weight:500;color:var(--ink2)}
+.tile .d{font-size:11.5px;color:var(--ink2);margin-top:3px}
+.tile .d.up{color:var(--goodtx);font-weight:650}
+.flag{display:flex;gap:9px;padding:10px 12px;border-radius:11px;margin-bottom:7px;font-size:13px;background:var(--surface);border:1px solid var(--line);line-height:1.5}
+.flag i{font-style:normal;font-weight:800;flex:0 0 auto}
+.flag > span{flex:1 1 auto;min-width:0}
+.flag.f-ok i{color:var(--good)}.flag.f-warn i{color:var(--warn)}.flag.f-bad i{color:var(--crit)}.flag.f-info i{color:var(--s1)}
+
+/* volume bars */
+.vol{padding:9px 0;border-bottom:1px solid var(--grid)}
+.vol:last-child{border:0}
+.vol .r1{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;margin-bottom:5px}
+.vol .r1 b{font-weight:600}
+.vol .r1 em{font-style:normal;font-variant-numeric:tabular-nums;color:var(--ink2);font-weight:650}
+.vol .r1 em .f{color:var(--muted);font-weight:500;font-size:11px}
+.track{position:relative;height:9px;background:var(--grid);border-radius:99px;overflow:hidden}
+.track .band{position:absolute;top:0;bottom:0;background:var(--axis);opacity:.5}
+.track .fill{position:absolute;top:0;bottom:0;left:0;border-radius:99px}
+.lg{display:flex;gap:14px;font-size:11px;color:var(--muted);margin:2px 0 10px;flex-wrap:wrap}
+.lg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px;font-style:normal}
+
+/* generic list */
+details{border-bottom:1px solid var(--grid)}
+details:last-child{border:0}
+summary{cursor:pointer;padding:13px 0;font-size:14px;font-weight:650;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:10px}
+summary::-webkit-details-marker{display:none}
+summary::after{content:'›';color:var(--muted);font-size:17px;flex:0 0 auto}
+details[open] summary::after{content:'⌄'}
+details .c{padding:0 0 15px;font-size:13.5px;color:var(--ink2);line-height:1.65}
+details .c strong{color:var(--ink)}
+details .c ul{margin:6px 0;padding-left:18px}
+details .c li{margin-bottom:5px}
+.tag{display:inline-block;font-size:10.5px;padding:3px 7px;border-radius:6px;background:var(--sunk);color:var(--ink2);margin:0 5px 5px 0;font-weight:600}
+.tag.p{background:var(--s1);color:#fff}
+.big-row{display:flex;align-items:center;gap:12px;padding:14px 13px;border-bottom:1px solid var(--grid);cursor:pointer}
+.big-row:last-child{border:0}
+.big-row .ic{width:34px;height:34px;border-radius:9px;background:var(--sunk);display:grid;place-items:center;font-weight:800;color:var(--s1);flex:0 0 auto;font-size:13px}
+.big-row .m{flex:1;min-width:0}
+.big-row .m b{display:block;font-size:14.5px;font-weight:650}
+.big-row .m span{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+
+label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+input,select,textarea{width:100%;padding:10px;font-size:16px;font-family:inherit;background:var(--raised);color:var(--ink);border:1px solid var(--line);border-radius:10px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px}
+.mt{margin-top:10px}
+.seg{display:flex;background:var(--sunk);border-radius:10px;padding:3px;gap:3px}
+.seg button{flex:1;padding:9px;border:0;border-radius:8px;background:none;font:inherit;font-size:13.5px;font-weight:650;color:var(--ink2);cursor:pointer}
+.seg button.on{background:var(--s1);color:#fff}
+.gal{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.ph{aspect-ratio:3/4;border-radius:10px;background:linear-gradient(150deg,var(--grid),var(--axis));display:flex;align-items:flex-end;padding:6px;font-size:9.5px;color:var(--ink2);font-weight:700}
+svg.ch{display:block;width:100%;height:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+th,td{text-align:right;padding:6px 4px;border-bottom:1px solid var(--grid)}
+th:first-child,td:first-child{text-align:left}
+th{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700}
+</style>
+</head>
+<body>
+<div class="demo">DEMO — sample data, nothing is saved</div>
+<div class="top"><div class="row">
+  <h1 id="ttl">Train</h1>
+  <span class="chip" id="chip"></span>
+  <button class="gear" onclick="go('set')" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 7 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H1a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 2.6 7a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H7a1.7 1.7 0 0 0 1-1.5V1a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V7a1.7 1.7 0 0 0 1.5 1H23a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" transform="translate(0.5,0.5) scale(0.96)"/></svg></button>
+</div></div>
+<div class="wrap" id="view"></div>
+
+<div class="rest" id="rest">
+  <div><div class="l">Rest</div><div class="t" id="rt">3:00</div></div>
+  <button onclick="stopRest()">Skip</button>
+</div>
+
+<div class="sheet" id="sheet"><div class="bg" onclick="closeSheet()"></div><div class="pan" id="pan"></div></div>
+
+<nav>
+  <button id="n-train" onclick="go('train')"><svg viewBox="0 0 24 24"><path d="M6.5 6.5v11M17.5 6.5v11M3 9v6M21 9v6M6.5 12h11"/></svg>Train</button>
+  <button id="n-body" onclick="go('body')"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.6"/><path d="M12 7.6v7M12 14.6l-3 6.4M12 14.6l3 6.4M7 10.5l5-1 5 1"/></svg>Body</button>
+  <button id="n-prog" onclick="go('prog')"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M7.5 15l3.5-4.5 3 2.5L20 7"/></svg>Progress</button>
+  <button id="n-plan" onclick="go('plan')"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5zM9 8.5h6M9 12h6M9 15.5h4"/></svg>Plan</button>
+</nav>
+
+<script type="module">
+/* ============================================================
+   Fran's Bulk Plan v1 — plan data
+   This file is DATA, not code. Adding another plan later means
+   adding another file like this one, not changing the app.
+   ============================================================ */
+
+const MUSCLES = {
+  chestUpper:{ l:'Chest — upper (clavicular)', lo:8,  hi:14, grp:'Chest', roll:'Chest' },
+  chestMid:  { l:'Chest — mid/lower (sternal)',lo:12, hi:20, grp:'Chest', roll:'Chest' },
+  deltFront: { l:'Delts — front',              lo:10, hi:16, grp:'Delts' },
+  deltSide:  { l:'Delts — side',               lo:16, hi:22, grp:'Delts' },
+  deltRear:  { l:'Delts — rear',               lo:10, hi:16, grp:'Delts' },
+  triLong:   { l:'Triceps — long head',        lo:8,  hi:14, grp:'Arms', roll:'Triceps' },
+  triLat:    { l:'Triceps — lateral/medial',   lo:14, hi:22, grp:'Arms', roll:'Triceps' },
+  bicLong:   { l:'Biceps — long head',         lo:8,  hi:14, grp:'Arms', roll:'Biceps' },
+  bicShort:  { l:'Biceps — short head',        lo:6,  hi:12, grp:'Arms', roll:'Biceps' },
+  forearm:   { l:'Forearms & brachialis',      lo:8,  hi:12, grp:'Arms' },
+  lats:      { l:'Lats',                       lo:12, hi:18, grp:'Back', roll:'Back' },
+  upperBack: { l:'Upper back & traps',         lo:12, hi:18, grp:'Back', roll:'Back' },
+  abs:       { l:'Abs — rectus abdominis',     lo:8,  hi:16, grp:'Core', roll:'Core' },
+  obliques:  { l:'Obliques & deep core',       lo:6,  hi:12, grp:'Core', roll:'Core' },
+  quads:     { l:'Quads',                      lo:10, hi:16, grp:'Legs' },
+  hams:      { l:'Hamstrings',                 lo:8,  hi:12, grp:'Legs' },
+  calves:    { l:'Calves',                     lo:6,  hi:10, grp:'Legs' },
+};
+
+/* Fractional contribution per working set. A muscle listed at 1.0 is a
+   direct set; 0.5 is a meaningful indirect set. Anything under ~0.3 is
+   dropped — below roughly 40% of max voluntary contraction, a muscle
+   isn't receiving a growth stimulus worth counting. */
+/* maxConf: 'high'  = e1RM from this lift is a trustworthy strength number
+             'ind'   = indicative only. Formula error grows sharply above ~10 reps,
+                       and prediction equations are known to fail on isolation work.
+                       Used to prescribe loads, never to claim progress. */
+const EXERCISES = {
+  benchComp:{ maxConf:'high', n:'Competition bench press', tracksMax:true, unit:'kg',
+    grips:['Ring finger on rings (comp)','Index on rings (wide)','Inside rings (narrow)'],
+    m:{chestMid:1.0, triLat:0.5, deltFront:0.5},
+    how:['Eyes under the bar. Feet planted. Moderate arch from the UPPER back, never the lower.',
+         'Grip: RING FINGER ON THE RINGS — about 73 cm, and about 8 cm inside the legal maximum. This never changes on the competition lift.',
+         'Shoulder blades back and DOWN — think about putting them in your back pockets.',
+         'Unrack, then pause 2–3 s to re-settle the arch, re-plant the feet, re-tighten the lats.',
+         'Lower for ~2 seconds to the same spot every rep, just below the nipple line.',
+         'Pause ~1 s on the chest, bar dead, still tight.',
+         'Drive with maximal intent. Bar path is a J-curve: back and up, then vertical.'],
+    why:'The lift everything else serves. It is a skill as much as a strength quality, which is why it never rotates out.',
+    subs:['Nothing. This one is the point.'],
+    watch:'Your competition grip is fixed. Grip variation belongs in the variation slot, not on the lift you are measuring — the whole progression depends on holding one thing steady. Rushing the eccentric is your single biggest technical leak. It makes the touch point inconsistent and adds a bounce that inflates numbers without building the strength underneath.' },
+
+  benchVar:{ maxConf:'high', n:'Bench variation (close-grip / Spoto / pin press)', tracksMax:true, unit:'kg',
+    m:{chestMid:0.6, triLat:1.0, deltFront:0.3},
+    how:['Close-grip: hands ~1.5 shoulder widths, elbows tucked ~45°.',
+         'Spoto: stop 2–3 cm above the chest, hold 1 s, press. No bounce, no contact.',
+         'Pin press: bar starts dead on pins 5–10 cm off the chest. No eccentric at all.'],
+    why:'Supplemental pressing strength through a different stimulus, and it spreads joint load across grips and ranges. Rotates every block, never weekly.',
+    subs:['Floor press','Larsen press (feet up)','Feet-up bench'],
+    watch:'Do not copy equipped lifters and load up board presses and rack lockouts. You are raw with long arms — you fail off the chest, not at lockout.' },
+
+  benchSpeed:{ n:'Speed bench', unit:'kg',
+    m:{},  // deliberately counts zero — see note
+    how:['65–75% of your max. Six sets of three.','Controlled ~2 s down, then accelerate as hard as you physically can.','Rest 90–120 s. If the bar is not visibly faster than your volume sets, the load is wrong.'],
+    why:'A fourth bench exposure that costs almost nothing — non-failure work at this effort recovers in about six hours. It is skill practice plus the intent effect, not a growth stimulus.',
+    subs:['Same lift, lighter. There is no substitute for the competition movement here.'],
+    watch:'Counts as ZERO hypertrophy volume. Sets at RPE 5–6 are motor-pattern practice. Counting them would inflate your ledger and tempt you to make this day hard — which is the most common way people wreck a heavy/light structure.' },
+
+  inclineDB:{ maxConf:'high', n:'Incline dumbbell press (30°)', tracksMax:true, unit:'kg',
+    m:{chestUpper:1.0, deltFront:0.75, triLat:0.4},
+    how:['Bench at 30°, not 45°. Above ~45° this quietly becomes a shoulder press.','Same scapular setup as flat bench.','Full stretch at the bottom — that is where the growth is.','Do not lock out hard; keep tension on the pec.'],
+    why:'Your main upper-chest driver, and upper chest is a named aesthetic priority. Dumbbells give a longer stretch; used in accumulation blocks.',
+    subs:['Incline Smith press','Incline barbell press','Low-incline machine press'],
+    watch:'Dumbbells in accumulation blocks, Smith in intensification blocks. One per block — not alternating weekly.' },
+
+  inclineFly:{ maxConf:'ind', n:'Incline cable fly', tracksMax:true, unit:'kg',
+    m:{chestUpper:1.0, chestMid:0.3},
+    how:['Slight elbow bend, fixed throughout the rep.','Let the arms travel BEHIND the torso at the bottom.','Think about the stretch, not the squeeze.'],
+    why:'Upper chest in the fully lengthened position, which is where the evidence for growth is strongest — and it does it with almost no joint or systemic cost.',
+    subs:['Incline dumbbell fly','Low-to-high cable crossover','Pec deck with the seat raised'],
+    watch:'Goes to failure every set. This is exactly the kind of exercise failure is for.' },
+
+  cableFly:{ maxConf:'ind', n:'Cable fly / pec deck (flat)', tracksMax:true, unit:'kg',
+    m:{chestMid:1.0, chestUpper:0.3},
+    how:['Handles at chest height, slight elbow bend held fixed.','Let the arms travel behind the torso at the bottom — the stretch is the point.','Squeeze without shrugging. Slow eccentric.'],
+    why:'Added so that no session in the rotation contributes zero hypertrophy. A machine or cable fly is close to free systemically, which means it can sit on the speed day without compromising what that day is for.',
+    subs:['Pec deck','Dumbbell fly','Low-to-high crossover'],
+    watch:'Every set to failure. This is exactly the sort of exercise failure exists for.' },
+
+  dip:{ maxConf:'high', n:'Weighted dip', tracksMax:true, unit:'kg',
+    m:{chestMid:0.8, triLat:0.6, deltFront:0.4},
+    how:['Slight forward lean for chest bias; upright for triceps.','STOP the descent when your upper arm is parallel to the floor.','Control the negative.'],
+    why:'Loaded pressing through a different plane, plus real triceps work. One of your named priority lifts.',
+    subs:['Machine dip','Bench dip (weighted)','Close-grip press'],
+    watch:'Going deeper than parallel is where shoulders get hurt for no extra benefit. Long arms make this worse, not better.' },
+
+  pullupNorm:{ maxConf:'high', n:'Weighted pull-up — normal grip', tracksMax:true, unit:'kg',
+    m:{lats:1.0, upperBack:0.4, bicLong:0.35},
+    how:['Pronated, hands roughly shoulder-width to a little outside.','Dead hang start, shoulders depressed before you pull.','Drive the elbows down and back. Chest toward the bar.','Control the descent — this is where most of the growth is.'],
+    why:'Your tracked vertical pull and the balanced version of the movement. Fixed for the whole block so the progression line stays clean.',
+    subs:['Neutral-grip pull-up','Lat pulldown, shoulder width','Assisted pull-up machine'],
+    watch:'This is the one that carries your progression. The other two grips are their own exercises with their own numbers — do not compare them to each other.' },
+
+  pullupWide:{ maxConf:'high', n:'Weighted pull-up — wide grip', tracksMax:true, unit:'kg',
+    m:{lats:1.0, upperBack:0.5},
+    how:['Pronated, hands well outside shoulder width.','Shorter range than the other grips — do not try to force the same depth.','Think about pulling the elbows down toward your ribs, not back.'],
+    why:'Biases the lats in the frontal plane and hits the upper back harder, with the biceps taken almost out of it. That is what makes it a genuinely different exercise rather than a variation.',
+    subs:['Wide-grip lat pulldown','Machine pulldown, wide'],
+    watch:'This will be your weakest grip by a clear margin, usually 10–15% below normal grip. That is expected, not a problem — track it against itself.' },
+
+  chinup:{ maxConf:'high', n:'Weighted chin-up — supinated', tracksMax:true, unit:'kg',
+    m:{lats:0.9, bicLong:0.5, bicShort:0.5, upperBack:0.3},
+    how:['Supinated, roughly shoulder width.','Full dead hang — at the bottom, the shoulder is flexed and the biceps long head is stretched.','Control the descent.'],
+    why:'Your strongest grip, and the only vertical pull that meaningfully trains the biceps. At the bottom of a dead hang the long head is loaded in a lengthened position, which is exactly where it grows.',
+    subs:['Neutral-grip pull-up','Underhand lat pulldown','Machine assisted chin-up'],
+    watch:'Chin-ups get limited by your biceps before your back, which is why this is a separate exercise rather than the tracked one.' },
+
+  pulldown:{ maxConf:'high', n:'Lat pulldown (wide)', tracksMax:true, unit:'kg',
+    m:{lats:1.0, upperBack:0.3, bicLong:0.3},
+    how:['Slight backward lean, chest up.','Pull to the upper chest, elbows down and back.','Full stretch at the top — let the shoulder blade rise.'],
+    why:'Lat volume that is easier to load precisely than pull-ups, on a day where you are already fatigued from bench volume.',
+    subs:['Pull-up','Machine pulldown','Straight-arm pulldown (different emphasis)'],
+    watch:null },
+
+  rowCSR:{ maxConf:'high', n:'Chest-supported / cable row', tracksMax:true, unit:'kg',
+    m:{upperBack:1.0, lats:0.5, deltRear:0.4, bicShort:0.3},
+    how:['Chest up, no torso swing.','Pull to the lower ribs.','Let the shoulder blade protract fully at the front for the stretch.'],
+    why:'Heavy upper-back work is the strongest cross-coach consensus point for a big bench — it builds the pressing platform, recovers fast, and protects the shoulder under high pressing frequency. Effectively free volume.',
+    subs:['T-bar row','Machine row','Seated cable row','Chest-supported dumbbell row'],
+    watch:'Vary the ANGLE between sessions — one higher toward the upper chest, one lower toward the ribs — rather than swapping machines.' },
+
+  facepull:{ maxConf:'ind', n:'Face pull', tracksMax:true, unit:'kg',
+    m:{deltRear:1.0, upperBack:0.5},
+    how:['Rope at roughly eye height.','Pull toward the face, elbows high, and externally rotate at the end.','High reps, controlled.'],
+    why:'Rear delts plus shoulder health. Added because you press four times a week and rear delt frequency was the weakest link in the original draft.',
+    subs:['Reverse pec deck','Rear delt cable fly','Prone trap raise'],
+    watch:null },
+
+  reardelt:{ maxConf:'ind', n:'Rear delt fly', tracksMax:true, unit:'kg',
+    m:{deltRear:1.0},
+    how:['Slight forward lean, elbows soft and fixed.','Lead with the elbows, not the hands.','High reps, to failure.'],
+    why:'Direct rear delt. Aesthetically it is what makes shoulders look three-dimensional from the side, and it counterbalances heavy pressing.',
+    subs:['Reverse pec deck','Face pull','Bent-over dumbbell fly'],
+    watch:null },
+
+  lateral:{ maxConf:'ind', n:'Cable lateral raise', tracksMax:true, unit:'kg',
+    m:{deltSide:1.0},
+    how:['Run the cable BEHIND your body so there is tension in the stretched position.','Lead with the elbow. Slight forward lean.','Stop at shoulder height — above that the traps take over.','Slow negative.'],
+    why:'Your highest-priority aesthetic muscle. Hit in five of six sessions because side delts recover fast and the per-session ceiling is low.',
+    subs:['Dumbbell lateral raise','Machine lateral raise','Lean-away single-arm cable raise'],
+    watch:'Cable and dumbbell versions were found equivalent in a 2025 within-participant study. Use whichever lets you reach genuine failure without swinging — but behind-the-body cable is the upgrade.' },
+
+  ohpLadder:{ maxConf:'high', n:'Overhead press ladder', tracksMax:true, unit:'kg',
+    m:{deltFront:1.0, triLat:0.5, deltSide:0.3},
+    how:['Rung 1: seated neutral-grip dumbbell press.','Rung 2: landmine press. Rung 3: high-incline (60°).','Rung 4: seated barbell. Rung 5: standing barbell.','Four weeks minimum per rung. Advance only if the previous rung was completely symptom-free.'],
+    why:'Rebuilding the overhead position rather than just adding the lift back. Your shoulder pain came at the very start of your training on a lift you have not touched since — that is a preparedness problem, not a structural one.',
+    subs:['Drop back a rung. That IS the substitute.'],
+    watch:'Drop a rung at the first sign of dull ache. No exceptions. You have 33 weeks; there is no rush. Watch for lumbar hyperextension as you climb — that is your back compensating for shoulder range you do not have yet.' },
+
+  triOH:{ maxConf:'ind', n:'Overhead cable/rope extension', tracksMax:true, unit:'kg',
+    m:{triLong:1.0, triLat:0.5},
+    how:['Elbows in and pointed up.','Full stretch behind the head — that is the whole point.','Squeeze at lockout without flaring the elbows.'],
+    why:'Bench pressing barely loads the triceps LONG head, because it is biarticular and shoulder position during pressing creates conflicting length demands. This is one of only two movements in the plan that actually trains it.',
+    subs:['EZ skullcrusher','Overhead dumbbell extension','Cable overhead extension, single arm'],
+    watch:'The long head is the biggest of the three triceps heads and the main driver of arm size from the back. It was under-served in the first draft — this is the fix.' },
+
+  skull:{ maxConf:'ind', n:'EZ-bar skullcrusher', tracksMax:true, unit:'kg',
+    m:{triLong:1.0, triLat:0.6},
+    how:['Lower to the forehead or just behind the head.','Keep the upper arm angled back slightly — pure vertical removes the long-head stretch.','Controlled negative; this is where the tension is.'],
+    why:'Second long-head exposure of the week, on a day with no pressing so it costs your bench nothing.',
+    subs:['Overhead cable extension','Lying dumbbell extension','JM press'],
+    watch:'If your elbows complain, switch to the cable overhead version — same head, gentler joint.' },
+
+  pushdown:{ maxConf:'ind', n:'Cable pushdown', tracksMax:true, unit:'kg',
+    m:{triLat:1.0, triLong:0.2},
+    how:['Elbows pinned to your sides. No shoulder movement.','Squeeze hard at the bottom.'],
+    why:'Lateral and medial head volume at essentially zero systemic cost.',
+    subs:['Rope pushdown','Single-arm pushdown','JM press'],
+    watch:null },
+
+  curlIncline:{ maxConf:'ind', n:'Incline dumbbell curl', tracksMax:true, unit:'kg',
+    m:{bicLong:1.0, bicShort:0.4},
+    how:['Bench at ~45°, arms hanging BEHIND the torso.','That behind-the-body position is the long-head stretch — it is the entire reason to use an incline.','Full extension at the bottom every rep.'],
+    why:'The biceps long head is the outer head — it is what creates the peak, and it only grows properly when trained in the stretched position.',
+    subs:['Bayesian cable curl','Behind-the-body cable curl'],
+    watch:null },
+
+  curlBayesian:{ maxConf:'ind', n:'Bayesian cable curl', tracksMax:true, unit:'kg',
+    m:{bicLong:1.0, bicShort:0.4},
+    how:['Stand a step in front of a low cable, arm trailing behind you.','Keep the elbow behind the torso for the whole rep.','Slow eccentric all the way to full extension.'],
+    why:'Second long-head exposure. Cable tension in the stretched position is more consistent than a dumbbell here.',
+    subs:['Incline dumbbell curl','Behind-the-body dumbbell curl'],
+    watch:'Added in the audit — the long head was only being trained once a week in the first draft.' },
+
+  curlEZ:{ maxConf:'ind', n:'EZ-bar or preacher curl', tracksMax:true, unit:'kg',
+    m:{bicShort:1.0, bicLong:0.5},
+    how:['Preacher pad or strict standing.','Full range. No swinging, no hip drive.','Squeeze at the top.'],
+    why:'Short head — the inner head, which adds width to the arm when viewed from the front.',
+    subs:['Cable curl','Machine preacher curl','Concentration curl'],
+    watch:null },
+
+  curlHammer:{ maxConf:'ind', n:'Hammer or reverse curl', tracksMax:true, unit:'kg',
+    m:{forearm:1.0, bicLong:0.3},
+    how:['Neutral grip (hammer) or pronated (reverse).','No swing. Controlled both directions.'],
+    why:'Brachialis and forearm. Brachialis sits under the biceps and pushes it up — growing it makes the arm look bigger from every angle.',
+    subs:['Reverse EZ curl','Cable rope hammer curl','Zottman curl'],
+    watch:null },
+
+  wrist:{ maxConf:'ind', n:'Wrist curl + reverse wrist curl', tracksMax:true, unit:'kg',
+    m:{forearm:1.0},
+    how:['Forearms braced on a bench or your thighs.','Full range, high reps.','Always to failure.'],
+    why:'Dual purpose: forearms are on your aesthetic list, AND wrist/forearm work protects your elbows from the high pressing frequency. One of very few things in the plan with no trade-off.',
+    subs:['Wrist roller','Farmer holds','Plate pinch'],
+    watch:null },
+
+  cableCrunch:{ maxConf:'ind', n:'Kneeling cable crunch', tracksMax:true, unit:'kg',
+    m:{abs:1.0, obliques:0.3},
+    how:['Kneel facing away from a high cable, rope behind your head.','Flex the SPINE, not the hips — the movement is curling your ribs toward your pelvis.','Keep the hips fixed. If your hips are moving, it has become a hip-flexor exercise.','Slow, controlled, squeeze hard at the bottom.'],
+    why:'The best loaded movement for rectus abdominis hypertrophy. Abs respond to progressive load like any other muscle — the reason most people have untrained abs is that they only ever do bodyweight reps.',
+    subs:['Machine crunch','Weighted decline sit-up','Cable crunch standing'],
+    watch:'Controlled flexion against a cable is fine for your back. Ballistic sit-ups with a loaded spine are not — that is repeated end-range lumbar flexion under load, which is the pattern most likely to aggravate a disc-related issue.' },
+
+  hangingRaise:{ maxConf:'ind', n:'Hanging leg raise', tracksMax:true, unit:'kg',
+    m:{abs:1.0, obliques:0.3},
+    how:['Dead hang, shoulders active (not fully relaxed).','Raise the knees and then TILT THE PELVIS BACK at the top — that posterior tilt is what actually loads the abs.','No swinging. Lower under control.','Progress by straightening the legs, then by holding a dumbbell between the feet.'],
+    why:'Trains the rectus from the bottom up, which the crunch pattern does less well, and doubles as grip work.',
+    subs:['Captain\'s chair leg raise','Lying leg raise','Reverse crunch'],
+    watch:'If you only lift the knees without tilting the pelvis, this is a hip-flexor exercise and your abs are barely working. The tilt is the rep.' },
+
+  abWheel:{ maxConf:'ind', n:'Ab wheel rollout', tracksMax:true, unit:'kg',
+    m:{abs:1.0, obliques:0.4},
+    how:['From the knees to start. Ribs down, glutes squeezed, pelvis tucked.','Roll out only as far as you can WITHOUT the lower back arching.','That range will be short at first. Short and honest beats long and sagging.'],
+    why:'Anti-extension — the abs work to stop the spine extending rather than to flex it. It builds exactly the bracing strength that protects your lower back and stabilises you under a heavy bench.',
+    subs:['Long-lever plank','Barbell rollout','Cable anti-extension press-out'],
+    watch:'The moment your lower back arches, the load transfers straight to your lumbar spine. Given your back, stop the range well before that point and add range over months, not weeks.' },
+
+  pallof:{ maxConf:'ind', n:'Pallof press', tracksMax:true, unit:'kg',
+    m:{obliques:1.0, abs:0.4},
+    how:['Stand side-on to a cable at chest height.','Press straight out and resist the rotation. Nothing should twist.','Hold 2–3 s at full extension. Breathe.'],
+    why:'Anti-rotation. Obliques and deep core, trained isometrically without any spinal loading at all — the safest core work available to you.',
+    subs:['Side plank','Half-kneeling Pallof','Suitcase carry'],
+    watch:'Zero risk to your back. If anything ever aggravates, this is the one to keep.' },
+
+  legpress:{ maxConf:'high', n:'Leg press', tracksMax:true, unit:'kg',
+    m:{quads:1.0, hams:0.3},
+    how:['Feet mid-to-high on the platform.','STOP the descent the moment your pelvis starts to tuck.','Control the descent. Do not lock the knees hard at the top.'],
+    why:'Your main quad driver without any spinal loading.',
+    subs:['Hack squat','Pendulum squat','Machine squat'],
+    watch:'That pelvic tuck at the bottom is loaded lumbar flexion — the exact thing that irritates your back. A slightly shorter range with a neutral spine beats a deep rep that costs you a week.' },
+
+  hackBulg:{ maxConf:'high', n:'Hack squat or Bulgarian split squat', tracksMax:true, unit:'kg',
+    m:{quads:1.0, hams:0.3},
+    how:['Hack squat: control the descent, knees track over toes.','Bulgarian: rear foot elevated, torso slightly forward, most of the load through the front leg.'],
+    why:'A second quad pattern, chosen by whichever your back tolerates on the day.',
+    subs:['Leg press','Pendulum squat','Walking lunge','Step-up'],
+    watch:'Bulgarians are back-friendlier than most loaded squat patterns because the load is lighter and the spine stays more vertical.' },
+
+  legcurlSeat:{ maxConf:'ind', n:'Seated leg curl', tracksMax:true, unit:'kg',
+    m:{hams:1.0},
+    how:['Seated beats lying — hip flexion puts the hamstring at a longer length.','Control the return; do not let the weight snap back.'],
+    why:'Hamstrings, at a long muscle length, with zero spinal load. Given you are not deadlifting, this is your main posterior chain work.',
+    subs:['Lying leg curl','Nordic curl','Standing single-leg curl'],
+    watch:null },
+
+  legcurlLie:{ maxConf:'ind', n:'Lying leg curl or Nordic', tracksMax:true, unit:'kg',
+    m:{hams:1.0},
+    how:['Hips down on the pad, no hip lift to cheat the rep.','Nordic: control the descent as far as you can, push back up.'],
+    why:'Second hamstring exposure. Different hip angle to the seated version.',
+    subs:['Seated leg curl','Nordic curl','Glute-ham raise'],
+    watch:null },
+
+  quadext:{ maxConf:'ind', n:'Quad extension', tracksMax:true, unit:'kg',
+    m:{quads:1.0},
+    how:['Pause at full extension.','Slow negative.','High reps, to failure.'],
+    why:'The rectus femoris crosses the hip, so it is under-trained by pressing movements where the hip also extends. This picks it up.',
+    subs:['Sissy squat','Reverse Nordic'],
+    watch:null },
+
+  calfStand:{ maxConf:'ind', n:'Standing calf raise', tracksMax:true, unit:'kg',
+    m:{calves:1.0},
+    how:['2-second pause at full stretch at the bottom.','Full range. Do not bounce.'],
+    why:'Standing (knee straight) targets the gastrocnemius.',
+    subs:['Smith machine calf raise','Leg press calf raise'],
+    watch:'Rushing calf work is the main reason calves do not grow. The stretch pause is not optional.' },
+
+  calfSeat:{ maxConf:'ind', n:'Seated calf raise', tracksMax:true, unit:'kg',
+    m:{calves:1.0},
+    how:['2-second pause at the bottom, same as standing.','Higher reps than standing.'],
+    why:'Seated (knee bent) targets the soleus, which the standing version largely misses.',
+    subs:['Bent-knee leg press calf raise'],
+    watch:null },
+
+  revhyper:{ maxConf:'ind', n:'Reverse hyperextension', tracksMax:true, unit:'kg',
+    m:{hams:0.3},
+    how:['Controlled, no swinging.','Stop at neutral — do not hyperextend.'],
+    why:'A decompression and blood-flow exercise for your lower back, not a strength lift. You already do these and they stay in.',
+    subs:['Back extension','Bird dog','McGill big three'],
+    watch:'If it ever aggravates rather than relieves, stop and tell me. That is diagnostic information.' },
+
+  jumps:{ n:'Box jumps / broad jumps', unit:'kg',
+    m:{quads:0.3},
+    how:['Always first in the session, always fresh.','Land quietly — noise means you are absorbing force badly.','STEP DOWN from the box. Never jump down.','Full recovery between sets, 2–3 min.'],
+    why:'Vertical jump comes from rate of force development and reactive ability, which heavy machine work does not train. Plyometrics are the direct transfer.',
+    subs:['Broad jump','Vertical jump for height','Skipping (lower intensity)'],
+    watch:'Low volume, high quality. Twelve good jumps beat thirty mediocre ones. Stop the moment reps get less crisp. If your back objects at all, these come out and we revisit. Introduced week 7, not before.' },
+};
+
+/* ---- sessions ---- */
+const SESSIONS = [
+{ id:'A', name:'Bench Heavy + Back', mins:'85–95',
+  purpose:'The session that makes 140 kg feel normal. Heavy singles teach your nervous system to produce force near your max, and they teach the skill of the lift at competition weight. The back-off sets are what actually make you stronger.',
+  key:'Single alone was worth +11.4 kg in six weeks with a 6% chance of being a real change. Single plus back-offs was +33.7 kg with a 99.6% chance. The single is a load-finder; the back-offs are the training.',
+  slots:[
+   {ex:'benchComp', label:'top single', sets:1, reps:1,  rpe:8,   idx:true},
+   {ex:'benchComp', label:'back-offs',  sets:3, reps:3,  rpe:8, pctTop:0.85},
+   {ex:'inclineDB',                     sets:3, reps:10, rpe:8},
+   {ex:'pullupNorm',                        sets:4, reps:5,  rpe:8,   idx:true},
+   {ex:'rowCSR',                        sets:3, reps:10, rpe:8.5},
+   {ex:'lateral',                       sets:4, reps:15, rpe:10, failLast:2},
+   {ex:'triOH',                         sets:4, reps:12, rpe:10, failLast:2},
+   {ex:'revhyper',                      sets:2, reps:14, rpe:7},
+   {ex:'wrist',                         sets:3, reps:16, rpe:10, failLast:3},
+   {ex:'pallof',                        sets:3, reps:10, rpe:8},
+]},
+{ id:'B', name:'Lower + Arms', mins:'75–85',
+  purpose:'Most of your leg hypertrophy and a big share of your arm volume, in a session that costs your bench nothing.',
+  key:'This is where training to failure earns its keep. Everything here is a machine or a cable, so failing costs you the rep and nothing else.',
+  slots:[
+   {ex:'legpress',    sets:4, reps:10, rpe:10, failLast:2, idx:true},
+   {ex:'legcurlSeat', sets:4, reps:12, rpe:10, failLast:2},
+   {ex:'quadext',     sets:3, reps:15, rpe:10, failLast:3},
+   {ex:'calfStand',   sets:4, reps:12, rpe:10, failLast:3},
+   {ex:'curlIncline', sets:4, reps:10, rpe:10, failLast:2},
+   {ex:'skull',       sets:3, reps:12, rpe:10, failLast:1},
+   {ex:'curlHammer',  sets:2, reps:13, rpe:10, failLast:2},
+   {ex:'cableCrunch', sets:3, reps:12, rpe:10, failLast:2},
+   {ex:'revhyper',    sets:2, reps:15, rpe:7},
+]},
+{ id:'C', name:'Bench Volume + Upper Chest', mins:'70–80',
+  purpose:'The biggest single contributor to chest growth in the rotation — and since size is what eventually moves the bench, a major contributor to the 140 kg.',
+  key:'Strength is nearly volume-insensitive; hypertrophy is not. This is the session where you buy size, separately from the session where you buy strength.',
+  slots:[
+   {ex:'benchComp', label:'volume', sets:5, reps:5,  rpe:8, lastHarder:8.5},
+   {ex:'inclineDB',                 sets:4, reps:10, rpe:8, idx:true},
+   {ex:'pullupWide',                sets:3, reps:8,  rpe:8, idx:true},
+   {ex:'lateral',                   sets:4, reps:17, rpe:10, failLast:4},
+   {ex:'reardelt',                  sets:3, reps:17, rpe:10, failLast:3},
+   {ex:'hangingRaise',              sets:3, reps:12, rpe:9},
+]},
+{ id:'D', name:'Speed Bench + Overhead + Back', mins:'75–85',
+  purpose:'A fourth bench exposure that costs almost nothing, plus your overhead progression and heavy back work.',
+  key:'Volume and load equated, maximal intent produced +18.2% on the bench versus +9.7% for deliberately slow lifting. Double the gain from identical work — but only when sets are not taken to failure.',
+  slots:[
+   {ex:'benchSpeed',    sets:6, reps:3,  rpe:6},
+   {ex:'cableFly',      sets:3, reps:13, rpe:10, failLast:3},
+   {ex:'ohpLadder',     sets:3, reps:10, rpe:8, idx:true},
+   {ex:'chinup',        sets:3, reps:8,  rpe:8},
+   {ex:'rowCSR',        sets:3, reps:12, rpe:8.5},
+   {ex:'facepull',      sets:3, reps:17, rpe:9},
+   {ex:'lateral',       sets:3, reps:15, rpe:10, failLast:2},
+   {ex:'triOH',         sets:4, reps:12, rpe:10, failLast:2},
+   {ex:'curlBayesian',  sets:4, reps:10, rpe:10, failLast:2},
+   {ex:'wrist',         sets:3, reps:16, rpe:10, failLast:3},
+]},
+{ id:'E', name:'Bench Variation + AMRAP', mins:'70–80',
+  purpose:'Supplemental pressing strength through a different stimulus, plus the one measurement each week that tells us objectively whether any of this is working.',
+  key:'The AMRAP goes FIRST, straight after the warm-up ramp. It is a measurement, and a tired reading is a corrupted reading.',
+  slots:[
+   {ex:'benchComp', label:'AMRAP', sets:1, reps:6, rpe:10, idx:true, amrap:true},
+   {ex:'benchVar',                 sets:4, reps:4, rpe:7.5},
+   {ex:'dip',                      sets:3, reps:8, rpe:8, idx:true},
+   {ex:'inclineFly',               sets:3, reps:13, rpe:10, failLast:3},
+   {ex:'rowCSR',                   sets:3, reps:10, rpe:8.5},
+   {ex:'lateral',                  sets:4, reps:15, rpe:10, failLast:2},
+   {ex:'curlEZ',                   sets:3, reps:10, rpe:10, failLast:2},
+   {ex:'wrist',                    sets:3, reps:16, rpe:10, failLast:3},
+]},
+{ id:'F', name:'Lower + Delts + Jumps', mins:'75–85',
+  purpose:'The athletic side, plus a second dose of the muscles you care about aesthetically.',
+  key:'Jumps go first because power work is worthless when you are tired. Introduced from week 7, and they come straight back out if your back objects.',
+  slots:[
+   {ex:'jumps',       sets:4, reps:3,  rpe:6},
+   {ex:'hackBulg',    sets:3, reps:10, rpe:8},
+   {ex:'legcurlLie',  sets:3, reps:10, rpe:10, failLast:2},
+   {ex:'legpress',    label:'light, high rep', sets:3, reps:17, rpe:10, failLast:3},
+   {ex:'calfSeat',    sets:4, reps:16, rpe:10, failLast:3},
+   {ex:'lateral',     sets:4, reps:15, rpe:10, failLast:2},
+   {ex:'reardelt',    sets:3, reps:17, rpe:10, failLast:3},
+   {ex:'inclineFly',  sets:3, reps:13, rpe:10, failLast:3},
+   {ex:'abWheel',     sets:3, reps:10, rpe:9},
+   {ex:'revhyper',    sets:2, reps:15, rpe:7},
+]},
+];
+
+const PLAN = {
+  id:'fran-bulk-v1',
+  name:"Fran's Bulk Plan v1",
+  sub:'33 weeks · bench-focused · Aug 2026 → Apr 2027',
+  rotation:['A','B','C','D','E','F'],
+  workingMaxes:{ benchComp:115, benchVar:100, inclineDB:44, pullup:32, dip:38, legpress:250, ohpLadder:30 },
+  blocks:[
+    {n:'0 · Re-entry', w:'1–2', v:'Close-grip', cap:'RPE 7.5', incline:'Dumbbell',
+     theme:'Rebuild work capacity, groove technique, establish every baseline number.',
+     top:'Wk1 heavy triple (test) · Wk2 1×1 @ RPE 7.5', vol:'5×5 @ 70%',
+     changes:['Shortened from 3 weeks to 2 — you are already volume-adapted, so only LOAD needs re-introducing','Grip-width test in week 1','Week 1: baseline tests (heavy triple on bench) + full accessory volume. Week 2: full structure, singles capped at RPE 7.5','No jumps, no static holds','Accessories at full volume from day one, since you are already volume-adapted']},
+    {n:'1 · Accumulation', w:'3–8', v:'Close-grip', cap:'RPE 8', incline:'Dumbbell',
+     theme:'Volume emphasis at moderate load. The base the rest of the plan sits on.',
+     top:'1×1 @ RPE 8 + 3×3 back-offs', vol:'5×5 @ 75–80%',
+     changes:['Heavy singles introduced, capped at RPE 8','Jumps introduced from week 7','Week 9 is a deload','Working maxes refresh at the end']},
+    {n:'2 · Intensification', w:'9–14', v:'Spoto press', cap:'RPE 8.5', incline:'Smith',
+     theme:'Heavier, lower volume on the bench. Accessories hold steady.',
+     top:'1×1 @ RPE 8.5 + 3×2 back-offs', vol:'4×4 @ 80%',
+     changes:['Top-set cap rises to RPE 8.5','Bench volume sets drop from 25 reps to 16, at higher load','STATIC HOLDS introduced — 2–3 × 5–10 s at 105–115%, rack pins, spotter','Pin press paired with the holds, 5–10 cm off the chest','Incline switches to Smith for precise loading','Overhead ladder should reach rung 2 (landmine)']},
+    {n:'3 · Accumulation II', w:'15–20', v:'Pin press', cap:'RPE 8', incline:'Dumbbell',
+     theme:'Volume again, but at loads that were near-maximal in Block 1.',
+     top:'1×1 @ RPE 8 + 4×3 back-offs', vol:'6×5 @ 77%',
+     changes:['Cap back down to RPE 8 — this is a recovery-of-capacity block, not a soft one','Bench volume rises to its highest of the plan','Static holds continue, lighter','Incline back to dumbbells for the longer stretch','Mid-plan physique review — send me an export']},
+    {n:'4 · Intensification II', w:'21–26', v:'Close-grip', cap:'RPE 8.5', incline:'Smith',
+     theme:'The heaviest sustained block. This is where the 140 gets built.',
+     top:'1×1 @ RPE 8.5 + 3×2 back-offs', vol:'4×4 @ 82%',
+     changes:['Everything from Block 2 at higher absolute loads','Bodyweight gain throttles to 0.2–0.25 kg/week from here','Overhead ladder should be at rung 4 (seated barbell)','Watch the elbows — this is the highest cumulative joint load of the plan']},
+    {n:'5 · Specialisation', w:'27–31', v:'Spoto press', cap:'RPE 9', incline:'Smith',
+     theme:'Bench specialisation. Everything else goes to maintenance.',
+     top:'1×1 @ RPE 9 + 3×2', vol:'5×4 @ 85%',
+     changes:['Accessory volume cut ~20% across the board','Legs drop to maintenance — one session, fixed exercises','Bench exposures rise to 5 if recovery allows','Heavy static holds emphasised — this is where they pay off','Cap rises to RPE 9, the highest of the plan']},
+    {n:'Peak', w:'32–33', v:'—', cap:'RPE 10 once', incline:'—',
+     theme:'Taper and test. Worth 2–6% on the bench if done properly.',
+     top:'Openers, then one true max', vol:'Minimal',
+     changes:['Volume cut 30–50%, intensity MAINTAINED at ≥85%','All accessory work cut roughly in half','No failure work at all','One true max attempt, spotted, at the end','Do not cut food during the taper']},
+  ],
+};
+
+const TIPS = [
+
+/* ---------- start here ---------- */
+{s:'Start here', t:'The three rules everything rests on', c:`
+<p><strong>1 · Buy strength and size separately.</strong> Strength comes from heavy work at low volume. Size comes from submaximal work at high volume. Trying to buy both from the same sets is exactly what maxing every session was — and the bench is the most volume-dependent of the three big lifts, so it punished that approach hardest.</p>
+<p><strong>2 · Fatigue tracks how close you go to failure, not how many sets you do.</strong> Six sets at 3 reps in reserve recover as fast as three sets at 3 RIR. Three sets to failure cost 24–48 hours. That single finding is what makes benching four times a week possible.</p>
+<p><strong>3 · Failure is aimed, not cut.</strong> It goes on cables, machines and isolation, where it is the actual mechanism of growth and costs almost nothing systemically. It never goes on heavy pressing, where the strength data says it buys nothing at all.</p>`},
+
+{s:'Start here', t:'How long each session should take', c:`
+<p>These assume you actually take the prescribed rest periods. If you are finishing much faster, you are rushing; much slower, you are on your phone.</p>
+<ul>
+<li><strong>A · Bench Heavy + Back — 30 sets, 85–95 min.</strong> The longest, because heavy singles need 3–5 min between attempts.</li>
+<li><strong>B · Lower + Arms — 29 sets, 75–85 min.</strong> Dense; most of it is 60–90 s rests.</li>
+<li><strong>C · Bench Volume — 22 sets, 70–80 min.</strong></li>
+<li><strong>D · Speed + Overhead + Back — 35 sets, 75–85 min.</strong> Most exercises, but six of those sets are cheap speed work.</li>
+<li><strong>E · Variation + AMRAP — 24 sets, 70–80 min.</strong></li>
+<li><strong>F · Lower + Delts + Jumps — 32 sets, 75–85 min.</strong> Four of those sets are jumps with full recovery.</li>
+</ul>
+<p>Add 8–10 minutes of warm-up to each. These grew when we added the core work and the extra arm and chest volume — you said length was not a problem, so I took you at your word. If a session is consistently overrunning, tell me and I will trim it rather than have you skip the last exercises, which are always the isolation work you actually want.</p>`},
+
+{s:'Start here', t:'The five biggest mistakes, in order of cost', c:`
+<p><strong>1 · Letting the heavy single creep into a max.</strong> This is the one that already cost you a year. RPE 8 becomes 8.5 becomes 9.5 becomes a max, and it happens over weeks so you never notice the moment. The defence is mechanical, not motivational: write the load range down before the session, cap it at two singles above 90%, never miss a rep. <em>If you had to psych up, it was too heavy.</em></p>
+<p><strong>2 · Skipping the back-off sets.</strong> A heavy single alone was worth +11.4 kg over six weeks with a 6% probability of being a real change. The same single plus back-off triples was +33.7 kg with a 99.6% probability. The single is a load-finder. Skipping the back-offs recreates precisely the failure mode in your history.</p>
+<p><strong>3 · Making the speed day hard.</strong> Session D only works because it is cheap. The moment it becomes another heavy day, you have four hard bench sessions a week and the structure collapses. If the bar is not visibly faster than your volume sets, the load is wrong.</p>
+<p><strong>4 · Rushing the eccentric.</strong> Your specific technical leak. It makes the touch point inconsistent, the bar path variable, and adds a bounce that inflates your numbers without building the strength underneath. Two seconds down, every rep.</p>
+<p><strong>5 · Chasing the number in month six.</strong> If you are at a normal-day 132 kg in February, the correct move is to keep building — not to start maxing to prove something. The plan does not end in March; the deadline is self-imposed.</p>`},
+
+{s:'Start here', t:'Week 1 — the testing protocol', c:`
+<p><strong>There is no separate test day.</strong> You have 36 exercises; testing them in one session is impossible and everything after the first few would be measured under fatigue. Instead the <strong>first rotation is the test</strong> — every exercise appears within six sessions, and you train normally throughout.</p>
+
+<p><strong>Session A · the bench 1RM.</strong> You have chosen to test a true max rather than a heavy triple. That is your call and it is fine — here is how to make it count.</p>
+<ul>
+<li><strong>First thing in the session</strong>, fully fresh, after the full warm-up ramp.</li>
+<li><strong>Spotter physically standing there.</strong> Not nearby. This is the one session where that is non-negotiable.</li>
+<li><strong>Small jumps at the top.</strong> Empty bar → 40 → 60 → 80 → 95 → 105 → 112 → then 2.5–5 kg increments. Rest 3–5 min above 90%.</li>
+<li><strong>Stop at the first genuine grind.</strong> A missed rep is worth far less than a number 2.5 kg lower. Maximum three attempts above 95%.</li>
+<li><strong>Then do the rest of the session as written</strong>, back-offs included, at whatever the max supports.</li>
+</ul>
+<p><strong>Expect it to under-read.</strong> You have not touched heavy singles in months, so this first max is limited by skill and neural familiarity, not by muscle. It is a <em>floor</em>, not a ceiling — do not be discouraged if it lands below what you feel capable of. That gap closes in the first block on its own.</p>
+<p><strong>One adjustment for week 1 only:</strong> a true max costs three to five days of recovery, and Session C's bench volume lands two sessions later. Run C's bench at about 5% lighter than prescribed that first week. Normal from week 2.</p>
+
+<p><strong>Session A and beyond · the RPE 10 tests.</strong> For weighted pull-ups and dips, an all-out set is safe — you fail and let go, nothing lands on you. But do not test a true single. <strong>Work up to a set of 3–6 reps taken to genuine failure instead.</strong> The estimated max from a 3–6 rep set is more reliable than one from a single, and the joint stress of a maximal weighted pull-up with a heavy belt is meaningfully higher for no extra information.</p>
+<ul>
+<li><strong>Session A</strong> — bench 1RM · normal-grip pull-up to failure · incline press to RPE 8</li>
+<li><strong>Session B</strong> — leg press to RPE 8</li>
+<li><strong>Session C</strong> — bench prescribed from A (5% lighter this week) · <strong>wide-grip pull-up to failure</strong></li>
+<li><strong>Session D</strong> — <strong>chin-up to failure</strong> · overhead ladder rung 1</li>
+<li><strong>Session E</strong> — <strong>weighted dip to failure</strong> · bench variation. <strong>Skip the AMRAP this week</strong> — it needs a settled bench number to sit against.</li>
+<li><strong>Session F</strong> — hack squat and leg curl to RPE 8</li>
+</ul>
+<p><strong>Everything else</strong> — laterals, curls, pushdowns, abs, calves. Pick a weight you think lands near the target, do the reps, log what happened. If the guess is off the app corrects it and session two prescribes properly. Guessing wrong costs nothing.</p>`},
+
+{s:'Start here', t:'The grip-width test — week 2, not week 1', c:`
+<p>Do this in <strong>Session A of week 2</strong>, once you have a settled max and are not also testing it. Testing a max and testing grips in the same session gives you two bad answers instead of one good one.</p>
+<p><strong>Protocol.</strong> Work up to roughly 85–88% of your new max, then:</p>
+<ul>
+<li>One single with <strong>ring fingers on the rings</strong> (your current grip, ~73 cm). Rest 3 min.</li>
+<li>One single with <strong>index fingers on the rings</strong> (~81 cm, the legal maximum). Rest 3 min.</li>
+<li>One single with hands <strong>inside the rings</strong> (narrow). Rest 3 min.</li>
+</ul>
+<p>Judge on <em>bar speed and how it felt off the chest</em>, not on whether you completed it — all three should be completable at 85%. Run a second round if two feel equal. Log the grip on every set so the answer is in the data rather than in your memory.</p>
+<p><strong>What to expect.</strong> At 190 cm the 81 cm competition cap does not scale with your arm length, so even your widest legal grip is functionally moderate — which makes your bench more triceps-dominant than a shorter lifter's. The theoretical case for "as wide as legal" is weakest for exactly your proportions, and reputable coaches genuinely disagree: Josh Bryant reports four of his 300 kg-plus benchers using narrow or moderate grips.</p>
+<p><strong>Then commit.</strong> Whichever wins becomes your competition grip and does not change again. Grip variation belongs in the variation slot — close-grip bench already covers the narrow end — not on the lift you are measuring. The entire progression depends on holding one thing steady.</p>`},
+
+/* ---------- execution ---------- */
+{s:'Execution', t:'When a set feels easier than prescribed', c:`
+<p>This is the most-asked question and it has two different answers depending on how the set was written.</p>
+<p><strong>Fixed reps + an RPE target → change the load, not the reps.</strong> If you are prescribed 5 @ RPE 8 and finish 5 feeling like you had four left, do <em>not</em> keep going. Log it honestly as 5 reps at RPE 6, and add 2.5–5 kg on the next set. Seven reps at 100 kg is a different exercise from five at 100 kg, and once you start extending sets you can no longer compare this week's 5s to last week's 5s. The measurement system depends on holding one variable steady.</p>
+<p><strong>A rep range + an RIR target → change the reps, then the load.</strong> On 3×8–12 at 1–2 RIR, if you hit 8 with four in the tank, absolutely keep going. Stop where 1–2 RIR actually lands. If you reach 12 with reps still there, stop at 12 and add weight next session. That is double progression, and the range exists precisely for this.</p>
+<p><strong>A set marked to failure → go until failure, whatever the number.</strong> There is no prescription to violate.</p>
+<p style="padding:9px 11px;background:var(--sunk);border-radius:8px"><strong>One line:</strong> fixed reps means the load moves. A range means the reps move.</p>`},
+
+{s:'Execution', t:'Why not everything goes to failure — and what would change if it did', c:`
+<p>You have historically taken nearly every set to failure, so this deserves a real answer rather than a rule.</p>
+<p><strong>What failure genuinely buys.</strong> The relationship between proximity to failure and hypertrophy is real and in your predicted direction. Across 55 studies, growth improves as you approach failure at about 0.019 standardised units per rep in reserve. So going from 2 RIR to failure is worth roughly <strong>0.038 SMD — about one percentage point of extra growth across a block.</strong> Real, but smaller than the measurement error in most of these studies, and smaller than what one extra set per muscle per week gives you.</p>
+<p><strong>What it buys for strength: nothing.</strong> Across 243 effects, the relationship between proximity to failure and 1RM has a confidence interval straddling zero. Failure does not make you stronger. It only makes you more tired.</p>
+<p><strong>What it costs.</strong> Muscle damage roughly 0.76 SMD higher, creatine kinase at 48 hours 0.86 higher, session RPE 1.93 higher. Concretely: a compound set to failure delays recovery 24–48 hours. Sub-failure work recovers in about six.</p>
+<p><strong>So if you took the bench to failure every session:</strong> you would gain about one percentage point of extra chest growth, gain nothing on your bench, and lose the ability to bench four times a week — because two of those four sessions would land inside the recovery window of the previous one. You would trade your best strength lever for your smallest hypertrophy lever.</p>
+<p><strong>Where failure is not optional.</strong> At light loads it is essential: at 30% of 1RM, sets to failure produced 7.8% growth versus 2.8% for sets stopped short. That is why every cable, machine and isolation exercise here ends in failure — high reps only work if you actually get there.</p>
+<p><strong>And the feeling is not the signal.</strong> In a study where the same 18 lifters trained one leg to failure and one leg to 2 RIR, the sub-failure leg scored better on discomfort, session RPE and mood — and grew 6.98% versus 6.96%. The sensation of insufficiency was completely uncorrelated with the outcome.</p>`},
+
+{s:'Execution', t:'Bar speed and intent', c:`
+<p><strong>On compounds: roughly two seconds down, then accelerate as hard as you physically can.</strong> In a study that equated load and volume exactly and varied only concentric intent, maximal intent produced +18.2% on the bench and deliberately slow lifting produced +9.7%. Double the gain from identical work, with 38% less time under tension.</p>
+<p><strong>Two things people get wrong.</strong> Intent is not the same as speed — at 92% the bar moves slowly no matter what you do, and that is fine, because intent is about the attempt not the result. And intent is not looser form: the eccentric stays controlled, the pause stays honest, the bar path stays the same. Only the concentric changes.</p>
+<p><strong>Not on isolation.</strong> Explosive lateral raises become swinging, which takes tension off the exact muscle you are trying to grow. Control there.</p>
+<p><strong>The rule:</strong> intent when you are training force production, control when you are training a muscle. And note the intent effect disappears at failure — fatigue recruits everything regardless — so on the isolation sets that go to failure, intent is irrelevant anyway. The two rules agree.</p>`},
+
+{s:'Execution', t:'Rest periods', c:`
+<ul>
+<li>Heavy singles and doubles — <strong>3–5 min</strong></li>
+<li>Heavy back-offs, 3–5 reps — 3–4 min</li>
+<li>Volume bench, 5s at 75–80% — 2.5–3 min</li>
+<li>Speed bench — 90–120 s, enough to stay fast</li>
+<li>Bench variations — 2.5–3 min</li>
+<li>Weighted pull-ups and dips — 2–3 min</li>
+<li>Incline press, rows — 2 min</li>
+<li>Leg press, hack squat — 2–3 min</li>
+<li>Isolation: laterals, curls, pushdowns, flies — <strong>60–90 s</strong></li>
+<li>Jumps — <strong>full recovery, 2–3 min.</strong> Never conditioning.</li>
+</ul>
+<p><strong>Why long on compounds and short on isolation.</strong> With long rests, per-session growth for a muscle plateaus around 6–8 sets. With short rests it extends further but needs roughly double the volume to get the same result. So spend your long rests where the load actually matters, and keep isolation dense — you are chasing failure there anyway and the absolute load is not the point.</p>`},
+
+{s:'Execution', t:'Warm-up', c:`
+<p><strong>Every session, about 5 minutes.</strong> Three to five minutes on a bike, rower or incline walk until you are genuinely warm. Then band pull-aparts 2×20, band external rotations 2×15 per side, scapular push-ups 1×10, and wrist circles with light flexion and extension.</p>
+<p>The shoulder and elbow work is not decoration. You are pressing four times a week — this is the tissue that has to survive it.</p>
+<p><strong>Bench ramp on the heavy day</strong>, working toward a 105 kg top single: empty bar ×10–15, 40×5, 60×5, 80×3, 92×2, 100×1, then the work set. Rest 60–90 s on the light ramp sets and 2–3 min before the top single. <em>The ramp is not training</em> — never let it accumulate fatigue.</p>
+<p><strong>On the volume day:</strong> empty bar ×15, 50×5, 70×5, 82×3, then work sets.</p>
+<p><strong>Accessories:</strong> one feeder set at roughly half your working weight. That is all. There is no need to ramp a lateral raise.</p>`},
+
+{s:'Execution', t:'Where to put rest days', c:`
+<p>Both placements are legitimate, for different reasons. Resting <em>after</em> a hard session removes fatigue that is actually present — it peaks 24–48 hours after heavy or failure work. Resting <em>before</em> means you perform better on that specific day.</p>
+<p>Which you want depends on what the session is for:</p>
+<ul>
+<li><strong>After A (heavy)</strong> — the fatigue is real, and going in slightly tired costs you little because the load is autoregulated by RPE anyway.</li>
+<li><strong>Before E (AMRAP)</strong> — this is a <em>measurement</em>, and a tired reading is a corrupted reading. Worse than a bad workout.</li>
+<li><strong>Before F</strong> — power work is worthless when fatigued.</li>
+<li><strong>C</strong> — genuinely does not matter.</li>
+</ul>
+<p><strong>Simple version:</strong> rest after A, rest before E. If you only get one rest day, put it after A. <strong>Never rest between C and D</strong> — the speed day is deliberately cheap and partly exists to flush the volume day.</p>`},
+
+{s:'Execution', t:'Missing sessions — you are probably overthinking it', c:`
+<p>With a rolling rotation, a missed day is <strong>not a decision you have to make</strong>. There is no "which session do I drop." You simply do the next one in the rotation the next time you train.</p>
+<ul>
+<li>Six sessions in seven days → a full rotation.</li>
+<li>Five in seven → the rotation takes about eight days. Nothing changes. Do not compensate.</li>
+<li>Four in seven, once → same. Keep going.</li>
+</ul>
+<p>You only switch templates when you know <em>in advance</em> you will be limited for <strong>two weeks or more</strong> — Christmas, a trip, a heavy work period. Then use the 4-day or 3-day version and switch back afterward.</p>
+<p><strong>"Drop Session D" is different advice for a different problem:</strong> chronic under-recovery. If sleep has been under 7 hours for a week or more, D is the cheapest session to lose. That is a recovery decision, not a scheduling one.</p>
+<p><strong>Missing a whole week is fine.</strong> Muscle does not detrain meaningfully in seven days. Come back at the same loads.</p>`},
+
+/* ---------- the bench ---------- */
+{s:'The bench', t:'Setup, every single time', c:`
+<ol>
+<li>Eyes under the bar. Feet planted. Moderate arch — <strong>from the upper back, never the lower</strong>.</li>
+<li>Grip: ring fingers on the rings, which is roughly 73 cm and about 8 cm inside the legal maximum.</li>
+<li>Shoulder blades back and <em>down</em>. Not just back — down. Think about putting them in your back pockets.</li>
+<li>Unrack, then <strong>pause 2–3 seconds</strong> to re-settle the arch, re-plant the feet, re-tighten the lats. This was the best free advice you have been given and it costs nothing.</li>
+<li>Big breath, hold it.</li>
+</ol>
+<p><strong>The rep.</strong> Two seconds down to the same spot every time, just below the nipple line. Pause about a second on the chest, bar dead, still tight. Then drive with maximal intent. Bar path is a J-curve — back and up off the chest, then vertical once the bar is over the shoulder joint. Leg drive pushes the feet into the floor and <em>toward your head</em>, not up; nothing should lift off the bench.</p>`},
+
+{s:'The bench', t:'Your specific leaks', c:`
+<p><strong>1 · Rushing sets.</strong> The single biggest free improvement available to you. Rushing means an inconsistent touch point, a variable bar path, and a bounce that inflates your numbers without building the strength underneath. It also means every rep is a slightly different lift, so your body never grooves one motor pattern.</p>
+<p><strong>2 · Long arms.</strong> At 190 cm your range of motion is long and your moment arms are long. Grip width and bar path optimisation are worth more to you than to most lifters. The 81 cm competition grip cap does not scale with arm length, so your maximum legal grip is functionally a moderate grip — which makes your bench more triceps-dominant than a shorter lifter's.</p>
+<p><strong>3 · The arch.</strong> Moderate is the right call given your back. Build range through thoracic extension and hip flexor mobility, never through lumbar hyperextension. A big arch is a sustained loaded lumbar extension, repeated four times a week — for you that is the wrong trade.</p>`},
+
+{s:'The bench', t:'The heavy single rules', c:`
+<ol>
+<li><strong>Write the load range down before you start.</strong> Pre-commit. This is the whole ballgame.</li>
+<li><strong>Maximum two singles above 90%.</strong> Then stop, regardless of how good they felt.</li>
+<li><strong>Never miss a rep.</strong> A miss means the ceiling failed, not that you were unlucky.</li>
+<li><strong>If you had to psych up, it was too heavy.</strong> No slaps, no ammonia, no music change. RPE 8 should feel businesslike.</li>
+<li><strong>Back-offs are not optional.</strong></li>
+</ol>
+<p><strong>Why 96–100% is a testing zone and not a training zone.</strong> Sheiko's system has exactly two days in a fourteen-week cycle where athletes go to 100%, and international-level athletes are capped at 90% and never touch a true max in training at all. Prilepin allots 4–10 total reps to the entire above-90% band per session. And technique measurably degrades at maximal loads — sticking-region duration increases, the bar drifts horizontally, and left-right asymmetry rises sharply. Singles at 90–94% are technique practice. Singles at 98–100% are practice at compensating.</p>`},
+
+{s:'The bench', t:'The AMRAP — how to not waste it', c:`
+<p>This is the most important 90 seconds of your week, and it is a measurement before it is a workout.</p>
+<ul>
+<li><strong>Same load family every time within a block.</strong> Pick something in the 80–87% window and keep it. Comparability is the entire point.</li>
+<li><strong>Same bench standard.</strong> Paused, about one second, moderate arch. A touch-and-go rep does not go in the log next to a paused one.</li>
+<li><strong>Done first,</strong> straight after the warm-up ramp. It used to sit after four sets of variation work, which corrupted it.</li>
+<li><strong>Get a spotter</strong> — physically standing there, not "nearby." No spotter means the AMRAP moves to dumbbells or a machine that day.</li>
+<li><strong>Never more than one per week.</strong> A compound set to failure costs 24–48 hours. Two per week and each reading is taken against incomplete recovery from the last, which makes the whole series meaningless.</li>
+</ul>
+<p><strong>Why 80–87% and not something lighter.</strong> At that range the rep count agrees between sessions to within about one rep and the estimated-max formula error is near its minimum. At 70%, the between-person spread runs from 6 to 28 reps and the error roughly doubles. A moderate-rep AMRAP feels productive and tells you almost nothing.</p>`},
+
+/* ---------- progress ---------- */
+{s:'Measuring progress', t:'Working max vs observed e1RM', c:`
+<p>Two different numbers, and confusing them is how people overreach without noticing.</p>
+<p><strong>Observed e1RM</strong> is computed from every qualifying set. It is a continuous record and it is never overwritten.</p>
+<p><strong>Working max</strong> is what prescriptions are calculated from, and it updates <strong>only at block boundaries</strong>.</p>
+<p><strong>Why not update it every time you have a good day.</strong> Test–retest variability on a 1RM in trained lifters is about 3.3%, which on a 130 kg bench is ±4 kg of pure noise. If the working max ratchets up on every good session, six weeks later you are training at a genuine RPE 9.5 while believing you are at 8. That is overreaching by arithmetic, and it is almost impossible to detect from the inside.</p>
+<p><strong>The rule:</strong> at block end, set the working max to the best observed e1RM from that block's index sets. Bump early only if observed exceeds working by more than 5% for two consecutive weeks. Never lower it mid-block — a bad week is a bad week, not a strength loss.</p>`},
+
+{s:'Measuring progress', t:'Index sets — why only some sets count', c:`
+<p>One designated set per key lift, done fresh, once per rotation. Those are the sets the estimated max is read from.</p>
+<ul>
+<li><strong>Comp bench</strong> — the AMRAP in Session E (to failure), plus the top single in Session A as a second reading</li>
+<li><strong>All three pull-up grips</strong> — tracked as three separate exercises with three separate maxes. Wide will sit 10–15% below normal grip and chin-ups above it; that is expected. Never compare them to each other.</li>
+<li><strong>Incline press</strong> — first working set, Session C</li>
+<li><strong>Weighted pull-up</strong> — first working set, Session A</li>
+<li><strong>Weighted dip</strong> — first working set, Session E</li>
+<li><strong>Leg press</strong> — first working set, Session B</li>
+</ul>
+<p>A top set at a known RPE gives a <em>cleaner</em> estimated max than a set to failure, at a fraction of the fatigue cost. Only the bench AMRAP needs to go to failure, because it is the one number we want zero interpretation on.</p>
+<p><strong>Why not a weekly failure set on everything.</strong> It would reintroduce exactly the fatigue problem the plan is designed around — and for isolation exercises an estimated max is not meaningful anyway. One validation study found <em>all nine</em> standard prediction equations failed on the arm curl.</p>`},
+
+{s:'Measuring progress', t:'What good actually looks like', c:`
+<p><strong>Weight up, waist flat, lifts up.</strong> That is the whole target state. If you see it, change nothing.</p>
+<ul>
+<li>Gaining under 0.1 kg/week → add roughly 250 kcal, realistically one extra meal-sized snack.</li>
+<li>Gaining over 0.6 kg/week → cut roughly 300 kcal.</li>
+<li>Waist rising nearly as fast as bodyweight → slow the bulk regardless of what the scale says.</li>
+<li>e1RM flat for four weeks while bodyweight rises → that is a recovery or programming problem, not a food problem. Send me the export.</li>
+</ul>
+<p><strong>Adjust on 2–3 week trends, never on single readings.</strong> Individual days are noise. Only the 7-day average means anything.</p>`},
+
+/* ---------- nutrition ---------- */
+{s:'Nutrition', t:'Targets', c:`
+<ul>
+<li><strong>Weeks 1–12: +0.4–0.5 kg per week.</strong> You are regaining tissue you already had, and muscle memory means this window converts food into muscle at a far better ratio than the rest of the bulk will. Push while it is true.</li>
+<li><strong>Weeks 13–33: +0.2–0.25 kg per week.</strong> Throttle back once you are past your old peak.</li>
+<li><strong>Protein 1.6–2.2 g/kg — roughly 150–200 g/day.</strong></li>
+<li><strong>Creatine monohydrate 3–5 g/day.</strong> Any time, no loading phase. The best-evidenced supplement that exists and the one obvious gap in your current stack.</li>
+</ul>`},
+
+{s:'Nutrition', t:'Steering without counting calories', c:`
+<p>You need two instruments and one rule.</p>
+<p><strong>Scale</strong> — every morning, after the toilet, before food. Only the 7-day average counts. <strong>Tape measure</strong> — waist at the navel, once a week, relaxed, same time of day.</p>
+<p><strong>The rule:</strong> adjust on 2–3 week trends, never on single readings.</p>
+<p><strong>The one thing worth actually counting is protein</strong>, and only for two weeks. Everything else can be eyeballed on a bulk because the scale tells you whether total intake is right. Protein is the only nutrient where you cannot see the deficit until months of training have been wasted. Count it until you know what 180 g looks like on your plate, then stop.</p>
+<p><strong>A trick for untracked meals.</strong> Do not try to estimate them. Instead make sure your <em>tracked</em> portions — breakfast, post-workout, before bed — reliably deliver 120–140 g of protein. Then whatever the untracked meals add is a bonus rather than a gap.</p>
+<p><strong>Your anchors:</strong> Greek yoghurt, chicken, eggs, milk, quark, whey, lean beef, fish. Carbs: rice, potatoes, oats, bread, pasta, bananas. Fats: olive oil, nuts, whole eggs, fatty fish. You have picked well already.</p>`},
+
+{s:'Nutrition', t:'Carbs — when it actually matters', c:`
+<p>Honestly, on a surplus with a big appetite you will be well-fuelled almost all the time and this barely matters. Where it does:</p>
+<ul>
+<li><strong>Before A and E</strong> — a carb-based meal 2–3 hours prior. These are the two sessions where being under-fuelled visibly costs performance, and E is a <em>measurement</em>, so a flat day corrupts data rather than just a workout.</li>
+<li><strong>Before C</strong> — same. Highest total work of the rotation.</li>
+<li><strong>Before D and F</strong> — does not matter much. Train fasted if you prefer.</li>
+<li><strong>During a deload</strong> — do not cut food. The deload is for recovering, and recovery costs energy.</li>
+</ul>
+<p><strong>If a session feels flat and it is not sleep</strong>, it is almost always carbs from the day before rather than that morning. Glycogen refills over about 24 hours.</p>
+<p><strong>Do not do anything clever.</strong> No carb cycling, no timing protocols, no fasting windows. On a bulk with your appetite, "eat enough and eat protein" captures 95% of the available benefit.</p>`},
+
+/* ---------- other ---------- */
+{s:'Cardio and life', t:'Steps, basketball and where to put them', c:`
+<p><strong>Keep the walking.</strong> It burns energy without meaningfully interfering with lifting, lets you eat more without gaining fat as fast, and aids recovery. Treat step count as a dial — if the waist is creeping, add steps before you cut food.</p>
+<p><strong>Basketball placement:</strong></p>
+<ul>
+<li>On a rest day — <strong>best</strong></li>
+<li>After Session B or F, legs already done — fine</li>
+<li>The day before F — fine, but skip the jumps that session</li>
+<li>The day before or of the AMRAP — <strong>avoid</strong>, it corrupts the measurement</li>
+</ul>
+<p><strong>The one real conflict:</strong> basketball involves a lot of jumping and hard landings. If you have played, drop the jump work from Session F that cycle. You already got the stimulus, and doubling up is how the back gets aggravated.</p>
+<p>If your back is sore after basketball, log it. That tells us something about what actually provokes it, which is more than you currently know.</p>`},
+
+{s:'Cardio and life', t:'Deloads', c:`
+<p><strong>Week 6 of every block.</strong> Keep all six sessions, cut volume 40–50%, drop top-end intensity about 10%, everything at 3+ RIR minimum.</p>
+<p><strong>Never take a full rest week.</strong> A controlled trial found complete cessation actually <em>impaired</em> strength relative to training through, and the cessation group reported <em>more</em> soreness and <em>less</em> motivation — the opposite of the intended effect.</p>
+<p><strong>Pull it forward if</strong> your top single drops more than 5% below your recent average at the same RPE for two sessions, or sleep goes under 7 hours for a week, or two niggles show up in one block.</p>`},
+
+{s:'Cardio and life', t:'When things go wrong', c:`
+<ul>
+<li><strong>Top single 5%+ below average, twice</strong> → pull the deload forward</li>
+<li><strong>Sleep under 7 h for a week</strong> → drop Session D, the cheapest to lose</li>
+<li><strong>Two or more niggles in a block</strong> → rotate the aggravating variation out, do not push through</li>
+<li><strong>Lower back flares</strong> → cut leg press range, drop jumps, keep reverse hypers, keep everything upper. Log what provoked it.</li>
+<li><strong>Shoulder aches on the overhead ladder</strong> → drop a rung immediately</li>
+<li><strong>Missed the AMRAP</strong> → move it to the next session. Never do two in one week to catch up.</li>
+<li><strong>e1RM flat 4 weeks while bodyweight rises</strong> → send the export. Recovery or programming, not food.</li>
+<li><strong>Sick or genuinely wrecked</strong> → skip. Resume at the next session. Nothing is lost.</li>
+<li><strong>Missed a whole week</strong> → come back at the same loads.</li>
+</ul>`},
+
+{s:'Cardio and life', t:'What we are aiming at, honestly', c:`
+<table style="width:100%;font-size:13px">
+<tr><td style="padding:5px 0">Peaked 140 kg by end of March</td><td style="text-align:right;font-weight:700">70–80% likely</td></tr>
+<tr><td style="padding:5px 0">Normal-day 140 kg by end of March</td><td style="text-align:right;font-weight:700">40–50%</td></tr>
+<tr><td style="padding:5px 0">150 kg in any form by March</td><td style="text-align:right;font-weight:700">unlikely</td></tr>
+</table>
+<p>The most probable outcome is a normal-day bench around 130–135 with a peaked max of 140–145, at roughly 95–98 kg bodyweight, with visibly bigger delts, arms and upper chest.</p>
+<p><strong>The thing that actually decides it is not in this app.</strong> Your history is short bursts of progress separated by long plateaus in a deficit — which means you have never once run a structured programme in a sustained surplus. That is not a small missing variable. It is the whole thing.</p>
+<p>Finishing 33 weeks of this matters more than any single decision inside it.</p>`},
+];
+
+
+
+/* ===== units ===== */
+let UNIT='kg';
+const KG2LB=2.2046226218;
+const toU = kg => UNIT==='kg'? kg : kg*KG2LB;
+const fromU = v => UNIT==='kg'? v : v/KG2LB;
+const STEP = () => UNIT==='kg' ? 2.5 : 5;
+const uf = kg => kg==null?'—':(Math.round(toU(kg)*10)/10).toFixed(1);
+const un = () => UNIT;
+
+/* ===== RPE maths ===== */
+const RC=[10,9.5,9,8.5,8,7.5,7,6.5,6];
+const RT={1:[100,97.8,95.5,93.9,92.2,90.7,89.2,87.8,86.3],2:[95.5,93.9,92.2,90.7,89.2,87.8,86.3,85,83.7],
+3:[92.2,90.7,89.2,87.8,86.3,85,83.7,82.4,81.1],4:[89.2,87.8,86.3,85,83.7,82.4,81.1,79.9,78.6],
+5:[86.3,85,83.7,82.4,81.1,79.9,78.6,77.4,76.2],6:[83.7,82.4,81.1,79.9,78.6,77.4,76.2,75.1,73.9],
+8:[78.6,77.4,76.2,75.1,73.9,72.3,70.7,69.4,68],10:[73.9,72.3,70.7,69.4,68,66.7,65.3,64,62.6],
+12:[68,66.7,65.3,64,62.6,61.3,59.9,58.6,57.2]};
+const nearR=r=>[1,2,3,4,5,6,8,10,12].reduce((a,b)=>Math.abs(b-r)<Math.abs(a-r)?b:a);
+function pct(reps,rpe){const row=RT[nearR(reps)];const i=RC.indexOf(rpe);if(i>=0)return row[i];
+  for(let k=0;k<RC.length-1;k++)if(rpe<=RC[k]&&rpe>=RC[k+1]){const f=(rpe-RC[k+1])/(RC[k]-RC[k+1]);return row[k+1]+f*(row[k]-row[k+1]);}
+  return row[4];}
+const e1rm=(l,r,rp)=>(!l||!r||r>12)?null:l/(pct(r,rp)/100);
+function rpeFor(ratio,reps){const row=RT[nearR(reps)],p=ratio*100;
+  for(let k=0;k<RC.length-1;k++)if(p<=row[k]&&p>=row[k+1]){const f=(p-row[k+1])/(row[k]-row[k+1]);return RC[k+1]+f*(RC[k]-RC[k+1]);}
+  return p>row[0]?10:6;}
+const roundKg=(v,inc=2.5)=>Math.round(v/inc)*inc;
+
+/* ===== volume ===== */
+function sessVol(s){const o={};for(const sl of s.slots){const m=EXERCISES[sl.ex].m;for(const k in m)o[k]=(o[k]||0)+sl.sets*m[k];}return o;}
+function weekVol(){const o={},f={};for(const s of SESSIONS){const v=sessVol(s);for(const k in v){o[k]=(o[k]||0)+v[k];}
+  const seen=new Set();for(const sl of s.slots){const m=EXERCISES[sl.ex].m;for(const k in m)if(m[k]>=0.5)seen.add(k);}
+  seen.forEach(k=>f[k]=(f[k]||0)+1);}return{v:o,f};}
+
+/* ===== state ===== */
+/* ---- where-am-I model ----
+   Rotation position: a pure counter over LOGGED sessions, sorted by date.
+   Deterministic, and immune to missed days — that is the whole point of a rotation.
+   Block position: driven by sessions COMPLETED, not by the calendar, because a block
+   is an amount of training, not an amount of time. Calendar is tracked alongside as a
+   pace check, since the March target is a real date.                                   */
+const CALIB = false;  // true during the first rotation, before any max exists
+const PROGRESS = { startISO:'2026-08-17', sessionsDone:19, daysElapsed:32, blockIdx:1, blockTarget:36, blockDone:19, lastSession:'F' };
+const nextSession = () => PLAN.rotation[(PLAN.rotation.indexOf(PROGRESS.lastSession)+1) % PLAN.rotation.length];
+const pace = () => PROGRESS.sessionsDone / (PROGRESS.daysElapsed/7);
+const calWeek = () => Math.floor(PROGRESS.daysElapsed/7)+1;
+const drift = () => (PROGRESS.blockDone/PROGRESS.blockTarget) - (PROGRESS.daysElapsed/7)/6;
+
+let gripOf={},
+    shut=new Set(JSON.parse('[]')),
+    tab='train', cur=null, planSec=null, exOpen=new Set(['0']), log={}, cleared=new Set(),
+    extra={}, sheetCtx=null, restT=null, restLeft=0;
+
+const S = id => SESSIONS.find(s=>s.id===id);
+function slotsOf(id){ return [...S(id).slots, ...(extra[id]||[])]; }
+function wmax(exId){ return PLAN.workingMaxes[exId] || null; }
+function prescribed(sl){
+  const w=wmax(sl.ex); if(!w||sl.rpe>=10||EXERCISES[sl.ex].m&&Object.keys(EXERCISES[sl.ex].m).length===0&&sl.rpe<7) {}
+  if(!w) return null;
+  if(sl.amrap) return roundKg(w*0.83);
+  // Back-offs are a percentage of TODAY'S top single, not of the working max —
+  // that is how the protocol they come from was actually run.
+  if(sl.pctTop){ const top=roundKg(w*pct(1,8)/100); return roundKg(top*sl.pctTop); }
+  return roundKg(w*pct(sl.reps,sl.rpe)/100);
+}
+const key=(si,i)=>cur+'-'+si+'-'+i;
+
+/* ===== charts ===== */
+function line(pts,color,unit){
+  const W=680,H=170,L=42,R=14,T=12,B=24;
+  const ys=pts.map(p=>p.v);let y0=Math.min(...ys),y1=Math.max(...ys);const pad=(y1-y0)*.2||1;y0-=pad;y1+=pad;
+  const X=i=>L+i/(pts.length-1)*(W-L-R),Y=v=>T+(1-(v-y0)/(y1-y0))*(H-T-B);
+  let g='';for(let i=0;i<=3;i++){const v=y0+(y1-y0)*i/3,y=Y(v);
+    g+=`<line x1="${L}" y1="${y.toFixed(1)}" x2="${W-R}" y2="${y.toFixed(1)}" stroke="var(--grid)"/><text x="${L-6}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="11" fill="var(--muted)">${Math.round(v*10)/10}</text>`;}
+  const d=pts.map((p,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ');
+  const dots=pts.map((p,i)=>`<circle cx="${X(i).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="3.6" fill="${color}" stroke="var(--surface)" stroke-width="2"/>`).join('');
+  const last=pts[pts.length-1];
+  return `<svg class="ch" viewBox="0 0 ${W} ${H}">${g}<line x1="${L}" y1="${H-B}" x2="${W-R}" y2="${H-B}" stroke="var(--axis)"/>
+   <path d="${d}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round"/>${dots}
+   <text x="${W-R}" y="${(Y(last.v)-10).toFixed(1)}" text-anchor="end" font-size="12.5" font-weight="700" fill="var(--ink)">${(Math.round(last.v*10)/10).toFixed(1)}${unit}</text>
+   <text x="${L}" y="${H-6}" font-size="11" fill="var(--muted)">${pts[0].d}</text>
+   <text x="${W-R}" y="${H-6}" text-anchor="end" font-size="11" fill="var(--muted)">${last.d}</text></svg>`;
+}
+function volBars(vols,freq,scaleMax){
+  const grps=[...new Set(Object.values(MUSCLES).map(m=>m.grp))];
+  return grps.map(g=>{
+    const keys=Object.keys(MUSCLES).filter(k=>MUSCLES[k].grp===g);
+    // Roll up only the head-splits that the research literature counts as ONE muscle.
+    const rolls={};
+    keys.forEach(k=>{const r=MUSCLES[k].roll; if(r) rolls[r]=(rolls[r]||0)+(vols[k]||0);});
+    const rollTxt=Object.entries(rolls).map(([r,v])=>
+      `<b>${r} ${v.toFixed(1)}</b>${v>=20?' — past the point where returns flatten':v>=14?' — in the productive range':''}`).join(' · ');
+    return `<h3>${g}</h3><div class="card">${
+    Object.keys(MUSCLES).filter(k=>MUSCLES[k].grp===g).map(k=>{
+      const M=MUSCLES[k], v=vols[k]||0, max=scaleMax;
+      const st = v<M.lo?'var(--warn)': v>M.hi?'var(--s2)':'var(--s3)';
+      const w=Math.min(100,v/max*100), bl=M.lo/max*100, bw=(M.hi-M.lo)/max*100;
+      return `<div class="vol"><div class="r1"><b>${M.l}</b>
+        <em>${v.toFixed(1)} sets${freq?` <span class="f">· ${freq[k]||0}×/wk</span>`:''}</em></div>
+        <div class="track"><div class="band" style="left:${bl}%;width:${bw}%"></div><div class="fill" style="width:${w}%;background:${st}"></div></div></div>`;
+    }).join('')}${rollTxt?`<p class="hint" style="margin-top:11px">Counted the way the research does — whole muscle, not per head — that is ${rollTxt}. The familiar <b>~20 sets/week</b> figure uses those units, not the split ones above.</p>`:''}</div>`;}).join('');
+}
+
+/* ===== TRAIN ===== */
+function vTrain(){
+  const s=S(cur), sl=slotsOf(cur);
+  let tot=0,dn=0; sl.forEach((x,si)=>{tot+=x.sets;for(let i=0;i<x.sets;i++)if(log[key(si,i)])dn++;});
+  return `
+  <div style="display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px">${SESSIONS.map(x=>
+    `<button onclick="pickSession('${x.id}')" style="flex:0 0 auto;font:inherit;font-size:12.5px;font-weight:650;padding:8px 13px;border-radius:99px;cursor:pointer;border:1px solid ${x.id===cur?'var(--s1)':'var(--line)'};background:${x.id===cur?'var(--s1)':'var(--surface)'};color:${x.id===cur?'#fff':'var(--ink2)'}">${x.id}</button>`).join('')}</div>
+
+  ${CALIB?`<div class="card" style="border-color:var(--s2);border-width:2px">
+    <div style="font-size:11px;color:var(--s2);text-transform:uppercase;letter-spacing:.07em;font-weight:800;margin-bottom:5px">Calibration week</div>
+    <p style="margin-bottom:8px"><b style="color:var(--ink)">There is no separate test day.</b> This session runs normally — you just find your own weights instead of being given them.</p>
+    <p style="margin-bottom:0;font-size:12.5px"><b style="color:var(--ink)">On lifts marked FIND:</b> ramp up until a set at the target reps feels like the target RPE, then log it. <b style="color:var(--ink)">On everything else:</b> pick a weight, do the reps, log what happened. One full rotation and every exercise has a number.</p></div>`:''}
+  <div class="shead"><div class="lbl">${cur===nextSession()?'Next in rotation · session '+(PROGRESS.sessionsDone+1):'Picked manually · next up is '+nextSession()}</div>
+    <div class="nm">${s.id} · ${s.name}</div><p class="why">${s.purpose}</p>
+    <div class="bar"><i style="width:${tot?dn/tot*100:0}%"></i></div>
+    <div class="meta"><span>${dn} / ${tot} sets</span><span>~${s.mins} min</span><span>Block ${PROGRESS.blockIdx} · ${PROGRESS.blockDone}/${PROGRESS.blockTarget}</span></div></div>
+
+  <div class="card flush">${sl.map((x,si)=>exBlock(x,si)).join('')}</div>
+
+  <div class="mini" style="margin:0 2px 12px"><button onclick="openAdd()">+ Add exercise</button></div>
+
+  <div class="card">
+    <label>Session note</label><textarea rows="2" placeholder="Anything worth remembering…"></textarea>
+    <div class="g2 mt"><div><label>Bodyweight (${un()})</label><input type="number" value="${uf(90.4)}" step="0.1"></div>
+    <div><label>Session RPE</label><input type="number" value="7" step="0.5"></div></div>
+    <p class="hint">Session RPE = how hard the <b>whole session</b> felt, 0–10, rated about 20 minutes after you finish. Multiplied by duration it gives a session load — the earliest warning sign that weekly fatigue is climbing, usually a week before you feel it. <button onclick="go('plan');openSec('tips')" style="background:none;border:0;color:var(--s1);font:inherit;font-size:11.5px;font-weight:650;padding:0;cursor:pointer">More →</button></p>
+    <button class="big mt" onclick="finish(${tot},${dn})">Finish session</button>
+  </div>`;
+}
+
+function exBlock(x,si){
+  const E=EXERCISES[x.ex], open=exOpen.has(String(si));
+  let dn=0; for(let i=0;i<x.sets;i++) if(log[key(si,i)]) dn++;
+  const all=dn===x.sets, pres=prescribed(x), isCleared=cleared.has(cur+'-'+si);
+  const nm = E.n + (x.label?` — ${x.label}`:'');
+  const rows = Array.from({length:x.sets},(_,i)=>{
+    const L=log[key(si,i)];
+    const toFail = x.failLast && i>=x.sets-x.failLast;
+    const rpe = L? L.rpe : (toFail?10:x.rpe);
+    const load = L? L.load : (isCleared?null:pres);
+    const reps = L? L.reps : (isCleared?null:x.reps);
+    const cls = L?'':'pres';
+    const e = (load&&reps)? e1rm(load,reps,Math.min(10,rpe)) : null;
+    return `<div class="setrow">
+      <div class="sn ${toFail?'f':''}">${i+1}</div>
+      <div class="fld ${cls} ${load==null?'empty':''}" onclick="openStep(${si},${i},'load')"><div class="v">${load==null?'—':uf(load)}</div><div class="k">${un()}</div></div>
+      <div class="fld ${cls} ${reps==null?'empty':''}" onclick="openStep(${si},${i},'reps')"><div class="v">${reps==null?'—':(x.amrap&&!L?'AM':reps)}</div><div class="k">reps</div></div>
+      <div class="fld ${cls}" onclick="openStep(${si},${i},'rpe')"><div class="v">${rpe}</div><div class="k">${toFail?'fail':'rpe'}</div></div>
+      <button class="setok ${L?'done':''}" onclick="tick(event,${si},${i})">✓</button>
+    </div>${e?`<div class="e1">e1RM <b>${uf(e)} ${un()}</b></div>`:''}`;
+  }).join('');
+  return `<div class="ex ${open?'open':''}">
+    <div class="exhead" onclick="toggleEx(${si})">
+      <div class="tick ${all?'done':dn?'part':''}">${all?'✓':dn||''}</div>
+      <div class="exnm"><b>${nm}${x.idx?'<span class="badge idx">INDEX</span>':''}${x.amrap?'<span class="badge amr">AMRAP</span>':''}</b>
+        <span class="sc">${x.sets} × ${x.amrap?'max':x.reps} @ RPE ${x.rpe}${pres?` · ${uf(pres)} ${un()}`:''}</span></div>
+      <div class="car">›</div></div>
+    <div class="exbody">${rows}
+      <p class="hint">Last time · <b>${lastTime(x)}</b></p>
+      ${pres?`<p class="hint">Prescribed ${uf(pres)} ${un()} → effective RPE <b>${(Math.round(rpeFor(pres/wmax(x.ex),x.reps)*100)/100).toFixed(2)}</b>${x.pctTop?` · ${Math.round(x.pctTop*100)}% of today's top single`:''}</p>`:''}
+      ${!pres?`<p class="hint"><b>${x.idx?'Find your baseline.':'First time doing this.'}</b> Pick a weight you think lands at the target RPE, log what actually happened, and the app sets the starting max from it. From next session on it prescribes for you.</p>`:''}
+      <div class="cue">${E.how[0]}</div>
+      <div class="mini">
+        <button onclick="addSet(${si})">+ Set</button>
+        <button onclick="openSwap(${si})">Swap</button>
+        <button class="warn" onclick="clearPres(${si})">Clear prescribed</button>
+        <button onclick="showEx('${x.ex}')">About</button>
+        ${E.grips?`<button onclick="openGrip(${si})">Grip: ${(gripOf[cur+'-'+si]||E.grips[0]).split(' (')[0]}</button>`:''}
+      </div></div></div>`;
+}
+const lastTime = x => ({benchComp:'103 kg × 1 @ RPE 8',pullup:'+25 kg × 5,5,4,4',lateral:'12 kg × 16,15,13,11'})[x.ex] || 'no previous data';
+
+window.pickSession=id=>{cur=id;log={};cleared=new Set();exOpen=new Set(['0']);render();};
+window.toggleEx=si=>{const k=String(si);exOpen.has(k)?exOpen.delete(k):exOpen.add(k);render();};
+window.tick=(ev,si,i)=>{ev.stopPropagation();const k=key(si,i);
+  if(log[k])delete log[k];
+  else{const x=slotsOf(cur)[si];const toFail=x.failLast&&i>=x.sets-x.failLast;
+    log[k]={load:prescribed(x),reps:x.reps,rpe:toFail?10:x.rpe};startRest(180);}
+  exOpen.add(String(si)); render();};
+window.addSet=si=>{const sl=slotsOf(cur);sl[si].sets++;
+  if(si>=S(cur).slots.length) extra[cur][si-S(cur).slots.length].sets=sl[si].sets;
+  exOpen.add(String(si));render();};
+window.clearPres=si=>{const k=cur+'-'+si;cleared.has(k)?cleared.delete(k):cleared.add(k);exOpen.add(String(si));render();};
+
+window.finish=(tot,dn)=>{
+  if(dn<tot){ sheetHTML(`<div class="ttl">Empty values</div>
+    <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">
+    <b>${tot-dn} of ${tot} sets</b> have no logged values.</p>
+    <p style="text-align:center;font-size:13px">Save the session anyway? Unlogged sets are stored as empty, not as zero — they will not drag your averages down.</p>
+    <button class="big mt" onclick="closeSheet();alert('Demo — saved with ${tot-dn} empty sets.')">Save anyway</button>
+    <button class="big ghost mt" onclick="closeSheet()">Go back</button>`); }
+  else alert('Demo — session saved.');
+};
+
+/* ===== sheets ===== */
+function sheetHTML(h){document.getElementById('pan').innerHTML=h;document.getElementById('sheet').classList.add('on');}
+window.closeSheet=()=>{document.getElementById('sheet').classList.remove('on');sheetCtx=null;render();};
+
+window.openStep=(si,i,field)=>{
+  const x=slotsOf(cur)[si], L=log[key(si,i)], toFail=x.failLast&&i>=x.sets-x.failLast;
+  sheetCtx={si,i,field,ex:x,
+    load:L?L.load:(prescribed(x)||0), reps:L?L.reps:x.reps, rpe:L?L.rpe:(toFail?10:x.rpe)};
+  drawStep();
+};
+function drawStep(){
+  const c=sheetCtx, E=EXERCISES[c.ex.ex];
+  const val = c.field==='load'? (Math.round(toU(c.load)*10)/10) : c.field==='reps'? c.reps : c.rpe;
+  const w=wmax(c.ex.ex);
+  const eff = w? rpeFor(c.load/w,c.reps) : null;
+  const e = e1rm(c.load,c.reps,Math.min(10,c.rpe));
+  sheetHTML(`<div class="ttl">${E.n} · set ${c.i+1} · ${c.field==='load'?'Load ('+un()+')':c.field==='reps'?'Reps':'RPE'}</div>
+    <div class="stp"><button onclick="bump(-1)">−</button>
+      <input id="stepIn" type="number" inputmode="decimal" value="${val}" step="${c.field==='load'?STEP():c.field==='rpe'?0.5:1}" oninput="typed(this.value)">
+      <button onclick="bump(1)">+</button></div>
+    <div class="eff">${uf(c.load)} ${un()} × ${c.reps} @ RPE ${c.rpe}
+      ${e?`<br>e1RM <b>${uf(e)} ${un()}</b>`:''}
+      ${eff?` · effective RPE <b>${(Math.round(eff*10)/10).toFixed(1)}</b>`:''}
+      <br><span style="color:var(--muted);font-size:11.5px">Type directly, or step by ${c.field==='load'?STEP()+' '+un():'1'}. Overrides are recorded as deviations, not errors.</span></div>
+    <button class="big" onclick="saveStep()">Log this set</button>
+    <button class="big ghost mt" onclick="closeSheet()">Cancel</button>`);
+}
+window.typed=v=>{const c=sheetCtx;const n=parseFloat(v);if(isNaN(n))return;
+  if(c.field==='load')c.load=fromU(n); else if(c.field==='reps')c.reps=Math.max(1,Math.round(n)); else c.rpe=Math.min(10,Math.max(5,n));
+  const el=document.getElementById('stepIn'), pos=el.selectionStart; drawStep();
+  const n2=document.getElementById('stepIn'); n2.focus(); try{n2.setSelectionRange(pos,pos)}catch(e){}};
+window.bump=d=>{const c=sheetCtx;
+  if(c.field==='load')c.load=Math.max(0,c.load+d*fromU(STEP()));
+  else if(c.field==='reps')c.reps=Math.max(1,c.reps+d);
+  else c.rpe=Math.min(10,Math.max(5,c.rpe+d*0.5));
+  drawStep();};
+window.saveStep=()=>{const c=sheetCtx;log[key(c.si,c.i)]={load:c.load,reps:c.reps,rpe:c.rpe};
+  exOpen.add(String(c.si));startRest(180);closeSheet();};
+
+window.openGrip=si=>{const x=slotsOf(cur)[si],E=EXERCISES[x.ex];
+  sheetHTML(`<div class="ttl">Grip used — recorded on every set</div>
+  <p style="font-size:12.5px;margin:12px 0 4px;color:var(--ink2)">Your competition grip does not change. This field exists so the grip test is answerable from the data, and so a session where you deliberately used something else is not silently mixed in.</p>
+  <div class="picklist">${E.grips.map(g=>`<button onclick="setGrip(${si},'${g}')">${g}</button>`).join('')}</div>
+  <button class="big ghost mt" onclick="closeSheet()">Cancel</button>`);};
+window.setGrip=(si,g)=>{gripOf[cur+'-'+si]=g;closeSheet();};
+
+window.openAdd=()=>{
+  sheetHTML(`<div class="ttl">Add an exercise</div><div class="picklist mt">${
+    Object.keys(EXERCISES).map(k=>`<button onclick="doAdd('${k}')">${EXERCISES[k].n}<span>${Object.keys(EXERCISES[k].m).map(m=>MUSCLES[m].l.split(' —')[0]).join(' · ')||'no counted stimulus'}</span></button>`).join('')}
+  </div><button class="big ghost mt" onclick="closeSheet()">Cancel</button>`);
+};
+window.doAdd=k=>{ (extra[cur] ||= []).push({ex:k,sets:3,reps:10,rpe:8,added:true});
+  exOpen.add(String(slotsOf(cur).length-1)); closeSheet(); };
+
+window.openSwap=si=>{
+  const x=slotsOf(cur)[si], E=EXERCISES[x.ex];
+  sheetHTML(`<div class="ttl">Swap ${E.n}</div>
+    <p style="font-size:13px;margin:12px 0 4px;color:var(--ink2)"><b style="color:var(--ink)">Recommended substitutes</b> — these hit the same muscles in the same way.</p>
+    <div class="picklist">${E.subs.map(s=>`<button onclick="closeSheet()">${s}</button>`).join('')}</div>
+    <p style="font-size:12px;margin:12px 0 4px;color:var(--muted)">Or pick anything from the full list.</p>
+    <div class="picklist" style="max-height:34vh;overflow:auto">${Object.keys(EXERCISES).map(k=>`<button onclick="doSwap(${si},'${k}')">${EXERCISES[k].n}</button>`).join('')}</div>
+    <button class="big ghost mt" onclick="closeSheet()">Cancel</button>`);
+};
+window.doSwap=(si,k)=>{const sl=slotsOf(cur)[si];sl.ex=k;closeSheet();};
+
+window.showEx=k=>{ planSec='exercises'; go('plan'); setTimeout(()=>{const el=document.getElementById('x-'+k); if(el){el.open=true;el.scrollIntoView({block:'center'});}},60); };
+
+/* ===== rest ===== */
+function startRest(s){restLeft=s;document.getElementById('rest').classList.add('on');tickRest();clearInterval(restT);restT=setInterval(tickRest,1000);}
+function tickRest(){document.getElementById('rt').textContent=Math.floor(restLeft/60)+':'+String(restLeft%60).padStart(2,'0');if(restLeft--<=0)stopRest();}
+window.stopRest=()=>{clearInterval(restT);document.getElementById('rest').classList.remove('on');};
+
+/* ===== collapsible section helper ===== */
+// Tapping the heading opens/closes the card under it. State survives re-renders.
+function sect(id,title,count,body){
+  const isShut=shut.has(id);
+  return `<h3 class="tap ${isShut?'shut':''}" onclick="toggleSect('${id}')">${title}${count?`<span class="n">${count}</span>`:''}</h3>
+    ${isShut?'':body}`;
+}
+window.toggleSect=id=>{shut.has(id)?shut.delete(id):shut.add(id);render();};
+
+/* ===== BODY ===== */
+function vBody(){return `
+  ${sect('today','Today · about 8 seconds','',`
+  <div class="card"><div class="g3">
+    <div><label>Weight (${un()})</label><input type="number" value="${uf(90.4)}" step="0.1"></div>
+    <div><label>Body fat %</label><input type="number" value="13.1" step="0.1"></div>
+    <div><label>Sleep h</label><input type="number" value="7.5" step="0.5"></div></div>
+    <p class="hint">7-day average <b>${uf(90.1)} ${un()}</b> · +${uf(0.42)} ${un()}/week · body fat is a low-trust number, the trend is what counts</p>
+    <button class="big mt" onclick="saveMaybe(0)">Save today</button></div>`)}
+
+  ${sect('week','This week · about a minute','',`
+  <div class="card"><div class="g3">
+    <div><label>Waist</label><input type="number" value="82.3" step="0.1"></div>
+    <div><label>Chest</label><input type="number" value="108.5" step="0.1"></div>
+    <div><label>Shoulders</label><input type="number" value="128.0" step="0.1"></div></div>
+    <div class="g3 mt"><div><label>Arm L</label><input type="number" value="38.4" step="0.1"></div>
+    <div><label>Arm R</label><input type="number" value="38.7" step="0.1"></div>
+    <div><label>Neck</label><input type="number" step="0.1" placeholder="—"></div></div>
+    <div class="g2 mt"><div><label>Quad L</label><input type="number" step="0.1" placeholder="—"></div>
+    <div><label>Quad R</label><input type="number" step="0.1" placeholder="—"></div></div>
+    <button class="big mt" onclick="saveMaybe(3)">Save measurements</button>
+    <p class="hint">Leave anything blank. Empty is stored as empty, never as zero.</p></div>`)}
+
+  ${sect('photos','Physique check-ins','6 photos',`
+  <div class="card"><div class="gal">
+    <div class="ph">10 Aug · 90.4</div><div class="ph">03 Aug · 89.9</div><div class="ph">27 Jul · 89.2</div>
+    <div class="ph">20 Jul · 88.7</div><div class="ph">13 Jul · 88.0</div><div class="ph">06 Jul · 87.6</div></div>
+    <div class="mini"><button>+ Add photos</button><button>Compare two dates</button></div>
+    <p class="hint">Stored in the app, compressed to ~200 KB each. These go in the export.</p></div>`)}
+
+  ${sect('forms','Form checks','2 videos',`
+  <div class="card">
+    <div class="big-row"><div class="ic">▶</div><div class="m"><b>Bench AMRAP · 95 ${un()} × 6</b><span>10 Aug · IMG_4417.mov</span></div></div>
+    <div class="big-row"><div class="ic">▶</div><div class="m"><b>Heavy single · 118 ${un()}</b><span>08 Aug · IMG_4402.mov</span></div></div>
+    <div class="mini"><button>+ Add from gallery</button></div>
+    <p class="hint">Reference only — tapping opens your gallery. Videos are 50–200 MB and would wreck the app if stored.</p></div>`)}
+
+  ${sect('niggles','Niggles','',`
+  <div class="card"><div class="g2">
+    <div><label>Site</label><select><option>None</option><option>Left elbow</option><option>Right elbow</option><option>Left shoulder</option><option>Right shoulder</option><option>Lower back</option><option>Wrist</option></select></div>
+    <div><label>Severity</label><select><option>1 · noticed it</option><option>2 · annoying</option><option>3 · changed what I did</option></select></div></div>
+    <p class="hint">Two or more in a block is the trigger to rotate the aggravating variation out.</p></div>`)}`;}
+
+window.saveMaybe=n=>{ if(n>0) sheetHTML(`<div class="ttl">Empty values</div>
+  <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)"><b>${n} fields</b> are empty.</p>
+  <p style="text-align:center;font-size:13px">Save anyway? Blank stays blank — it is never recorded as zero, and gaps do not break the trend lines.</p>
+  <button class="big mt" onclick="closeSheet();alert('Demo — saved with ${n} blanks.')">Save anyway</button>
+  <button class="big ghost mt" onclick="closeSheet()">Go back</button>`);
+  else alert('Demo — saved.'); };
+
+/* ===== PROGRESS ===== */
+const E1=[{d:'06-22',v:108.2},{d:'06-29',v:109.6},{d:'07-06',v:110.1},{d:'07-13',v:112.4},{d:'07-20',v:111.8},{d:'07-27',v:114.0},{d:'08-03',v:115.6},{d:'08-10',v:118.0}];
+const BWD=[{d:'06-22',v:86.3},{d:'06-29',v:86.9},{d:'07-06',v:87.6},{d:'07-13',v:88.0},{d:'07-20',v:88.7},{d:'07-27',v:89.2},{d:'08-03',v:89.9},{d:'08-10',v:90.4}];
+const WA=[{d:'06-22',v:81.4},{d:'07-06',v:81.7},{d:'07-20',v:82.0},{d:'08-03',v:82.2},{d:'08-10',v:82.3}];
+function vProg(){
+  const cv=a=>a.map(p=>({d:p.d,v:toU(p.v)}));
+  return `
+  <div class="tiles">
+    <div class="tile"><div class="k">Bench e1RM</div><div class="v">${uf(118)}<small> ${un()}</small></div><div class="d up">All-time best</div></div>
+    <div class="tile"><div class="k">4-week change</div><div class="v">+${uf(6.2)}<small> ${un()}</small></div><div class="d">from index sets</div></div>
+    <div class="tile"><div class="k">Bodyweight 7d</div><div class="v">${uf(90.1)}<small> ${un()}</small></div><div class="d up">+${uf(0.42)} ${un()}/wk</div></div>
+    <div class="tile"><div class="k">Strength / kg</div><div class="v">1.31<small> ×BW</small></div><div class="d">rising = real strength</div></div>
+  </div>
+  <h3>What to do about it</h3>
+  <div class="flag f-ok"><i>✓</i><span>Bodyweight rising <b>${uf(0.42)} ${un()}/week</b> — inside the productive range for weeks 1–12.</span></div>
+  <div class="flag f-ok"><i>✓</i><span>Waist rising slowly relative to bodyweight. The gain is running lean.</span></div>
+  <div class="flag f-warn"><i>!</i><span>Sleep averaging <b>6.8 h</b> this week. Below 7 h the frequency stops being survivable — drop Session D first.</span></div>
+  <h3>Estimated 1RM — best per week</h3>
+  <div class="card"><p>Index sets only. One point per week, because week-to-week is the resolution the signal actually has.</p>${line(cv(E1),'var(--s1)',' '+un())}</div>
+  <h3>Bodyweight — 7-day average</h3><div class="card">${line(cv(BWD),'var(--s2)',' '+un())}</div>
+  <h3>Waist at navel</h3><div class="card">${line(WA,'var(--s3)',' cm')}</div>
+  <h3>Working maxes</h3>
+  <div class="card"><table><thead><tr><th>Lift</th><th>Working</th><th>Observed</th></tr></thead><tbody>
+    <tr><td>Comp bench</td><td>${uf(115)}</td><td>${uf(118)}</td></tr>
+    <tr><td>Incline DB</td><td>${uf(44)}</td><td>${uf(44.8)}</td></tr>
+    <tr><td>Weighted pull-up</td><td>${uf(32)}</td><td>${uf(33.1)}</td></tr>
+    <tr><td>Leg press</td><td>${uf(250)}</td><td>${uf(258)}</td></tr></tbody></table>
+    <p class="hint">Observed exceeds working by <b>2.6%</b> — below the 5% two-week threshold, so no mid-block bump. Working maxes refresh at the end of Block 1.</p>
+    <div class="mini"><button>Review refresh</button></div></div>
+  <h3>Export</h3>
+  <div class="card"><p>Pick what to include, get one zip.</p>
+    <div class="g2"><div><label>From</label><input type="date" value="2026-07-14"></div><div><label>To</label><input type="date" value="2026-08-15"></div></div>
+    <div style="margin-top:11px;font-size:13.5px;line-height:2.1">
+    ${['Sets &amp; sessions','Daily — weight, body fat, sleep','Measurements','Physique photos','Form-check references'].map((t,i)=>
+      `<label style="text-transform:none;letter-spacing:0;font-size:13.5px;color:var(--ink);font-weight:400"><input type="checkbox" ${i<4?'checked':''} style="width:auto;margin-right:8px">${t}</label>`).join('')}</div>
+    <button class="big mt">Build export zip</button>
+    <p class="hint">Also how data moves between your phone and MacBook.</p></div>`;}
+
+/* ===== PLAN ===== */
+function vPlan(){
+  if(planSec==='exercises') return vExercises();
+  if(planSec==='workouts')  return vWorkouts();
+  if(planSec==='tips')      return vTips();
+  const {v,f}=weekVol();
+  return `
+  <div class="shead"><div class="lbl">Active plan</div><div class="nm">${PLAN.name}</div>
+    <p class="why">${PLAN.sub}</p>
+    <div class="bar"><i style="width:15%"></i></div>
+    <div class="meta"><span>Block 1 · Week 5</span><span>Rotation ${PLAN.rotation.join(' → ')}</span></div></div>
+  <div class="mini" style="margin:0 2px 14px"><button>Switch plan</button><button>Import a plan</button></div>
+
+  <h3>Where you are</h3>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+      <b style="font-size:15px">${PLAN.blocks[PROGRESS.blockIdx].n}</b>
+      <span style="font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums">${PROGRESS.blockDone} / ${PROGRESS.blockTarget} sessions</span></div>
+    <div class="bar"><i style="width:${PROGRESS.blockDone/PROGRESS.blockTarget*100}%"></i></div>
+    <table style="margin-top:12px"><tbody>
+      <tr><td>Sessions logged, all time</td><td>${PROGRESS.sessionsDone}</td></tr>
+      <tr><td>Next in rotation</td><td><b>${nextSession()}</b> — ${S(nextSession()).name}</td></tr>
+      <tr><td>Calendar week</td><td>${calWeek()} of 33</td></tr>
+      <tr><td>Actual pace</td><td>${pace().toFixed(1)} sessions / week</td></tr>
+    </tbody></table>
+    ${drift()<-0.12
+      ? `<div class="flag f-warn" style="margin-top:11px"><i>!</i><span><b>Running behind the calendar.</b> Blocks advance on <b>sessions completed</b>, not on dates — so nothing is lost and nothing gets skipped. But at ${pace().toFixed(1)} sessions/week the plan finishes around <b>week ${Math.round(33*6/pace())}</b> rather than 33, which puts the March target at risk. Train more often, or accept a later date.</span></div>`
+      : `<div class="flag f-ok" style="margin-top:11px"><i>✓</i><span><b>On pace.</b> ${pace().toFixed(1)} sessions per week. Blocks advance on sessions completed, so the calendar and your training are still in step.</span></div>`}
+    <p class="hint">Nothing advances silently. When you reach ${PROGRESS.blockTarget} sessions the app opens a block review: your best lifts, the proposed working-max updates, and what changes next block. You confirm it.</p>
+  </div>
+
+  <div class="card flush">
+    <div class="big-row" onclick="openSec('exercises')"><div class="ic">1</div><div class="m"><b>Exercises</b><span>${Object.keys(EXERCISES).length} exercises · how to perform, muscles worked, why it is here, substitutes</span></div><div class="car">›</div></div>
+    <div class="big-row" onclick="openSec('workouts')"><div class="ic">2</div><div class="m"><b>Workouts</b><span>All six sessions · purpose, exercises, and the muscle stimulus each one delivers</span></div><div class="car">›</div></div>
+    <div class="big-row" onclick="openSec('tips')"><div class="ic">3</div><div class="m"><b>General tips</b><span>How to execute, what matters most, and the mistakes that cost the most</span></div><div class="car">›</div></div>
+  </div>
+
+  <h3>Weekly stimulus · all six sessions</h3>
+  <div class="lg"><span><i style="background:var(--s3)"></i>in range</span><span><i style="background:var(--warn)"></i>below target</span><span><i style="background:var(--s2)"></i>above target</span><span><i style="background:var(--axis);opacity:.5"></i>target band</span></div>
+  ${volBars(v,f,24)}
+  <p class="hint" style="margin:0 2px 14px">Fractional sets — a set where the muscle is the main mover counts 1.0, a meaningful supporting role counts 0.5, and anything under 0.3 is not counted at all. Speed bench counts <b>zero</b>: at RPE 5–6 it is motor-pattern practice, not a growth stimulus.</p>
+
+  <h3>Blocks through March — what changes and when</h3>
+  <div class="card">${PLAN.blocks.map((b,i)=>`<details ${i===1?'open':''}><summary>${b.n} <span style="font-weight:500;color:var(--muted);font-size:12px">wk ${b.w}</span></summary><div class="c">
+    <p style="margin:0 0 10px">${b.theme}</p>
+    <table style="margin-bottom:10px"><tbody>
+      <tr><td>Bench top set</td><td>${b.top}</td></tr>
+      <tr><td>Bench volume</td><td>${b.vol}</td></tr>
+      <tr><td>Variation</td><td>${b.v}</td></tr>
+      <tr><td>Incline</td><td>${b.incline}</td></tr>
+      <tr><td>Effort cap</td><td>${b.cap}</td></tr>
+    </tbody></table>
+    <p style="margin:0 0 4px"><strong>What is different this block</strong></p>
+    <ul>${b.changes.map(c=>`<li>${c}</li>`).join('')}</ul>
+  </div></details>`).join('')}</div>`;
+}
+window.openSec=s=>{planSec=s;render();window.scrollTo(0,0);};
+window.backPlan=()=>{planSec=null;render();window.scrollTo(0,0);};
+
+function vExercises(){
+  const used=k=>SESSIONS.filter(s=>s.slots.some(x=>x.ex===k)).map(s=>s.id);
+  return `<button class="back" onclick="backPlan()">‹ ${PLAN.name}</button>
+  <h3 style="margin-top:0">Exercises</h3>
+  <p style="margin:0 2px 12px">How to perform it, what it trains, why it is in the plan, and what to use instead if the equipment is taken.</p>
+  <div class="card">${Object.entries(EXERCISES).map(([k,E])=>{
+    const prim=Object.entries(E.m).filter(([,w])=>w>=0.9).map(([m])=>MUSCLES[m].l);
+    const sec=Object.entries(E.m).filter(([,w])=>w<0.9&&w>=0.3).map(([m,w])=>`${MUSCLES[m].l} (${w})`);
+    return `<details id="x-${k}"><summary>${E.n}</summary><div class="c">
+      <div>${prim.map(p=>`<span class="tag p">${p}</span>`).join('')}${sec.map(p=>`<span class="tag">${p}</span>`).join('')}
+      ${!prim.length&&!sec.length?'<span class="tag">no counted hypertrophy stimulus by design</span>':''}</div>
+      <p style="margin:10px 0 4px"><strong>Why it is in the plan.</strong> ${E.why}</p>
+      <p style="margin:0 0 4px"><strong>Used in:</strong> ${used(k).map(s=>`Session ${s}`).join(', ')||'—'}</p>
+      <p style="margin:10px 0 4px"><strong>How to perform it</strong></p><ul>${E.how.map(h=>`<li>${h}</li>`).join('')}</ul>
+      <p style="margin:8px 0 4px"><strong>If you cannot do it:</strong> ${E.subs.join(' · ')}</p>
+      ${E.watch?`<p style="margin:10px 0 0;padding:9px 11px;background:var(--sunk);border-radius:8px;border-left:3px solid var(--s2)"><strong>Watch out.</strong> ${E.watch}</p>`:''}
+      ${E.tracksMax?`<p style="margin:10px 0 0;font-size:12px;color:var(--muted)"><strong style="color:var(--ink2)">Stored max:</strong> yes — ${E.maxConf==='high'?'<span style="color:var(--goodtx);font-weight:650">trustworthy</span>, low-rep compound':'<span style="color:var(--s2);font-weight:650">indicative only</span>. Used to prescribe loads, never to claim progress'}</p>`:''}
+      <div style="display:flex;gap:10px;align-items:center;margin-top:12px;padding:10px;background:var(--sunk);border-radius:10px">
+        <div style="width:54px;height:54px;border-radius:9px;background:linear-gradient(150deg,var(--grid),var(--axis));display:grid;place-items:center;font-size:19px;color:var(--ink2);flex:0 0 auto">＋</div>
+        <div style="flex:1;font-size:12px;color:var(--ink2);line-height:1.5"><b style="color:var(--ink)">Your reference form photo</b><br>Add one photo of yourself in the key position. It becomes the picture for this exercise everywhere in the app.</div>
+      </div>
+    </div></details>`;}).join('')}</div>`;
+}
+
+function vWorkouts(){
+  return `<button class="back" onclick="backPlan()">‹ ${PLAN.name}</button>
+  <h3 style="margin-top:0">Workouts</h3>
+  <p style="margin:0 2px 12px">Run in order: <b>${PLAN.rotation.join(' → ')} → repeat</b>. Train when you can and always just do the next one — missing a day is not a decision, the rotation simply slides.</p>
+  ${SESSIONS.map(s=>{
+    const v=sessVol(s), tot=s.slots.reduce((a,x)=>a+x.sets,0);
+    const top=Object.entries(v).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    return `<div class="card"><div style="display:flex;align-items:baseline;gap:9px;margin-bottom:6px">
+      <span style="font-size:19px;font-weight:800;color:var(--s1)">${s.id}</span>
+      <b style="font-size:16px;font-weight:700;flex:1">${s.name}</b>
+      <span style="font-size:11.5px;color:var(--muted);white-space:nowrap">${tot} sets · ~${s.mins} min</span></div>
+      <p style="font-size:13px">${s.purpose}</p>
+      <p style="font-size:12.5px;padding:9px 11px;background:var(--sunk);border-radius:9px;border-left:3px solid var(--s1);color:var(--ink2);margin-bottom:12px">${s.key}</p>
+
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:6px">What this session hits</div>
+      ${top.map(([k,val])=>{const M=MUSCLES[k];const w=Math.min(100,val/8*100);
+        return `<div class="vol" style="padding:6px 0;border:0"><div class="r1"><b style="font-size:12px">${M.l}</b><em style="font-size:12px">${val.toFixed(1)}</em></div>
+        <div class="track" style="height:7px"><div class="fill" style="width:${w}%;background:var(--s1)"></div></div></div>`;}).join('')}
+
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin:14px 0 4px">Exercises</div>
+      ${s.slots.map(x=>{const E=EXERCISES[x.ex];const mm=Object.entries(E.m).filter(([,w])=>w>=0.9).map(([m])=>MUSCLES[m].l.split(' — ')[0]);
+        return `<div style="display:flex;gap:9px;padding:7px 0;border-bottom:1px solid var(--grid);font-size:13px">
+        <div style="flex:1"><b style="font-weight:600">${E.n}${x.label?' — '+x.label:''}</b>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:1px">${mm.join(' · ')||'skill / speed work'}</div></div>
+        <div style="font-size:12px;color:var(--ink2);white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:600">${x.sets}×${x.amrap?'max':x.reps} @${x.rpe}</div></div>`;}).join('')}
+    </div>`;}).join('')}`;
+}
+
+function vTips(){
+  const secs=[...new Set(TIPS.map(t=>t.s))];
+  return `<button class="back" onclick="backPlan()">‹ ${PLAN.name}</button>
+  <h3 style="margin-top:0">General tips</h3>
+  <p style="margin:0 2px 12px">Everything that decides whether this works, in the order it tends to matter.</p>
+  ${secs.map(s=>`<h3>${s}</h3><div class="card">${TIPS.filter(t=>t.s===s).map(t=>
+    `<details><summary>${t.t}</summary><div class="c">${t.c}</div></details>`).join('')}</div>`).join('')}`;
+}
+
+/* ===== SETTINGS ===== */
+function vSet(){return `
+  <button class="back" onclick="go('train')">‹ Back</button>
+  <h3 style="margin-top:0">Units</h3>
+  <div class="card"><div class="seg">
+    <button class="${UNIT==='kg'?'on':''}" onclick="setUnit('kg')">Kilograms</button>
+    <button class="${UNIT==='lb'?'on':''}" onclick="setUnit('lb')">Pounds</button></div>
+    <p class="hint">Changes every number in the app, everywhere, instantly. <b>Data is always stored in kg</b> — this is a display setting only, so switching back and forth can never corrupt anything or introduce rounding drift.</p>
+    <div class="mt"><label>Load increment</label><select><option>2.5 ${un()} (standard plates)</option><option>1.0 ${un()} (micro-plates)</option><option>5.0 ${un()}</option></select>
+    <p class="hint">Prescribed loads round to this. The effective RPE after rounding is always shown.</p></div></div>
+
+  <h3>Your data</h3>
+  <div class="card">
+    <div class="flag f-ok"><i>✓</i><span><b>Persistent storage granted.</b> Android will not evict this app's data to reclaim space.</span></div>
+    <div class="flag f-ok"><i>✓</i><span><b>Last backup 3 days ago.</b> Next reminder in 11 days.</span></div>
+    <p class="hint">247 sessions · 3,914 sets · 98 photos · 41 MB</p>
+    <button class="big mt">Export everything now</button>
+    <button class="big ghost mt">Import from a backup</button>
+    <button class="big ghost mt">Verify backup can be restored</button>
+    <p class="hint">The verify button restores your last export into a scratch copy and checks it matches, so you find out a backup is broken <b>before</b> you need it — not after.</p></div>
+
+  <h3>Privacy &amp; permissions</h3>
+  <div class="card">
+    <div class="flag f-ok"><i>✓</i><span><b>No network access.</b> The app makes zero requests. It cannot phone home because there is nothing to phone.</span></div>
+    <div class="flag f-ok"><i>✓</i><span><b>No account, no login, no analytics.</b> Your data never leaves the device unless you export it yourself.</span></div>
+    <div class="flag f-ok"><i>✓</i><span><b>No permissions requested.</b> Adding photos goes through the standard file picker, which grants access to the one file you pick and nothing else. No camera, no location, no contacts, no storage permission.</span></div>
+    <p class="hint">If the app ever asks for a permission, something is wrong — that is a good rule to hold it to.</p></div>
+
+  <h3>Danger zone</h3>
+  <div class="card"><button class="big danger">Erase all data</button>
+    <p class="hint">Requires typing ERASE, and offers to export first.</p></div>`;}
+window.setUnit=u=>{UNIT=u;render();};
+
+/* ===== router ===== */
+window.go=t=>{tab=t;if(t!=='plan')planSec=null;render();window.scrollTo(0,0);};
+function render(){
+  if(cur===null) cur=nextSession();
+  const T={train:'Train',body:'Body',prog:'Progress',plan:'Plan',set:'Settings'};
+  document.getElementById('ttl').textContent=T[tab];
+  document.getElementById('chip').textContent = tab==='train'?'Session '+cur:'Block 1 · Week 5';
+  document.getElementById('view').innerHTML =
+    tab==='train'?vTrain():tab==='body'?vBody():tab==='prog'?vProg():tab==='plan'?vPlan():vSet();
+  ['train','body','prog','plan'].forEach(k=>document.getElementById('n-'+k).classList.toggle('on',k===tab));
+}
+render();
+</script>
+</body>
+</html>
