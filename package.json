@@ -2,10 +2,11 @@
   "name": "bulk",
   "version": "0.1.0",
   "private": true,
-  "description": "Bulk — single-user training app. Vanilla ES modules, zero runtime dependencies.",
+  "description": "Bulk \u2014 single-user training app. Vanilla ES modules, zero runtime dependencies.",
   "type": "module",
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "serve": "python3 -m http.server 8123"
   },
   "engines": {
     "node": ">=18.13"
