@@ -12,7 +12,14 @@
  * Layout, copy and interaction are ported from the reviewed demo.
  */
 
-import { e1rm, prescribedLoad, effectiveRpe, roundToIncrement } from '../calc.js';
+import {
+  e1rm,
+  prescribedLoad,
+  effectiveRpeDetail,
+  roundToIncrement,
+  systemLoad,
+  pct,
+} from '../calc.js';
 import { escape, fmtLoad, fmtNum, toDisplay, fromDisplay, stepFor, openSheet, closeSheet, startRest } from './components.js';
 
 const setKey = (slotIndex, setIndex) => `${slotIndex}:${setIndex}`;
@@ -44,8 +51,18 @@ export function slotsFor(state) {
 const workingMaxFor = (state, exerciseId) =>
   state.maxes.get(exerciseId)?.workingMax ?? state.plan.meta.seedWorkingMaxes[exerciseId] ?? null;
 
+/**
+ * Bodyweight counts as part of the load on pull-ups, chin-ups and dips, so the
+ * maths runs on bodyweight + added and the screen shows the added weight.
+ * Everything else gets 0 and behaves exactly as before.
+ */
+const bodyweightFor = (state, exerciseId) =>
+  state.plan.exercises[exerciseId]?.bodyweightLoaded ? state.settings.bodyweight : 0;
+
+const loadOptions = (state, exerciseId) => ({ bodyweight: bodyweightFor(state, exerciseId) });
+
 const prescriptionFor = (state, slot) =>
-  prescribedLoad(slot, workingMaxFor(state, slot.ex), state.settings.increment);
+  prescribedLoad(slot, workingMaxFor(state, slot.ex), state.settings.increment, loadOptions(state, slot.ex));
 
 const isFailureSet = (slot, i) => !!slot.failLast && i >= slot.sets - slot.failLast;
 
@@ -178,7 +195,9 @@ function exerciseBlock(state, slot, slotIndex) {
       <div class="tick ${all ? 'done' : done ? 'part' : ''}">${all ? '✓' : done || ''}</div>
       <div class="exnm"><b>${name}${slot.idx ? '<span class="badge idx">INDEX</span>' : ''}${slot.amrap ? '<span class="badge amr">AMRAP</span>' : ''}</b>
         <span class="sc">${slot.sets} × ${slot.amrap ? 'max' : slot.reps} @ RPE ${slot.rpe}${
-          prescribed ? ` · ${fmtLoad(prescribed, unit)} ${unit}` : ''
+          prescribed != null
+            ? ` · ${workingMaxFor(state, slot.ex) && bodyweightFor(state, slot.ex) ? '+' : ''}${fmtLoad(prescribed, unit)} ${unit}`
+            : ''
         }</span></div>
       <div class="car">›</div></div>
     <div class="exbody">${rows}
@@ -186,11 +205,8 @@ function exerciseBlock(state, slot, slotIndex) {
         previous ? ` <span style="color:var(--muted)">· ${escape(previous.dateISO)}</span>` : ''
       }</p>
       ${
-        prescribed
-          ? `<p class="hint">Prescribed ${fmtLoad(prescribed, unit)} ${unit} → effective RPE <b>${fmtNum(
-              effectiveRpe(prescribed, workingMax, slot.reps),
-              2
-            )}</b>${slot.pctTop ? ` · ${Math.round(slot.pctTop * 100)}% of today's top single` : ''}</p>`
+        prescribed != null
+          ? prescriptionHint(state, slot, prescribed, workingMax)
           : `<p class="hint"><b>${slot.idx ? 'Find your baseline.' : 'No stored max for this one.'}</b> Pick a weight you think lands at the target RPE, log what actually happened, and the app carries it forward from here.</p>`
       }
       ${previous?.note ? `<p class="hint">Your last note · <b>${escape(previous.note)}</b></p>` : ''}
@@ -212,22 +228,67 @@ function exerciseBlock(state, slot, slotIndex) {
       </div></div></div>`;
 }
 
+/**
+ * What the prescribed load actually is, in the terms that make it judgeable.
+ *
+ * RPE is always relative to your one-rep max, never to today's top single — so
+ * a back-off set shows both numbers: the percentage of today's single it was
+ * derived from, and the percentage of the working max that the RPE comes from.
+ * Below the bottom of the table it says "under 6" rather than printing a 6.00
+ * that pretends to a precision the scale does not have.
+ */
+function prescriptionHint(state, slot, prescribed, workingMax) {
+  const unit = state.settings.unit;
+  const bodyweight = bodyweightFor(state, slot.ex);
+  const detail = effectiveRpeDetail(prescribed, workingMax, slot.reps, { bodyweight });
+  if (!detail) return '';
+
+  const parts = [`Prescribed <b>${bodyweight ? '+' : ''}${fmtLoad(prescribed, unit)} ${unit}</b>`];
+
+  if (bodyweight) {
+    parts.push(`${fmtLoad(detail.systemLoad, unit)} ${unit} total with bodyweight`);
+  }
+  if (slot.pctTop) {
+    const topSingle = systemLoad(
+      prescribedLoad({ reps: 1, rpe: 8 }, workingMax, state.settings.increment, { bodyweight }),
+      bodyweight
+    );
+    parts.push(`${Math.round(slot.pctTop * 100)}% of today's ${fmtLoad(topSingle, unit)} ${unit} top single`);
+  }
+  parts.push(`${detail.percent.toFixed(1)}% of your ${fmtLoad(workingMax, unit)} ${unit} max`);
+  parts.push(
+    detail.clamped === 'below'
+      ? 'effective RPE <b>under 6</b>'
+      : `effective RPE <b>${detail.clamped === 'above' ? '10+' : fmtNum(detail.rpe, 2)}</b>`
+  );
+
+  return `<p class="hint">${parts.join(' · ')}</p>`;
+}
+
 function setRow(state, slot, slotIndex, i) {
   const unit = state.settings.unit;
   const { logged, toFailure, load, reps, rpe } = rowValues(state, slot, slotIndex, i);
   const cls = logged ? '' : 'pres';
-  const estimate = load && reps ? e1rm(load, reps, Math.min(10, rpe)) : null;
+  const bodyweight = bodyweightFor(state, slot.ex);
+  // e1RM is computed on what you actually lifted: bodyweight included.
+  const estimate = load != null && reps ? e1rm(systemLoad(load, bodyweight), reps, Math.min(10, rpe)) : null;
 
   return `<div class="setrow ${logged ? 'logged' : ''}">
       <div class="sn ${toFailure ? 'f' : ''}">${i + 1}</div>
       <div class="fld ${cls} ${load == null ? 'empty' : ''}" data-act="open-step" data-si="${slotIndex}" data-i="${i}" data-field="load">
-        <div class="v">${fmtLoad(load, unit)}</div><div class="k">${unit}</div></div>
+        <div class="v">${fmtLoad(load, unit)}</div><div class="k">${bodyweight ? `+${unit}` : unit}</div></div>
       <div class="fld ${cls} ${reps == null ? 'empty' : ''}" data-act="open-step" data-si="${slotIndex}" data-i="${i}" data-field="reps">
         <div class="v">${reps == null ? '—' : slot.amrap && !logged ? 'AM' : reps}</div><div class="k">reps</div></div>
       <div class="fld ${cls}" data-act="open-step" data-si="${slotIndex}" data-i="${i}" data-field="rpe">
         <div class="v">${rpe}</div><div class="k">${toFailure ? 'fail' : 'rpe'}</div></div>
       <button class="setok ${logged ? 'done' : ''}" data-act="tick" data-si="${slotIndex}" data-i="${i}" aria-label="Log set ${i + 1}">✓</button>
-    </div>${estimate ? `<div class="e1">e1RM <b>${fmtLoad(estimate, unit)} ${unit}</b></div>` : ''}`;
+    </div>${
+      estimate
+        ? `<div class="e1">e1RM <b>${fmtLoad(estimate, unit)} ${unit}</b>${
+            bodyweight ? ` <span style="color:var(--muted)">(+${fmtLoad(estimate - bodyweight, unit)} added)</span>` : ''
+          }</div>`
+        : ''
+    }`;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -285,13 +346,22 @@ function drawStepSheet(ctx) {
 
 function stepReadout(state, c, workingMax) {
   const unit = state.settings.unit;
-  const estimate = e1rm(c.load, c.reps, Math.min(10, c.rpe));
-  const effective = c.load && workingMax ? effectiveRpe(c.load, workingMax, c.reps) : null;
+  const bodyweight = bodyweightFor(state, c.slot.ex);
+  const total = systemLoad(c.load, bodyweight);
+  const estimate = e1rm(total, c.reps, Math.min(10, c.rpe));
+  const detail = effectiveRpeDetail(c.load, workingMax, c.reps, { bodyweight });
   const step = c.field === 'load' ? `${stepFor(unit, state.settings.increment)} ${unit}` : '1';
 
-  return `${fmtLoad(c.load, unit)} ${unit} × ${c.reps ?? '—'} @ RPE ${c.rpe}
+  return `${bodyweight ? '+' : ''}${fmtLoad(c.load, unit)} ${unit} × ${c.reps ?? '—'} @ RPE ${c.rpe}
+    ${bodyweight ? `<br><span style="color:var(--muted)">${fmtLoad(total, unit)} ${unit} total with bodyweight</span>` : ''}
     ${estimate ? `<br>e1RM <b>${fmtLoad(estimate, unit)} ${unit}</b>` : ''}
-    ${effective ? ` · effective RPE <b>${fmtNum(effective, 1)}</b>` : ''}
+    ${
+      detail
+        ? ` · ${detail.percent.toFixed(1)}% of max · effective RPE <b>${
+            detail.clamped === 'below' ? 'under 6' : detail.clamped === 'above' ? '10+' : fmtNum(detail.rpe, 1)
+          }</b>`
+        : ''
+    }
     <br><span style="color:var(--muted);font-size:11.5px">Type directly, or step by ${step}. Overrides are recorded as deviations, not errors.</span>`;
 }
 

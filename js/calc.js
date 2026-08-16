@@ -150,33 +150,83 @@ export function roundToIncrement(value, increment = DEFAULT_INCREMENT) {
   return Math.round(value / increment) * increment;
 }
 
-/**
- * The load to put on the bar for a plan slot, given the exercise's working max.
- * Returns null when there is no max to calculate from — the first rotation, or
- * an exercise that deliberately has no stored max.
+/*
+ * Bodyweight-loaded lifts — pull-ups, chin-ups, dips.
  *
- * The intermediate top-single figure is rounded to the same increment, because
- * it stands for a load that would genuinely be on the bar that day.
+ * On these, what you lift is your bodyweight PLUS whatever hangs from the belt,
+ * so every percentage, every RPE and every e1RM has to be computed on the total
+ * system load. A +25 kg pull-up at 90 kg bodyweight is a 115 kg lift, and
+ * treating it as a 25 kg lift makes the maths meaningless.
+ *
+ * The number you enter and the number stored stays the ADDED weight, because
+ * that is what you put on the belt. Bodyweight is added on the way into the
+ * maths and taken off again on the way out.
  */
-export function prescribedLoad(slot, workingMax, increment = DEFAULT_INCREMENT) {
+export const systemLoad = (added, bodyweight = 0) =>
+  added == null ? null : added + (bodyweight || 0);
+
+export const addedLoad = (system, bodyweight = 0) =>
+  system == null ? null : system - (bodyweight || 0);
+
+/**
+ * The load to put on the bar — or on the belt — for a plan slot, given the
+ * exercise's working max. Returns null when there is no max to calculate from:
+ * the first rotation, or an exercise that deliberately has no stored max.
+ *
+ * With a bodyweight, the working max is read as a TOTAL system load and the
+ * returned figure is the ADDED weight. Rounding is applied to the added weight,
+ * since that is the part that comes in plate-sized pieces.
+ *
+ * The intermediate top-single figure is rounded the same way, because it stands
+ * for a load that would genuinely be on the bar that day.
+ */
+export function prescribedLoad(slot, workingMax, increment = DEFAULT_INCREMENT, { bodyweight = 0 } = {}) {
   if (!slot || !workingMax) return null;
 
-  if (slot.amrap) return roundToIncrement(workingMax * AMRAP_FRACTION, increment);
+  const roundAdded = (system) => roundToIncrement(system - bodyweight, increment);
+
+  if (slot.amrap) return roundAdded(workingMax * AMRAP_FRACTION);
 
   // Back-offs are a percentage of TODAY'S top single, not of the working max —
   // that is how the protocol they come from was actually run.
   if (slot.pctTop) {
-    const top = roundToIncrement((workingMax * pct(1, 8)) / 100, increment);
-    return roundToIncrement(top * slot.pctTop, increment);
+    const topSystem = systemLoad(roundAdded((workingMax * pct(1, 8)) / 100), bodyweight);
+    return roundAdded(topSystem * slot.pctTop);
   }
 
-  return roundToIncrement((workingMax * pct(slot.reps, slot.rpe)) / 100, increment);
+  return roundAdded((workingMax * pct(slot.reps, slot.rpe)) / 100);
 }
 
 /** What the rounded load actually asks of you, at the slot's rep count. */
-export function effectiveRpe(load, workingMax, reps) {
-  if (!load || !workingMax) return null;
-  return rpeFor(load / workingMax, reps);
+export function effectiveRpe(load, workingMax, reps, { bodyweight = 0 } = {}) {
+  if (load == null || !workingMax) return null;
+  const system = systemLoad(load, bodyweight);
+  if (!system) return null;
+  return rpeFor(system / workingMax, reps);
+}
+
+/**
+ * The effective RPE plus whether the table ran out underneath or above it.
+ *
+ * The scale only spans RPE 6 to 10, so a load lighter than the RPE 6 entry
+ * clamps to 6 — and printing a flat "6.0" for a set that is genuinely easier
+ * than that reads as precision the number does not have. The screen shows
+ * "under 6" instead, alongside the percentage it is actually working at.
+ */
+export function effectiveRpeDetail(load, workingMax, reps, { bodyweight = 0 } = {}) {
+  if (load == null || !workingMax) return null;
+  const system = systemLoad(load, bodyweight);
+  if (!system) return null;
+
+  const row = RPE_TABLE[nearestRepRow(reps)];
+  const percent = (system / workingMax) * 100;
+
+  return {
+    rpe: rpeFor(system / workingMax, reps),
+    percent,
+    systemLoad: system,
+    clamped: percent > row[0] ? 'above' : percent < row[row.length - 1] ? 'below' : null,
+  };
 }
 
 /**
@@ -184,10 +234,10 @@ export function effectiveRpe(load, workingMax, reps) {
  * "92.5 kg · RPE ~8.05". The deviation introduced by rounding is displayed
  * rather than hidden.
  */
-export function prescription(slot, workingMax, increment = DEFAULT_INCREMENT) {
-  const load = prescribedLoad(slot, workingMax, increment);
+export function prescription(slot, workingMax, increment = DEFAULT_INCREMENT, options = {}) {
+  const load = prescribedLoad(slot, workingMax, increment, options);
   if (load == null) return { load: null, effectiveRpe: null };
-  return { load, effectiveRpe: effectiveRpe(load, workingMax, slot.reps) };
+  return { load, effectiveRpe: effectiveRpe(load, workingMax, slot.reps, options) };
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

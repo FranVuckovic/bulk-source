@@ -18,7 +18,7 @@ import {
   checkIntegrity,
 } from './db.js';
 import { rotationPosition, blockProgress, prescribedSetCount, isPartialSession, sortLogsByDate } from './progress.js';
-import { escape, openSheet, closeSheet, stopRest, fromDisplay } from './ui/components.js';
+import { escape, openSheet, closeSheet, stopRest, fromDisplay, toDisplay } from './ui/components.js';
 import * as train from './ui/train.js';
 
 const PLAN_URL = './data/plan-bulk-v1.json';
@@ -27,7 +27,7 @@ const TABS = { train: 'Bulk', body: 'Body', prog: 'Progress', plan: 'Plan', set:
 const state = {
   db: null,
   plan: null,
-  settings: { unit: 'kg', increment: 2.5 },
+  settings: { unit: 'kg', increment: 2.5, bodyweight: 90 },
   storage: { supported: false, persisted: false },
   integrity: null,
 
@@ -201,6 +201,9 @@ async function saveSet(slotIndex, setIndex, values) {
     prescribedLoad: values.prescribedLoad ?? null,
     timestampISO: nowISO(),
     gripWidth: state.grips[`${state.trainSessionId}-${slotIndex}`] ?? null,
+    // Stored per set: without it, a pull-up log stops being interpretable the
+    // moment your bodyweight changes.
+    bodyweightUsed: state.plan.exercises[slot.ex].bodyweightLoaded ? state.settings.bodyweight : null,
     variantUsed: slot.swappedFrom ? slot.ex : null,
     pauseStyle: values.pauseStyle ?? existing?.pauseStyle ?? null,
   };
@@ -336,7 +339,13 @@ function settingsView() {
           )
           .join('')}
       </select>
-      <p class="hint">Prescribed loads round to this. The effective RPE after rounding is always shown.</p></div></div>
+      <p class="hint">Prescribed loads round to this. The effective RPE after rounding is always shown.</p></div>
+
+    <div class="mt"><label for="bw">Bodyweight for pull-ups and dips (${state.settings.unit})</label>
+      <input id="bw" type="number" inputmode="decimal" step="0.5" value="${
+        Math.round(toDisplay(state.settings.bodyweight, state.settings.unit) * 10) / 10
+      }" data-act-change="bodyweight">
+      <p class="hint">Pull-ups, chin-ups and dips lift your bodyweight plus whatever is on the belt, so this is part of every percentage, RPE and e1RM on those lifts. It is one deliberate number rather than the daily weigh-in — otherwise a 0.4 kg fluctuation would move every prescription.</p></div></div>
 
   <h3>Your data</h3>
   <div class="card">
@@ -443,12 +452,27 @@ const globalActions = {
 };
 
 const changeHandlers = {
+  async bodyweight(value) {
+    const parsed = parseFloat(value);
+    if (Number.isNaN(parsed) || parsed <= 0) return;
+    state.settings.bodyweight = fromDisplay(parsed, state.settings.unit);
+    await writeSetting(state.db, 'bodyweight', state.settings.bodyweight);
+    render();
+  },
   async increment(value) {
     state.settings.increment = parseFloat(value);
     await writeSetting(state.db, 'increment', state.settings.increment);
     render();
   },
 };
+
+function showFailure(error) {
+  console.error(error);
+  openSheet(`<div class="ttl">That did not save</div>
+    <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">${escape(error.message || String(error))}</p>
+    <p style="text-align:center;font-size:13px">Nothing else has been changed. If this keeps happening, export your data from Settings before carrying on.</p>
+    <button class="big mt" data-act="sheet-close">Close</button>`);
+}
 
 function wireEvents() {
   document.addEventListener('click', (event) => {
@@ -457,7 +481,14 @@ function wireEvents() {
     const act = el.dataset.act;
     const handler = globalActions[act] || train.actions[act];
     if (!handler) return;
-    handler(ctx, el.dataset, event);
+
+    // A write that fails has to say so. Silently doing nothing is the one
+    // outcome that would let a session go unrecorded without anyone noticing.
+    try {
+      Promise.resolve(handler(ctx, el.dataset, event)).catch(showFailure);
+    } catch (error) {
+      showFailure(error);
+    }
   });
 
   document.addEventListener('input', (event) => {
@@ -481,11 +512,26 @@ function wireEvents() {
    ═══════════════════════════════════════════════════════════════════════ */
 
 async function boot() {
-  state.plan = await (await fetch(PLAN_URL)).json();
+  if (location.protocol === 'file:') {
+    throw new Error(
+      'Bulk has to be served over http, not opened as a file — browsers block a page on file:// from loading the plan. Run "npm run serve" and open http://localhost:8123.'
+    );
+  }
+
+  const response = await fetch(PLAN_URL);
+  if (!response.ok) throw new Error(`Could not load the plan (${response.status} ${response.statusText}).`);
+  state.plan = await response.json();
   state.db = await openDatabase();
 
   const settings = await readSettings(state.db);
-  state.settings = { unit: settings.unit, increment: settings.increment };
+  state.settings = {
+    unit: settings.unit,
+    increment: settings.increment,
+    // Used for pull-ups, chin-ups and dips, where bodyweight is part of the
+    // load. One number, edited in Settings — not read from the daily weigh-in,
+    // so a 0.4 kg morning fluctuation cannot move every prescription.
+    bodyweight: settings.bodyweight ?? state.plan.meta.referenceBodyweightKg ?? 90,
+  };
 
   await loadEverything();
   await restoreActiveSession();

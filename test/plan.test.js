@@ -141,6 +141,31 @@ test('the fallbacks and knowledge base are present', () => {
   }
 });
 
+test('bodyweight-loaded lifts are flagged, and their seeds are total loads', () => {
+  const bodyweight = PLAN.meta.referenceBodyweightKg;
+  assert.equal(bodyweight, 90);
+
+  const loaded = Object.entries(PLAN.exercises)
+    .filter(([, x]) => x.bodyweightLoaded)
+    .map(([id]) => id)
+    .sort();
+  assert.deepEqual(loaded, ['chinup', 'dip', 'pullupNorm', 'pullupWide']);
+
+  // Seeds for those lifts are bodyweight + added: +32 on the tracked pull-up,
+  // +38 on the dip. Only the tracked variant is seeded — the wide grip and the
+  // chin-up are the second exposure and earn a max from their own first set.
+  assert.equal(PLAN.meta.seedWorkingMaxes.pullupNorm, bodyweight + 32);
+  assert.equal(PLAN.meta.seedWorkingMaxes.dip, bodyweight + 38);
+  assert.equal(PLAN.meta.seedWorkingMaxes.pullupWide, undefined);
+  assert.equal(PLAN.meta.seedWorkingMaxes.chinup, undefined);
+  assert.equal(PLAN.meta.seedWorkingMaxes.pullup, undefined, 'the pre-split key is gone');
+
+  // Every seeded lift names an exercise that exists.
+  for (const id of Object.keys(PLAN.meta.seedWorkingMaxes)) {
+    assert.ok(PLAN.exercises[id], `seed max for unknown exercise ${id}`);
+  }
+});
+
 test('the plan prescribes real loads from its own seed maxes', () => {
   const { seedWorkingMaxes } = PLAN.meta;
   assert.equal(seedWorkingMaxes.benchComp, 115);

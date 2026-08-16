@@ -16,6 +16,9 @@ import {
   roundToIncrement,
   prescribedLoad,
   effectiveRpe,
+  effectiveRpeDetail,
+  systemLoad,
+  addedLoad,
   prescription,
   bestObserved,
   observationsFromSets,
@@ -421,4 +424,72 @@ test('the demo\'s Session A index set gives the expected e1RM', () => {
 
   // Which is below the 115 kg working max, so nothing is proposed mid-block.
   assert.equal(proposeMidBlockBump(115, [observation]).change, 'none');
+});
+
+/* ── bodyweight-loaded lifts ─────────────────────────────────────────── */
+
+test('bodyweight is part of the load on pull-ups, chin-ups and dips', () => {
+  assert.equal(systemLoad(25, 90), 115);
+  assert.equal(addedLoad(115, 90), 25);
+  assert.equal(systemLoad(25), 25, 'no bodyweight given, nothing added');
+  assert.equal(systemLoad(null, 90), null);
+
+  // A +25 kg pull-up at 90 kg bodyweight is a 115 kg lift, so its e1RM is a
+  // 115 kg-scale number — not a 25 kg one.
+  close(e1rm(systemLoad(25, 90), 5, 8), 115 / 0.811);
+});
+
+test('a prescription for a bodyweight lift returns the weight on the belt', () => {
+  // Working max is the TOTAL system load: 90 kg bodyweight + 32 kg added.
+  const workingMax = 122;
+  const slot = { ex: 'pullupNorm', sets: 4, reps: 5, rpe: 8 };
+
+  // 81.1% of 122 = 98.94 total → 8.94 added → 10 kg on the belt at 2.5.
+  assert.equal(prescribedLoad(slot, workingMax, 2.5, { bodyweight: 90 }), 10);
+  assert.equal(prescribedLoad(slot, workingMax, 1, { bodyweight: 90 }), 9);
+
+  // The rounding lands on the ADDED weight, which is the part that comes in
+  // plate-sized pieces — 100 kg of bodyweight is not a multiple of 2.5.
+  assert.equal(prescribedLoad(slot, 132, 2.5, { bodyweight: 100 }), 7.5);
+});
+
+test('bodyweight changes nothing for a barbell lift', () => {
+  const slot = { ex: 'benchComp', sets: 5, reps: 5, rpe: 8 };
+  assert.equal(prescribedLoad(slot, 115, 2.5), prescribedLoad(slot, 115, 2.5, { bodyweight: 0 }));
+  assert.equal(prescribedLoad(slot, 115, 2.5), 92.5);
+});
+
+test('effective RPE on a bodyweight lift reads the total, not the belt', () => {
+  // 10 kg added at 90 kg bodyweight is 100 kg of 122 = 82%.
+  const detail = effectiveRpeDetail(10, 122, 5, { bodyweight: 90 });
+  close(detail.percent, (100 / 122) * 100);
+  assert.equal(detail.systemLoad, 100);
+  assert.equal(detail.clamped, null);
+  close(detail.rpe, rpeFor(100 / 122, 5));
+
+  // Read as a bare 10 kg it would be off the bottom of the table entirely.
+  assert.equal(effectiveRpeDetail(10, 122, 5).clamped, 'below');
+});
+
+/* ── the edges of the RPE scale ──────────────────────────────────────── */
+
+test('effectiveRpeDetail says when the table has run out', () => {
+  // Back-offs at 85% of the top single: 90 kg of a 115 kg max at 3 reps is
+  // 78.3%, below the RPE 6 entry of 81.1 — a real RPE, just not one the table
+  // can name.
+  const backOff = effectiveRpeDetail(90, 115, 3);
+  assert.equal(backOff.clamped, 'below');
+  close(backOff.percent, (90 / 115) * 100);
+  assert.equal(backOff.rpe, 6, 'the lookup still clamps, the flag is what tells you');
+
+  const inRange = effectiveRpeDetail(92.5, 115, 5);
+  assert.equal(inRange.clamped, null);
+  close(inRange.rpe, 7.722826086956522, 1e-9);
+
+  const overload = effectiveRpeDetail(125, 115, 1);
+  assert.equal(overload.clamped, 'above');
+  assert.equal(overload.rpe, 10);
+
+  assert.equal(effectiveRpeDetail(null, 115, 5), null);
+  assert.equal(effectiveRpeDetail(90, null, 5), null);
 });
