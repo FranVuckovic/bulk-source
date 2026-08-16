@@ -1,0 +1,13 @@
+{
+  "name": "bulk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bulk — single-user training app. Vanilla ES modules, zero runtime dependencies.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18.13"
+  }
+}
