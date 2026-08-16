@@ -21,9 +21,9 @@ import {
 } from '../js/progress.js';
 
 const PLAN = JSON.parse(
-  readFileSync(new URL('./fixtures/plan-demo.json', import.meta.url), 'utf8')
+  readFileSync(new URL('../data/plan-bulk-v1.json', import.meta.url), 'utf8')
 );
-const ROTATION = PLAN.rotation;
+const ROTATION = PLAN.meta.rotation;
 
 const close = (actual, expected, eps = 1e-9) =>
   assert.ok(Math.abs(actual - expected) < eps, `expected ${actual} to be within ${eps} of ${expected}`);

@@ -16,12 +16,13 @@ import {
 } from '../js/volume.js';
 
 /**
- * The shipped plan's muscle maps, sessions and muscle definitions, extracted
- * verbatim from docs/demo.html. The demo's volume figures are the reviewed
- * ones, so the fixture is the data itself rather than numbers retyped by hand.
+ * The shipped plan itself — its muscle maps, sessions and muscle definitions
+ * were extracted verbatim from docs/demo.html, whose volume figures are the
+ * reviewed ones. Asserting against the real artifact rather than a copy is the
+ * point: these numbers are what the app will actually show.
  */
 const PLAN = JSON.parse(
-  readFileSync(new URL('./fixtures/plan-demo.json', import.meta.url), 'utf8')
+  readFileSync(new URL('../data/plan-bulk-v1.json', import.meta.url), 'utf8')
 );
 const { muscles, exercises, sessions } = PLAN;
 
