@@ -29,6 +29,19 @@ export const fmtNum = (value, digits = 1) =>
 /** The step the +/− buttons move by: plate size in kg, 5 lb in pounds. */
 export const stepFor = (unit, increment) => (unit === 'lb' ? 5 : increment);
 
+/**
+ * Parse a number the way a person typed it. A number input renders 90.7 as
+ * "90,7" under a comma-decimal locale, and plain parseFloat would read that as
+ * 90 — losing 0.7 kg silently, every time, on a phone set to the wrong locale.
+ */
+export function parseNumber(value) {
+  if (value == null) return null;
+  const text = String(value).trim().replace(',', '.');
+  if (text === '') return null;
+  const parsed = parseFloat(text);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export const escape = (text) =>
   String(text ?? '')
     .replace(/&/g, '&amp;')

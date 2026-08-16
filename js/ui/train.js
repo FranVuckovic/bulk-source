@@ -20,7 +20,18 @@ import {
   systemLoad,
   pct,
 } from '../calc.js';
-import { escape, fmtLoad, fmtNum, toDisplay, fromDisplay, stepFor, openSheet, closeSheet, startRest } from './components.js';
+import {
+  escape,
+  fmtLoad,
+  fmtNum,
+  toDisplay,
+  fromDisplay,
+  stepFor,
+  openSheet,
+  closeSheet,
+  startRest,
+  parseNumber,
+} from './components.js';
 
 const setKey = (slotIndex, setIndex) => `${slotIndex}:${setIndex}`;
 
@@ -670,8 +681,8 @@ export const actions = {
 export const inputs = {
   step(ctx, value) {
     const c = ctx.state.sheetCtx;
-    const parsed = parseFloat(value);
-    if (Number.isNaN(parsed)) return;
+    const parsed = parseNumber(value);
+    if (parsed == null) return;
 
     if (c.field === 'load') c.load = fromDisplay(parsed, ctx.state.settings.unit);
     else if (c.field === 'reps') c.reps = Math.max(1, Math.round(parsed));
@@ -680,8 +691,7 @@ export const inputs = {
     repaintReadout(ctx);
   },
   velocity(ctx, value) {
-    const parsed = parseFloat(value);
-    ctx.state.sheetCtx.velocity = Number.isNaN(parsed) ? null : parsed;
+    ctx.state.sheetCtx.velocity = parseNumber(value);
   },
   note(ctx, value) {
     ctx.state.sheetCtx.note = value || null;

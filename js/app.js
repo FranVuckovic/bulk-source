@@ -13,13 +13,28 @@ import {
   getAll,
   put,
   remove,
+  clearStore,
   saveSession,
+  confirmWorkingMax,
   requestPersistentStorage,
+  storageEstimate,
   checkIntegrity,
+  ALL_STORES,
 } from './db.js';
-import { rotationPosition, blockProgress, prescribedSetCount, isPartialSession, sortLogsByDate } from './progress.js';
-import { escape, openSheet, closeSheet, stopRest, fromDisplay, toDisplay } from './ui/components.js';
+import {
+  rotationPosition,
+  blockProgress,
+  planProgress,
+  prescribedSetCount,
+  isPartialSession,
+  sortLogsByDate,
+} from './progress.js';
+import { escape, openSheet, closeSheet, stopRest, fromDisplay, toDisplay, parseNumber } from './ui/components.js';
 import * as train from './ui/train.js';
+import * as body from './ui/body.js';
+import * as progress from './ui/progress.js';
+import * as plan from './ui/plan.js';
+import * as settings from './ui/settings.js';
 
 const PLAN_URL = './data/plan-bulk-v1.json';
 const TABS = { train: 'Bulk', body: 'Body', prog: 'Progress', plan: 'Plan', set: 'Settings' };
@@ -33,8 +48,13 @@ const state = {
 
   logs: [],
   sets: [],
+  daily: [],
+  measurements: [],
+  niggles: [],
+  media: [],
   maxes: new Map(),
   lastByExercise: new Map(),
+  todayISO: null,
 
   tab: 'train',
   trainSessionId: null,
@@ -51,6 +71,17 @@ const state = {
   deviations: { swaps: {}, extras: [], addedSets: {} },
   draft: { note: '', bodyweight: '', sessionRpe: '' },
   sheetCtx: null,
+
+  // Body screen
+  bodyDraft: { dateISO: null },
+  shut: new Set(),
+  pendingSave: null,
+
+  // Progress and Plan
+  progressLift: 'benchComp',
+  planSection: null,
+  exerciseSearch: '',
+  planProgress: { sessionsDone: 0, daysElapsed: null, calendarWeek: 1, pace: null },
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -61,8 +92,13 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 const nowISO = () => new Date().toISOString();
 
 async function loadEverything() {
+  state.todayISO = todayISO();
   state.logs = sortLogsByDate(await getAll(state.db, 'sessionLogs'));
   state.sets = await getAll(state.db, 'sets');
+  state.daily = (await getAll(state.db, 'daily')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+  state.measurements = (await getAll(state.db, 'measurements')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+  state.niggles = (await getAll(state.db, 'niggles')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+  state.media = (await getAll(state.db, 'media')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
   state.maxes = new Map((await getAll(state.db, 'maxes')).map((m) => [m.exerciseId, m]));
 
   const finished = state.logs.filter((log) => log.endedAt);
@@ -77,6 +113,13 @@ async function loadEverything() {
     { id: blockIdx, sessionTarget: block.sessionTarget, startedISO: blockStartedISO, weeks: block.weeks },
     todayISO()
   );
+
+  // Pace runs from whichever came first: the plan's start date or the earliest
+  // session logged against it.
+  const firstLogged = finished.length ? finished[0].dateISO.slice(0, 10) : null;
+  const effectiveStart =
+    firstLogged && firstLogged < state.plan.meta.startDateISO ? firstLogged : state.plan.meta.startDateISO;
+  state.planProgress = planProgress(finished, effectiveStart, state.todayISO);
 
   // Calibration only applies when there is genuinely nothing to prescribe from.
   // The shipped plan carries seed working maxes, so it stays off until a plan
@@ -235,14 +278,14 @@ async function saveDeviations() {
 async function persistDraft() {
   if (!state.activeLog) return;
   const unit = state.settings.unit;
-  const bodyweight = parseFloat(state.draft.bodyweight);
-  const sessionRpe = parseFloat(state.draft.sessionRpe);
+  const bodyweight = parseNumber(state.draft.bodyweight);
+  const sessionRpe = parseNumber(state.draft.sessionRpe);
 
   state.activeLog = {
     ...state.activeLog,
     note: state.draft.note || null,
-    bodyweight: Number.isNaN(bodyweight) ? null : fromDisplay(bodyweight, unit),
-    sessionRpe: Number.isNaN(sessionRpe) ? null : sessionRpe,
+    bodyweight: bodyweight == null ? null : fromDisplay(bodyweight, unit),
+    sessionRpe,
   };
   await put(state.db, 'sessionLogs', state.activeLog);
 }
@@ -292,74 +335,42 @@ async function finishSession() {
     <button class="big mt" data-act="sheet-close">Done</button>`);
 }
 
+/** Today's Body entries, prefilled from whatever is already stored for today. */
+function resetBodyDraft() {
+  const today = state.todayISO;
+  const daily = state.daily.find((d) => d.dateISO === today) || {};
+  const measurement = state.measurements.find((m) => m.dateISO === today) || {};
+  const unit = state.settings.unit;
+  const show = (value) => (value == null ? '' : String(Math.round(toDisplay(value, unit) * 10) / 10));
+
+  state.bodyDraft = {
+    dateISO: today,
+    bodyweight: show(daily.bodyweight),
+    bodyfatPct: daily.bodyfatPct == null ? '' : String(daily.bodyfatPct),
+    sleepHours: daily.sleepHours == null ? '' : String(daily.sleepHours),
+    steps: daily.steps == null ? '' : String(daily.steps),
+    mood: daily.mood == null ? '' : String(daily.mood),
+    caffeine: daily.caffeine || '',
+    note: daily.note || '',
+    niggleSite: '',
+    niggleSeverity: '1',
+    niggleContext: '',
+  };
+  for (const [id] of body.MEASUREMENT_SITES) {
+    state.bodyDraft[`m-${id}`] = measurement[id] == null ? '' : String(measurement[id]);
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    Screens
    ═══════════════════════════════════════════════════════════════════════ */
 
-const placeholder = (title, what) => `
-  <h3 style="margin-top:4px">${escape(title)}</h3>
-  <div class="card"><p style="margin:0">${escape(what)}</p></div>`;
-
 function screenFor(tab) {
   if (tab === 'train') return train.view(ctx);
-  if (tab === 'body') return placeholder('Body', 'Daily and weekly measurements arrive in the next stage.');
-  if (tab === 'prog') return placeholder('Progress', 'Charts, flags and the working-max review arrive in the next stage.');
-  if (tab === 'plan') return placeholder('Plan', 'Exercises, workouts and the knowledge base arrive in the next stage.');
-  return settingsView();
-}
-
-function settingsView() {
-  const storage = state.storage.persisted
-    ? '<div class="flag f-ok"><i>✓</i><span><b>Persistent storage granted.</b> This app’s data will not be evicted to reclaim space.</span></div>'
-    : `<div class="flag f-warn"><i>!</i><span><b>Persistent storage not granted.</b> ${
-        state.storage.supported ? 'Install the app to the home screen and it is usually granted.' : 'This browser does not support it.'
-      }</span></div>`;
-
-  const integrity = state.integrity?.ok
-    ? '<div class="flag f-ok"><i>✓</i><span><b>Database readable and consistent.</b></span></div>'
-    : `<div class="flag f-bad"><i>!</i><span><b>Data integrity problem.</b> ${escape(
-        (state.integrity?.problems || []).join('; ')
-      )}</span></div>`;
-
-  return `
-  <button class="back" data-act="tab" data-tab="train">‹ Back</button>
-  <h3 style="margin-top:0">Units</h3>
-  <div class="card"><div class="seg">
-    <button class="${state.settings.unit === 'kg' ? 'on' : ''}" data-act="unit" data-id="kg">Kilograms</button>
-    <button class="${state.settings.unit === 'lb' ? 'on' : ''}" data-act="unit" data-id="lb">Pounds</button></div>
-    <p class="hint">Changes every number in the app, everywhere, instantly. <b>Data is always stored in kg</b> — this is a display setting only, so switching back and forth can never corrupt anything or introduce rounding drift.</p>
-    <div class="mt"><label for="inc">Load increment</label>
-      <select id="inc" data-act-change="increment">
-        ${[2.5, 1, 5]
-          .map(
-            (i) =>
-              `<option value="${i}" ${state.settings.increment === i ? 'selected' : ''}>${i.toFixed(1)} kg${
-                i === 2.5 ? ' (standard plates)' : i === 1 ? ' (micro-plates)' : ''
-              }</option>`
-          )
-          .join('')}
-      </select>
-      <p class="hint">Prescribed loads round to this. The effective RPE after rounding is always shown.</p></div>
-
-    <div class="mt"><label for="bw">Bodyweight for pull-ups and dips (${state.settings.unit})</label>
-      <input id="bw" type="number" inputmode="decimal" step="0.5" value="${
-        Math.round(toDisplay(state.settings.bodyweight, state.settings.unit) * 10) / 10
-      }" data-act-change="bodyweight">
-      <p class="hint">Pull-ups, chin-ups and dips lift your bodyweight plus whatever is on the belt, so this is part of every percentage, RPE and e1RM on those lifts. It is one deliberate number rather than the daily weigh-in — otherwise a 0.4 kg fluctuation would move every prescription.</p></div></div>
-
-  <h3>Your data</h3>
-  <div class="card">
-    ${storage}
-    ${integrity}
-    <p class="hint">${state.logs.length} sessions · ${state.sets.length} sets</p>
-    <p class="hint">Export, import and backup verification arrive with the export stage.</p>
-  </div>
-
-  <h3>Privacy &amp; permissions</h3>
-  <div class="card">
-    <div class="flag f-ok"><i>✓</i><span><b>No network access.</b> The app makes zero requests. It cannot phone home because there is nothing to phone.</span></div>
-    <div class="flag f-ok"><i>✓</i><span><b>No account, no login, no analytics.</b> Your data never leaves the device unless you export it yourself.</span></div>
-  </div>`;
+  if (tab === 'body') return body.view(ctx);
+  if (tab === 'prog') return progress.view(ctx);
+  if (tab === 'plan') return plan.view(ctx);
+  return settings.view(ctx);
 }
 
 function render() {
@@ -401,6 +412,66 @@ const ctx = {
     state.exOpen = new Set(['0']);
     state.cleared = new Set();
     render();
+  },
+
+  toKg: (value) => (value == null ? null : fromDisplay(value, state.settings.unit)),
+
+  async saveDaily(row) {
+    await put(state.db, 'daily', row);
+    state.daily = (await getAll(state.db, 'daily')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+    render();
+  },
+
+  async saveMeasurements(row) {
+    await put(state.db, 'measurements', row);
+    state.measurements = (await getAll(state.db, 'measurements')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+    render();
+  },
+
+  async saveNiggle(row) {
+    await put(state.db, 'niggles', row);
+    state.niggles = (await getAll(state.db, 'niggles')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+    state.bodyDraft.niggleSite = '';
+    state.bodyDraft.niggleContext = '';
+    render();
+  },
+
+  async saveMedia(row) {
+    await put(state.db, 'media', row);
+    state.media = (await getAll(state.db, 'media')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+    render();
+  },
+
+  /** Confirming a working max writes it and appends to the audit history. */
+  async confirmMax(exerciseId, workingMax, reason) {
+    await confirmWorkingMax(
+      state.db,
+      {
+        exerciseId,
+        workingMax,
+        conf: state.plan.exercises[exerciseId].maxConf,
+        setAtISO: nowISO(),
+        sourceSetId: null,
+        blockId: state.block.idx,
+      },
+      reason
+    );
+    await loadEverything();
+    render();
+  },
+
+  async eraseEverything() {
+    for (const store of ALL_STORES) {
+      if (store === 'settings') continue;
+      await clearStore(state.db, store);
+    }
+    await writeSetting(state.db, 'activeSessionLogId', null);
+    state.activeLog = null;
+    state.loggedSets = new Map();
+    state.deviations = { swaps: {}, extras: [], addedSets: {} };
+    state.grips = {};
+    state.draft = { note: '', bodyweight: '', sessionRpe: '' };
+    await loadEverything();
   },
 
   showExercise(id) {
@@ -453,14 +524,14 @@ const globalActions = {
 
 const changeHandlers = {
   async bodyweight(value) {
-    const parsed = parseFloat(value);
-    if (Number.isNaN(parsed) || parsed <= 0) return;
+    const parsed = parseNumber(value);
+    if (parsed == null || parsed <= 0) return;
     state.settings.bodyweight = fromDisplay(parsed, state.settings.unit);
     await writeSetting(state.db, 'bodyweight', state.settings.bodyweight);
     render();
   },
   async increment(value) {
-    state.settings.increment = parseFloat(value);
+    state.settings.increment = parseNumber(value);
     await writeSetting(state.db, 'increment', state.settings.increment);
     render();
   },
@@ -479,7 +550,13 @@ function wireEvents() {
     const el = event.target.closest('[data-act]');
     if (!el) return;
     const act = el.dataset.act;
-    const handler = globalActions[act] || train.actions[act];
+    const handler =
+      globalActions[act] ||
+      train.actions[act] ||
+      body.actions[act] ||
+      progress.actions[act] ||
+      plan.actions[act] ||
+      settings.actions[act];
     if (!handler) return;
 
     // A write that fails has to say so. Silently doing nothing is the one
@@ -498,7 +575,12 @@ function wireEvents() {
       persistDraft();
       return;
     }
-    if (el.dataset.actInput) train.inputs[el.dataset.actInput]?.(ctx, el.value);
+    if (el.dataset.bodyField) {
+      state.bodyDraft[el.dataset.bodyField] = el.value;
+      return;
+    }
+    const input = el.dataset.actInput;
+    if (input) (train.inputs[input] || plan.inputs[input])?.(ctx, el.value);
   });
 
   document.addEventListener('change', (event) => {
@@ -534,6 +616,7 @@ async function boot() {
   };
 
   await loadEverything();
+  resetBodyDraft();
   await restoreActiveSession();
   // Rebuilt now that the active session is known, so today's own sets never
   // become their own "last time".
@@ -544,7 +627,7 @@ async function boot() {
   render();
 
   // Asked for after the first render, so the prompt never delays the screen.
-  state.storage = await requestPersistentStorage();
+  state.storage = { ...(await requestPersistentStorage()), ...(await storageEstimate()) };
   if (state.tab === 'set') render();
 }
 

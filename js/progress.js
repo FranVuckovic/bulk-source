@@ -168,12 +168,224 @@ export function blockProgress(logs, block, todayISO) {
  * nothing in the plan advances because a week passed.
  */
 export function planProgress(logs, startISO, todayISO) {
-  const daysElapsed = daysBetween(startISO, todayISO);
   const sessionsDone = (logs || []).length;
+  const raw = daysBetween(startISO, todayISO);
+  // Training logged before the plan's own start date — a history imported from
+  // before day one, or a start date still in the future — must not produce a
+  // week 0 or a negative pace. Day one is week one, whichever way the dates run.
+  const daysElapsed = raw == null ? null : Math.max(0, raw);
+
   return {
     sessionsDone,
     daysElapsed,
     calendarWeek: daysElapsed == null ? null : Math.floor(daysElapsed / 7) + 1,
     pace: daysElapsed == null ? null : pace(sessionsDone, daysElapsed),
   };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Trends, records and the decision flags
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/*
+ * Everything below is computed on read, never stored. A rolling average that
+ * lives in the database is a rolling average that goes stale the moment a
+ * back-dated entry lands.
+ */
+
+/** ISO week start (Monday) for a date — the bucket weekly figures fall into. */
+export function weekStartISO(iso) {
+  const date = new Date(`${dayOf(iso)}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  const day = (date.getUTCDay() + 6) % 7; // Monday = 0
+  date.setUTCDate(date.getUTCDate() - day);
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Trailing average over a window of DAYS, not of samples — so a missed weigh-in
+ * widens the gap rather than silently averaging over a longer stretch of time.
+ * Points are [{ dateISO, value }] and come back with the same dates.
+ */
+export function rollingAverage(points, windowDays = 7) {
+  const clean = (points || [])
+    .filter((p) => p && Number.isFinite(p.value))
+    .sort((a, b) => dayOf(a.dateISO).localeCompare(dayOf(b.dateISO)));
+
+  return clean.map((point, i) => {
+    let sum = 0;
+    let count = 0;
+    for (let j = i; j >= 0; j--) {
+      if (daysBetween(clean[j].dateISO, point.dateISO) >= windowDays) break;
+      sum += clean[j].value;
+      count += 1;
+    }
+    return { dateISO: dayOf(point.dateISO), value: sum / count, samples: count };
+  });
+}
+
+/**
+ * Least-squares slope in units per WEEK — the gain rate the nutrition targets
+ * are written in. Fewer than two points has no slope, and says so with null
+ * rather than 0, which would read as "not gaining".
+ */
+export function weeklySlope(points) {
+  const clean = (points || []).filter((p) => p && Number.isFinite(p.value));
+  if (clean.length < 2) return null;
+
+  const origin = clean[0].dateISO;
+  const xs = clean.map((p) => daysBetween(origin, p.dateISO) / 7);
+  const ys = clean.map((p) => p.value);
+  const meanX = xs.reduce((a, b) => a + b, 0) / xs.length;
+  const meanY = ys.reduce((a, b) => a + b, 0) / ys.length;
+
+  let top = 0;
+  let bottom = 0;
+  for (let i = 0; i < xs.length; i++) {
+    top += (xs[i] - meanX) * (ys[i] - meanY);
+    bottom += (xs[i] - meanX) ** 2;
+  }
+  return bottom === 0 ? null : top / bottom;
+}
+
+/** Best value per ISO week. One point per week is the resolution the signal has. */
+export function weeklyBests(points) {
+  const byWeek = new Map();
+  for (const point of points || []) {
+    if (!point || !Number.isFinite(point.value)) continue;
+    const week = weekStartISO(point.dateISO);
+    const current = byWeek.get(week);
+    if (!current || point.value > current.value) {
+      byWeek.set(week, { weekISO: week, value: point.value, dateISO: dayOf(point.dateISO) });
+    }
+  }
+  return [...byWeek.values()].sort((a, b) => a.weekISO.localeCompare(b.weekISO));
+}
+
+/**
+ * Personal records, in date order. A value that equals the standing best is a
+ * tie and is marked as one — it is a repeat performance, not a new record, and
+ * calling it a PR would inflate the log.
+ *
+ * Points are [{ dateISO, value, ...anything }]; the caller decides what counts
+ * as eligible, which is where indicative maxes get excluded.
+ */
+export function detectPRs(points) {
+  const ordered = (points || [])
+    .filter((p) => p && Number.isFinite(p.value))
+    .sort((a, b) => dayOf(a.dateISO).localeCompare(dayOf(b.dateISO)));
+
+  let best = -Infinity;
+  const records = [];
+  for (const point of ordered) {
+    if (point.value > best) {
+      records.push({ ...point, kind: 'pr', previousBest: best === -Infinity ? null : best });
+      best = point.value;
+    } else if (point.value === best) {
+      records.push({ ...point, kind: 'tie', previousBest: best });
+    }
+  }
+  return records;
+}
+
+/**
+ * Foster's session load: how hard it felt × how long it lasted. Useless on its
+ * own, and the earliest warning there is when three weeks of it are rising
+ * while your top sets flatten.
+ */
+export function sessionLoad(log) {
+  if (!log?.sessionRpe || !log.startedAt || !log.endedAt) return null;
+  const minutes = (Date.parse(log.endedAt) - Date.parse(log.startedAt)) / 60000;
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+  return log.sessionRpe * minutes;
+}
+
+export function weeklyLoads(logs) {
+  const byWeek = new Map();
+  for (const log of logs || []) {
+    const load = sessionLoad(log);
+    if (load == null) continue;
+    const week = weekStartISO(log.dateISO);
+    byWeek.set(week, (byWeek.get(week) || 0) + load);
+  }
+  return [...byWeek.entries()]
+    .map(([weekISO, value]) => ({ weekISO, value }))
+    .sort((a, b) => a.weekISO.localeCompare(b.weekISO));
+}
+
+/** Thresholds the plan already specifies, in one place so they are auditable. */
+export const FLAG_RULES = Object.freeze({
+  gainRateEarly: { lo: 0.4, hi: 0.5, throughWeek: 12 },
+  gainRateLate: { lo: 0.2, hi: 0.25 },
+  sleepFloor: 7,
+  nigglesPerBlock: 2,
+  topSetDropPct: 0.05,
+  stalledWeeks: 4,
+});
+
+/**
+ * The decision flags. Each one exists because the plan names a specific action
+ * for it — a flag with no action attached is just anxiety.
+ */
+export function decisionFlags({ bodyweight = [], e1rmWeekly = [], sleep = [], niggles = [], calendarWeek = 1 } = {}) {
+  const flags = [];
+
+  const gainRate = weeklySlope(rollingAverage(bodyweight, 7).slice(-21));
+  const target = calendarWeek <= FLAG_RULES.gainRateEarly.throughWeek ? FLAG_RULES.gainRateEarly : FLAG_RULES.gainRateLate;
+
+  if (gainRate != null) {
+    if (gainRate < target.lo * 0.25) {
+      flags.push({
+        kind: 'warn',
+        title: 'Gaining under target',
+        detail: `${gainRate.toFixed(2)} kg/week against a ${target.lo}–${target.hi} target. Add about 250 kcal — one extra meal-sized snack.`,
+      });
+    } else if (gainRate > target.hi * 1.4) {
+      flags.push({
+        kind: 'warn',
+        title: 'Gaining faster than target',
+        detail: `${gainRate.toFixed(2)} kg/week against a ${target.lo}–${target.hi} target. Cut about 300 kcal.`,
+      });
+    } else {
+      flags.push({
+        kind: 'ok',
+        title: 'Gain rate on target',
+        detail: `${gainRate.toFixed(2)} kg/week, inside the ${target.lo}–${target.hi} band for week ${calendarWeek}.`,
+      });
+    }
+  }
+
+  const recent = e1rmWeekly.slice(-FLAG_RULES.stalledWeeks);
+  if (recent.length === FLAG_RULES.stalledWeeks && gainRate != null && gainRate > 0) {
+    const strengthSlope = weeklySlope(recent.map((p) => ({ dateISO: p.weekISO, value: p.value })));
+    if (strengthSlope != null && strengthSlope <= 0) {
+      flags.push({
+        kind: 'bad',
+        title: 'e1RM flat while bodyweight rises',
+        detail: `No strength trend across ${FLAG_RULES.stalledWeeks} weeks while gaining ${gainRate.toFixed(2)} kg/week. That is a recovery or programming problem, not a food problem — send the export.`,
+      });
+    }
+  }
+
+  const recentSleep = sleep.filter((s) => Number.isFinite(s.value)).slice(-7);
+  if (recentSleep.length >= 3) {
+    const mean = recentSleep.reduce((a, b) => a + b.value, 0) / recentSleep.length;
+    if (mean < FLAG_RULES.sleepFloor) {
+      flags.push({
+        kind: 'warn',
+        title: 'Sleep below seven hours',
+        detail: `Averaging ${mean.toFixed(1)} h. Below 7 h the frequency stops being survivable — drop Session D first, it is the cheapest to lose.`,
+      });
+    }
+  }
+
+  if (niggles.length >= FLAG_RULES.nigglesPerBlock) {
+    flags.push({
+      kind: 'warn',
+      title: `${niggles.length} niggles logged this block`,
+      detail: 'Two or more in a block is the trigger to rotate the aggravating variation out. Do not push through it.',
+    });
+  }
+
+  return flags;
 }

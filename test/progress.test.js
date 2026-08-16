@@ -265,3 +265,15 @@ test('plan progress reports the calendar week without scheduling anything by it'
 
   assert.equal(planProgress([], '2026-08-17', '2026-08-17').calendarWeek, 1, 'day one is week one');
 });
+
+test('a plan whose start date has not arrived yet still reports week one', () => {
+  // History logged before the plan's own start — an import, or a start date set
+  // in the future. Week 0 and a negative pace are both nonsense.
+  const logs = [log(1, '2026-08-10', 'A'), log(2, '2026-08-12', 'B')];
+  const early = planProgress(logs, '2026-08-17', '2026-08-16');
+
+  assert.equal(early.daysElapsed, 0);
+  assert.equal(early.calendarWeek, 1);
+  assert.equal(early.pace, null, 'no elapsed time, no pace');
+  assert.equal(early.sessionsDone, 2);
+});
