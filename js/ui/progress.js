@@ -23,6 +23,7 @@ import {
   daysBetween,
 } from '../progress.js';
 import { rollUp, volumeFromSets } from '../volume.js';
+import { shouldDeload, FLAG_RULES } from '../progress.js';
 import { escape, fmtLoad, fmtNum, toDisplay, flag, openSheet, closeSheet } from './components.js';
 import {
   lineChart,
@@ -122,8 +123,12 @@ export function view(ctx) {
   return `
   ${tiles(state, { best, change, latestAverage, gainRate, unit })}
 
+  <h3>Is this going to plan?</h3>
+  ${verdict(state, { best, change, weekly, gainRate, latestAverage, unit })}
+
   <h3>What to do about it</h3>
   ${flagsSection(state, { bodyweight, weekly })}
+  ${deloadCard(state, weekly)}
 
   ${liftPicker(state, focus)}
 
@@ -197,6 +202,12 @@ export function view(ctx) {
   <h3>Working maxes</h3>
   ${workingMaxes(ctx)}
 
+  <h3>Tape measurements</h3>
+  ${measurementsCard(state)}
+
+  <h3>Work done</h3>
+  ${tonnageCard(state)}
+
   <h3>Everything logged</h3>
   <div class="card flush">
     <div class="big-row" data-act="history-open-screen"><div class="ic">≡</div><div class="m"><b>History</b>
@@ -206,6 +217,185 @@ export function view(ctx) {
 
   <h3>Export</h3>
   <div class="card"><p style="margin:0">Selective export arrives with the export stage — one zip, CSV for reading and JSON for restoring. Until then, <button data-act="history-backup" style="background:none;border:0;color:var(--s1);font:inherit;font-weight:650;padding:0;cursor:pointer">download a JSON backup</button>.</p></div>`;
+}
+
+/**
+ * The one card that answers the only question that matters. Every line states
+ * what was measured, what it should be, and what to do — a verdict with no
+ * action attached is just anxiety.
+ */
+function verdict(state, { best, change, weekly, gainRate, latestAverage, unit }) {
+  const rows = [];
+  const week = state.planProgress.calendarWeek ?? 1;
+  const target = week <= 12 ? { lo: 0.4, hi: 0.5 } : { lo: 0.2, hi: 0.25 };
+
+  // 1 · is the bulk running lean
+  const waist = state.measurements.filter((m) => Number.isFinite(m.waist));
+  if (gainRate != null && waist.length >= 3) {
+    const waistRate = weeklySlope(waist.map((m) => ({ dateISO: m.dateISO, value: m.waist })));
+    const ratio = waistRate != null && gainRate > 0 ? waistRate / gainRate : null;
+    rows.push(
+      ratio == null
+        ? ['info', 'Lean-bulk ratio', 'Not enough waist history yet.']
+        : ratio < 0.35
+          ? ['ok', 'The gain is running lean', `Waist rising ${fmtNum(waistRate, 2)} cm/week against ${fmtNum(gainRate, 2)} kg/week — about ${Math.round(ratio * 100)}% as fast. Weight up, waist nearly flat, is what it is supposed to look like.`]
+          : ['warn', 'Waist rising fast relative to bodyweight', `${fmtNum(waistRate, 2)} cm per ${fmtNum(gainRate, 2)} kg. Slow the bulk regardless of what the scale says.`]
+    );
+  }
+
+  // 2 · is strength moving
+  if (weekly.length >= 3) {
+    const slope = weeklySlope(weekly.map((w) => ({ dateISO: w.weekISO, value: w.value })));
+    rows.push(
+      slope == null || slope <= 0
+        ? ['bad', 'Bench e1RM is not trending up', 'Four flat weeks while gaining is a recovery or programming problem, not a food problem.']
+        : ['ok', 'Bench is trending up', `About ${fmtNum(toDisplay(slope, unit), 2)} ${unit} of estimated max per week. At this rate you add ${fmtNum(toDisplay(slope * 12, unit), 1)} ${unit} over the next twelve weeks.`]
+    );
+  }
+
+  // 3 · are you training often enough
+  const pace = state.planProgress.pace;
+  if (pace != null) {
+    rows.push(
+      pace >= 4.5
+        ? ['ok', 'Training often enough', `${fmtNum(pace, 1)} sessions a week. The rotation needs about 5 to stay on the calendar.`]
+        : ['warn', 'Below the pace the calendar needs', `${fmtNum(pace, 1)} sessions a week. Blocks advance on sessions, so nothing is lost — but March moves further away.`]
+    );
+  }
+
+  // 4 · the projection
+  const projection = projectTo(weekly, 140);
+  if (projection) {
+    rows.push([
+      projection.weeks <= 26 ? 'ok' : 'info',
+      `140 ${unit} in about ${Math.round(projection.weeks)} weeks`,
+      `Straight-line projection from ${weekly.length} weeks of index sets — ${fmtNum(toDisplay(projection.perWeek, unit), 2)} ${unit}/week. It assumes the current rate holds, which it will not exactly; treat it as a direction, not a date.`,
+    ]);
+  }
+
+  if (!rows.length) {
+    return flag('info', 'i', 'Log a few weeks and this becomes a straight answer about whether the bulk is working.');
+  }
+  return rows.map(([kind, title, detail]) => flag(kind, kind === 'ok' ? '✓' : kind === 'bad' ? '!' : kind === 'warn' ? '!' : 'i', `<b>${escape(title)}.</b> ${escape(detail)}`)).join('');
+}
+
+/** Weeks until a target at the current rate. Null when there is no rate to speak of. */
+export function projectTo(weekly, targetKg) {
+  if (weekly.length < 4) return null;
+  const perWeek = weeklySlope(weekly.map((w) => ({ dateISO: w.weekISO, value: w.value })));
+  const current = weekly[weekly.length - 1].value;
+  if (perWeek == null || perWeek <= 0 || current >= targetKg) return null;
+  return { perWeek, weeks: (targetKg - current) / perWeek, current };
+}
+
+/** Tape measurements are the other half of a bulk — and the whole story on a cut. */
+function measurementsCard(state) {
+  const unit = state.settings.unit;
+  const sites = [
+    ['waist', 'Waist'], ['chest', 'Chest'], ['shoulders', 'Shoulders'],
+    ['armL', 'Arm L'], ['armR', 'Arm R'], ['quadL', 'Quad L'], ['quadR', 'Quad R'], ['neck', 'Neck'],
+  ];
+
+  const rows = sites
+    .map(([id, label]) => {
+      const points = state.measurements
+        .filter((m) => Number.isFinite(m[id]))
+        .map((m) => ({ dateISO: m.dateISO, value: m[id] }));
+      if (points.length < 2) return null;
+
+      const first = points[0].value;
+      const last = points[points.length - 1].value;
+      const rate = weeklySlope(points);
+      return { label, first, last, change: last - first, rate };
+    })
+    .filter(Boolean);
+
+  if (!rows.length) {
+    return '<div class="card"><p style="margin:0">Two sets of measurements and this fills in. Waist at the navel is the one that matters most — it is what separates a lean bulk from a fat one.</p></div>';
+  }
+
+  const bodyweight = state.daily.filter((d) => Number.isFinite(d.bodyweight)).map((d) => ({ dateISO: d.dateISO, value: d.bodyweight }));
+  const bwChange = bodyweight.length >= 2 ? bodyweight[bodyweight.length - 1].value - bodyweight[0].value : null;
+
+  return `<div class="card">
+    <table><thead><tr><th>Site</th><th>Then</th><th>Now</th><th>Change</th><th>Per week</th></tr></thead><tbody>
+      ${rows
+        .map(
+          (row) => `<tr><td>${escape(row.label)}</td><td>${fmtNum(row.first, 1)}</td><td>${fmtNum(row.last, 1)}</td>
+          <td style="color:${row.change > 0 ? 'var(--goodtx)' : 'var(--ink2)'};font-weight:650">${row.change >= 0 ? '+' : ''}${fmtNum(row.change, 1)}</td>
+          <td>${row.rate == null ? '—' : `${row.rate >= 0 ? '+' : ''}${fmtNum(row.rate, 2)}`}</td></tr>`
+        )
+        .join('')}
+    </tbody></table>
+    <p class="hint">${
+      bwChange == null
+        ? 'All in centimetres.'
+        : `Over the same stretch bodyweight moved <b>${bwChange >= 0 ? '+' : ''}${fmtLoad(bwChange, unit)} ${unit}</b>. On a bulk you want the arms, chest and shoulders climbing faster than the waist; on a cut you want the waist falling faster than everything else. That comparison is the entire point of measuring.`
+    }</p></div>`;
+}
+
+/** Total weight moved — useless for programming, oddly compelling at 6am. */
+function tonnageCard(state) {
+  const unit = state.settings.unit;
+  let total = 0;
+  let reps = 0;
+  for (const set of state.sets) {
+    if (set.load == null || !set.reps) continue;
+    total += systemLoad(set.load, set.bodyweightUsed || 0) * set.reps;
+    reps += set.reps;
+  }
+  if (!total) return '<div class="card"><p style="margin:0">Nothing logged yet.</p></div>';
+
+  const comparisons = [
+    [500000, 'a fully loaded articulated lorry'],
+    [180000, 'a blue whale'],
+    [80000, 'a house'],
+    [12000, 'an African elephant'],
+    [1500, 'a small car'],
+    [0, 'a grand piano'],
+  ];
+  const [, thing] = comparisons.find(([kg]) => total >= kg * 1.5) || comparisons[comparisons.length - 1];
+  const [weight] = comparisons.find(([kg]) => total >= kg * 1.5) || [400];
+
+  return `<div class="card">
+    <p style="margin:0 0 4px;font-size:30px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums">${
+      Math.round(total / 1000)
+    } tonnes</p>
+    <p style="margin:0">lifted across ${state.logs.length} sessions and ${reps.toLocaleString('en-GB')} reps — about
+    <b>${escape(String(Math.max(1, Math.round(total / (weight || 400)))))} × ${escape(thing)}</b>.</p>
+    <p class="hint">Bodyweight counts on pull-ups, chin-ups and dips, because you lifted it.</p></div>`;
+}
+
+/** A deload is offered, never imposed — and only when two triggers agree. */
+function deloadCard(state, weekly) {
+  const sleep = state.daily.filter((d) => Number.isFinite(d.sleepHours)).slice(-7);
+  const sleepMean = sleep.length >= 3 ? sleep.reduce((a, b) => a + b.sleepHours, 0) / sleep.length : null;
+
+  let topSetDrop = 0;
+  if (weekly.length >= 4) {
+    const recent = weekly.slice(-4);
+    const average = recent.reduce((a, b) => a + b.value, 0) / recent.length;
+    const last = recent[recent.length - 1].value;
+    if (last < average) topSetDrop = (average - last) / average;
+  }
+
+  const verdictOnFatigue = shouldDeload({
+    topSetDrop,
+    sleepMean,
+    nigglesThisBlock: state.niggles.filter((n) => daysBetween(state.block.startedISO, n.dateISO) >= 0).length,
+    sessionsSinceDeload: state.blockProgress.blockDone,
+  });
+
+  if (!verdictOnFatigue.recommended) return '';
+
+  return flag(
+    'warn',
+    '!',
+    `<b>Consider pulling a deload forward.</b> ${escape(verdictOnFatigue.reasons.join(', '))} — two triggers together.
+     Nothing here is scheduled: the evidence for calendar deloads is weak, and a planned one at a programme's midpoint
+     has been found to slightly reduce strength gains. This is the other case — the one where your own log says stop.
+     Keep all six sessions, cut volume about 45%, drop to RPE 7, nothing to failure, for one rotation.`
+  );
 }
 
 function tiles(state, { best, change, latestAverage, gainRate, unit }) {

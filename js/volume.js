@@ -28,6 +28,14 @@ export const FREQUENCY_WEIGHT = 0.5;
  */
 export const DIMINISHING_RETURNS_SETS = 20;
 
+/**
+ * A myo-rep cluster is one activation set to failure plus 3–5 short mini-sets.
+ * It is worth roughly two straight sets of stimulus, and counting the mini-sets
+ * individually would score it as five — which would quietly inflate every
+ * weekly total the moment the technique is used.
+ */
+export const MYO_REP_SET_VALUE = 2;
+
 const countedEntries = (weights) =>
   Object.entries(weights || {}).filter(([, w]) => Number.isFinite(w) && w >= MIN_COUNTED_WEIGHT);
 
@@ -47,8 +55,10 @@ export function sessionVolume(session, exercises) {
   for (const slot of session?.slots || []) {
     const exercise = exercises[slot.ex];
     if (!exercise) continue;
+    // The final set becomes a myo-rep cluster, worth two.
+    const sets = slot.myoReps ? slot.sets - 1 + MYO_REP_SET_VALUE : slot.sets;
     for (const [muscleId, weight] of countedEntries(exercise.m)) {
-      addTo(totals, muscleId, slot.sets * weight);
+      addTo(totals, muscleId, sets * weight);
     }
   }
   return totals;
@@ -96,23 +106,67 @@ export function volumeFromSets(sets, exercises) {
   for (const set of sets || []) {
     const exercise = exercises[set?.exerciseId];
     if (!exercise) continue;
+    const value = set.isMyoRep ? MYO_REP_SET_VALUE : 1;
     for (const [muscleId, weight] of countedEntries(exercise.m)) {
-      addTo(volume, muscleId, weight);
+      addTo(volume, muscleId, value * weight);
     }
   }
   return volume;
 }
 
 /**
- * Sum per-head volume into whole muscles (Chest, Triceps, Biceps, Back, Core).
- * Muscles without a roll key — delts, quads, forearms — are not part of any
- * roll-up and are dropped here; they are shown per-head instead.
+ * Per-head volume summed into whole muscles (Chest, Triceps, Biceps, Back,
+ * Core). Muscles without a roll key — delts, quads, forearms — are not part of
+ * any roll-up and are dropped here; they are shown per-head instead.
+ *
+ * NOTE this double counts a set that hits two heads of the same muscle: an
+ * incline press giving upper chest 1.0 and mid chest 0.3 adds 1.3 to "Chest".
+ * Use rollUpBySet for the number to compare against the ~20-sets-per-week
+ * literature, which counts whole muscles.
  */
 export function rollUp(volume, muscles) {
   const totals = {};
   for (const [muscleId, sets] of Object.entries(volume || {})) {
     const roll = muscles[muscleId]?.roll;
     if (roll) addTo(totals, roll, sets);
+  }
+  return totals;
+}
+
+/**
+ * Whole-muscle volume counted the way the research counts it: each set
+ * contributes its LARGEST head weighting to the muscle, not the sum of them.
+ *
+ * The ~20-sets-per-week figure everyone quotes is a whole-muscle number. Adding
+ * the heads together turns one incline press set into 1.3 sets of chest, and
+ * across a rotation that inflates the ledger by 10–15% — enough to make a plan
+ * inside its target band look like it is past the point of diminishing returns.
+ */
+export function rollUpBySet(session, exercises, muscles) {
+  const totals = {};
+  for (const slot of session?.slots || []) {
+    const exercise = exercises[slot.ex];
+    if (!exercise) continue;
+    const sets = slot.myoReps ? slot.sets - 1 + MYO_REP_SET_VALUE : slot.sets;
+
+    const byRoll = new Map();
+    for (const [muscleId, weight] of countedEntries(exercise.m)) {
+      const roll = muscles[muscleId]?.roll;
+      if (!roll) continue;
+      byRoll.set(roll, Math.max(byRoll.get(roll) ?? 0, weight));
+    }
+    for (const [roll, weight] of byRoll) addTo(totals, roll, sets * weight);
+  }
+  return totals;
+}
+
+/** rollUpBySet across a whole rotation. */
+export function weeklyRollUp(sessions, exercises, muscles) {
+  const totals = {};
+  for (const session of sessions || []) {
+    for (const [roll, sets] of Object.entries(rollUpBySet(session, exercises, muscles))) {
+      addTo(totals, roll, sets);
+    }
   }
   return totals;
 }

@@ -18,8 +18,11 @@ import {
   effectiveRpeDetail,
   roundToIncrement,
   systemLoad,
+  warmupRamp,
+  platesFor,
   pct,
 } from '../calc.js';
+import { resolveSession } from '../progress.js';
 import {
   escape,
   fmtLoad,
@@ -45,7 +48,10 @@ const tracksPause = (exerciseId) => exerciseId.startsWith('bench');
 
 /** Slots for the displayed session: the plan's, with swaps and additions. */
 export function slotsFor(state) {
-  const session = state.plan.sessions.find((s) => s.id === state.trainSessionId);
+  const raw = state.plan.sessions.find((s) => s.id === state.trainSessionId);
+  // Static holds appear at block 2, the heavy single doubles in blocks 4–5, the
+  // variation changes rep range — all resolved here, from the plan data.
+  const session = resolveSession(raw, state.block.idx);
   const planned = (session?.slots || []).map((slot, i) => {
     const swappedTo = state.deviations.swaps[i];
     const extraSets = state.deviations.addedSets[i] || 0;
@@ -204,7 +210,9 @@ function exerciseBlock(state, slot, slotIndex) {
   return `<div class="ex ${open ? 'open' : ''}">
     <div class="exhead" data-act="toggle-ex" data-si="${slotIndex}">
       <div class="tick ${all ? 'done' : done ? 'part' : ''}">${all ? '✓' : done || ''}</div>
-      <div class="exnm"><b>${name}${slot.idx ? '<span class="badge idx">INDEX</span>' : ''}${slot.amrap ? '<span class="badge amr">AMRAP</span>' : ''}</b>
+      <div class="exnm"><b>${name}${slot.idx ? '<span class="badge idx">INDEX</span>' : ''}${
+        slot.amrap ? '<span class="badge amr">AMRAP</span>' : ''
+      }${slot.myoReps ? '<span class="badge myo">MYO</span>' : ''}</b>
         <span class="sc">${slot.sets} × ${slot.amrap ? 'max' : slot.reps} @ RPE ${slot.rpe}${
           prescribed != null
             ? ` · ${workingMaxFor(state, slot.ex) && bodyweightFor(state, slot.ex) ? '+' : ''}${fmtLoad(prescribed, unit)} ${unit}`
@@ -221,8 +229,19 @@ function exerciseBlock(state, slot, slotIndex) {
           : `<p class="hint"><b>${slot.idx ? 'Find your baseline.' : 'No stored max for this one.'}</b> Pick a weight you think lands at the target RPE, log what actually happened, and the app carries it forward from here.</p>`
       }
       ${previous?.note ? `<p class="hint">Your last note · <b>${escape(previous.note)}</b></p>` : ''}
+      ${
+        slot.myoReps
+          ? `<div class="cue" style="border-left-color:var(--s2)"><b>Last set is a myo-rep cluster.</b>
+             One activation set to failure at ${slot.reps}+ reps, then rest 15–20 s and do 3–5 mini-sets of 3–5 reps
+             with 15–20 s between them. Stop when you cannot hit 3. Worth roughly two straight sets in about two
+             minutes — tick the MYO flag when you log it.</div>`
+          : ''
+      }
       <div class="cue">${escape(exercise.how[0])}</div>
       <div class="mini">
+        ${previous ? `<button data-act="same-as-last" data-si="${slotIndex}">Same as last time</button>` : ''}
+        ${prescribed != null && !state.plan.exercises[slot.ex].bodyweightLoaded ? `<button data-act="open-ramp" data-si="${slotIndex}">Warm-up</button>` : ''}
+        ${prescribed != null && !state.plan.exercises[slot.ex].bodyweightLoaded ? `<button data-act="open-plates" data-si="${slotIndex}">Plates</button>` : ''}
         <button data-act="add-set" data-si="${slotIndex}">+ Set</button>
         <button data-act="open-swap" data-si="${slotIndex}">Swap</button>
         <button class="warn" data-act="clear-pres" data-si="${slotIndex}">${
@@ -331,6 +350,7 @@ function drawStepSheet(ctx) {
     <div class="mini" style="justify-content:center;margin-bottom:12px">
       <button data-act="flag" data-flag="toFailure" class="${c.toFailure ? 'warn' : ''}">${c.toFailure ? '✓ ' : ''}To failure</button>
       <button data-act="flag" data-flag="isAmrap" class="${c.isAmrap ? 'warn' : ''}">${c.isAmrap ? '✓ ' : ''}AMRAP</button>
+      <button data-act="flag" data-flag="isMyoRep" class="${c.isMyoRep ? 'warn' : ''}">${c.isMyoRep ? '✓ ' : ''}Myo-reps</button>
       ${
         tracksPause(c.slot.ex)
           ? PAUSE_STYLES.map(
@@ -425,6 +445,7 @@ export const actions = {
       rpe,
       toFailure,
       isAmrap: !!slot.amrap,
+      isMyoRep: !!slot.myoReps && i === slot.sets - 1,
       wasPrescribed: load != null && load === prescribed,
       prescribedLoad: prescribed,
     });
@@ -474,6 +495,7 @@ export const actions = {
       rpe: values.rpe,
       toFailure: values.logged ? !!values.logged.toFailure : values.toFailure,
       isAmrap: values.logged ? !!values.logged.isAmrap : !!slot.amrap,
+      isMyoRep: values.logged ? !!values.logged.isMyoRep : !!slot.myoReps && i === slot.sets - 1,
       velocity: values.logged?.velocity ?? null,
       note: values.logged?.note ?? null,
       pauseStyle: values.logged?.pauseStyle ?? null,
@@ -504,6 +526,83 @@ export const actions = {
     repaintReadout(ctx);
   },
 
+  /** Today's ramp, calculated from today's top set. The ramp is not training. */
+  'open-ramp'(ctx, data) {
+    const { state } = ctx;
+    const slot = slotsFor(state)[Number(data.si)];
+    const unit = state.settings.unit;
+    const top = prescriptionFor(state, slot);
+    const ramp = warmupRamp(top, { bar: state.settings.barKg, increment: state.settings.increment });
+
+    openSheet(`<div class="ttl">Warm-up to ${fmtLoad(top, unit)} ${unit}</div>
+      <table style="margin-top:12px"><thead><tr><th>Set</th><th>Load</th><th>Reps</th><th>Rest</th></tr></thead><tbody>
+        ${ramp
+          .map(
+            (step, i) =>
+              `<tr${step.isWarmup ? '' : ' style="font-weight:700"'}><td>${
+                step.isWarmup ? i + 1 : 'work'
+              }</td><td>${fmtLoad(step.load, unit)} ${unit}</td><td>${step.reps ?? '—'}</td><td>${
+                step.restSec ? `${step.restSec}s` : '—'
+              }</td></tr>`
+          )
+          .join('')}
+      </tbody></table>
+      <p class="hint">Rest 60–90 s on the light sets and 2–3 min before the top set. <b>The ramp is not training</b> —
+      never let it accumulate fatigue.</p>
+      <button class="big ghost mt" data-act="sheet-close">Close</button>`);
+  },
+
+  /** What to actually hang on the bar, in the plates this gym owns. */
+  'open-plates'(ctx, data) {
+    const { state } = ctx;
+    const slot = slotsFor(state)[Number(data.si)];
+    const unit = state.settings.unit;
+    const target = rowValues(state, slot, Number(data.si), 0).load ?? prescriptionFor(state, slot);
+    const bar = state.settings.barKg;
+    const result = platesFor(target, { bar });
+
+    const grouped = new Map();
+    for (const plate of result.perSide) grouped.set(plate, (grouped.get(plate) || 0) + 1);
+
+    openSheet(`<div class="ttl">${fmtLoad(target, unit)} ${unit} · per side</div>
+      <p style="text-align:center;font-size:26px;font-weight:700;margin:16px 0 6px;font-variant-numeric:tabular-nums">${
+        grouped.size
+          ? [...grouped.entries()].map(([plate, count]) => `${count}×${plate}`).join('  ·  ')
+          : 'just the bar'
+      }</p>
+      <p style="text-align:center;font-size:13px">${bar} kg bar${
+        result.exact
+          ? ''
+          : ` · closest you can load is <b>${fmtLoad(result.achieved, unit)} ${unit}</b>, not ${fmtLoad(target, unit)}`
+      }</p>
+      <button class="big ghost mt" data-act="sheet-close">Close</button>`);
+  },
+
+  /** One tap fills every set of an accessory with last session's numbers. */
+  async 'same-as-last'(ctx, data) {
+    const { state } = ctx;
+    const slotIndex = Number(data.si);
+    const slot = slotsFor(state)[slotIndex];
+    const previous = lastTime(state, slot.ex);
+    if (!previous?.sets?.length) return;
+
+    state.exOpen.add(String(slotIndex));
+    for (let i = 0; i < slot.sets; i++) {
+      const source = previous.sets[i] ?? previous.sets[previous.sets.length - 1];
+      await ctx.saveSet(slotIndex, i, {
+        load: source.load,
+        reps: source.reps,
+        rpe: source.rpe ?? slot.rpe,
+        toFailure: isFailureSet(slot, i),
+        isAmrap: !!slot.amrap,
+        isMyoRep: !!slot.myoReps && i === slot.sets - 1,
+        wasPrescribed: false,
+        prescribedLoad: prescriptionFor(state, slot),
+      });
+    }
+    startRest(slot.restSec || state.plan.exercises[slot.ex].defaultRestSec);
+  },
+
   'pause-style'(ctx, data) {
     const c = ctx.state.sheetCtx;
     c.pauseStyle = c.pauseStyle === data.id ? null : data.id;
@@ -526,6 +625,7 @@ export const actions = {
       rpe: c.rpe,
       toFailure: c.toFailure,
       isAmrap: c.isAmrap,
+      isMyoRep: c.isMyoRep,
       velocity: c.velocity,
       note: c.note,
       pauseStyle: c.pauseStyle,

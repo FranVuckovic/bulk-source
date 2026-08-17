@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "meta": {
     "id": "fran-bulk-v1",
     "name": "Fran's Bulk Plan v1",
@@ -20,7 +20,8 @@
       "dip": 128.0,
       "legpress": 250,
       "ohpLadder": 30,
-      "pullupNorm": 122.0
+      "pullupNorm": 122.0,
+      "inclineSmith": 50.0
     },
     "referenceBodyweightKg": 90
   },
@@ -1101,6 +1102,57 @@
       "defaultRestSec": 150,
       "refPhotoId": null,
       "bodyweightLoaded": false
+    },
+    "inclineSmith": {
+      "name": "Incline Smith press (30\u00b0)",
+      "tracksMax": true,
+      "maxConf": "high",
+      "m": {
+        "chestUpper": 1.0,
+        "deltFront": 0.75,
+        "triLat": 0.4
+      },
+      "how": [
+        "Bench at 30\u00b0, not 45\u00b0. Above ~45\u00b0 this quietly becomes a shoulder press.",
+        "Same scapular setup as flat bench \u2014 blades back and DOWN.",
+        "The fixed bar path lets you load heavier and progress in smaller steps than dumbbells.",
+        "Full stretch at the bottom, no hard lockout at the top."
+      ],
+      "why": "Your second upper-chest driver, run alongside the dumbbell version rather than instead of it. The Smith loads heavier and progresses in 1.25 kg steps, which dumbbells cannot; the dumbbells give the longer stretch. Running one in each session gives you both mechanisms every week and two clean progression lines.",
+      "subs": [
+        "Incline barbell press",
+        "Low-incline machine press",
+        "Incline dumbbell press (30\u00b0)"
+      ],
+      "watch": "This is the precision-loading slot. Add 1.25\u20132.5 kg when all sets hit the top of the range \u2014 do not chase it with sloppy reps.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 150,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "staticHold": {
+      "name": "Static hold (rack pins)",
+      "tracksMax": false,
+      "maxConf": null,
+      "m": {},
+      "how": [
+        "Rack pins set, spotter present, always. No exceptions.",
+        "2\u20133 holds of 5\u201310 seconds at 105\u2013115% of your current max.",
+        "Unrack, hold at lockout, re-rack. Do not lower the bar.",
+        "Full recovery between holds \u2014 this is a load exposure, not conditioning."
+      ],
+      "why": "Desensitises you to supramaximal load, builds lockout and connective-tissue tolerance, and can potentiate the sets that follow. You reported these coincided with your strongest bench, and that is consistent with what they do: they make competition weight feel light.",
+      "subs": [
+        "Pin press 5\u201310 cm off the chest",
+        "Heavy rack lockout"
+      ],
+      "watch": "Introduced at block 2, never before \u2014 hanging 115% of your max on your elbows before the connective tissue has re-adapted is how you buy a six-week layoff. Counts as ZERO hypertrophy volume: a 7-second hold is a neural and connective exposure, not a growth stimulus.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 180,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
     }
   },
   "sessions": [
@@ -1122,7 +1174,11 @@
           "failLast": null,
           "pctTop": null,
           "lastHarder": null,
-          "restSec": 240
+          "restSec": 240,
+          "setsByBlock": {
+            "4": 2,
+            "5": 2
+          }
         },
         {
           "ex": "benchComp",
@@ -1138,19 +1194,6 @@
           "restSec": 210
         },
         {
-          "ex": "inclineDB",
-          "label": null,
-          "sets": 3,
-          "reps": 10,
-          "rpe": 8,
-          "idx": false,
-          "amrap": false,
-          "failLast": null,
-          "pctTop": null,
-          "lastHarder": null,
-          "restSec": 120
-        },
-        {
           "ex": "pullupNorm",
           "label": null,
           "sets": 4,
@@ -1164,6 +1207,19 @@
           "restSec": 150
         },
         {
+          "ex": "inclineDB",
+          "label": null,
+          "sets": 4,
+          "reps": 10,
+          "rpe": 8,
+          "idx": false,
+          "amrap": false,
+          "failLast": null,
+          "pctTop": null,
+          "lastHarder": null,
+          "restSec": 120
+        },
+        {
           "ex": "rowCSR",
           "label": null,
           "sets": 3,
@@ -1171,10 +1227,24 @@
           "rpe": 8.5,
           "idx": false,
           "amrap": false,
-          "failLast": null,
+          "failLast": 1,
           "pctTop": null,
           "lastHarder": null,
           "restSec": 120
+        },
+        {
+          "ex": "triOH",
+          "label": null,
+          "sets": 4,
+          "reps": 12,
+          "rpe": 10,
+          "idx": false,
+          "amrap": false,
+          "failLast": 2,
+          "pctTop": null,
+          "lastHarder": null,
+          "restSec": 75,
+          "myoReps": true
         },
         {
           "ex": "lateral",
@@ -1190,17 +1260,31 @@
           "restSec": 75
         },
         {
-          "ex": "triOH",
+          "ex": "curlIncline",
           "label": null,
-          "sets": 4,
-          "reps": 12,
+          "sets": 3,
+          "reps": 10,
           "rpe": 10,
           "idx": false,
           "amrap": false,
-          "failLast": 2,
+          "failLast": 1,
           "pctTop": null,
           "lastHarder": null,
           "restSec": 75
+        },
+        {
+          "ex": "staticHold",
+          "label": null,
+          "sets": 3,
+          "reps": 1,
+          "rpe": 8,
+          "idx": false,
+          "amrap": false,
+          "failLast": null,
+          "pctTop": null,
+          "lastHarder": null,
+          "restSec": 180,
+          "fromBlock": 2
         },
         {
           "ex": "revhyper",
@@ -1224,19 +1308,6 @@
           "idx": false,
           "amrap": false,
           "failLast": 3,
-          "pctTop": null,
-          "lastHarder": null,
-          "restSec": 75
-        },
-        {
-          "ex": "pallof",
-          "label": null,
-          "sets": 3,
-          "reps": 10,
-          "rpe": 8,
-          "idx": false,
-          "amrap": false,
-          "failLast": null,
           "pctTop": null,
           "lastHarder": null,
           "restSec": 75
@@ -1290,19 +1361,6 @@
           "restSec": 75
         },
         {
-          "ex": "calfStand",
-          "label": null,
-          "sets": 4,
-          "reps": 12,
-          "rpe": 10,
-          "idx": false,
-          "amrap": false,
-          "failLast": 3,
-          "pctTop": null,
-          "lastHarder": null,
-          "restSec": 75
-        },
-        {
           "ex": "curlIncline",
           "label": null,
           "sets": 4,
@@ -1318,7 +1376,20 @@
         {
           "ex": "skull",
           "label": null,
-          "sets": 3,
+          "sets": 2,
+          "reps": 12,
+          "rpe": 10,
+          "idx": false,
+          "amrap": false,
+          "failLast": 1,
+          "pctTop": null,
+          "lastHarder": null,
+          "restSec": 75
+        },
+        {
+          "ex": "pushdown",
+          "label": null,
+          "sets": 2,
           "reps": 12,
           "rpe": 10,
           "idx": false,
@@ -1366,6 +1437,19 @@
           "pctTop": null,
           "lastHarder": null,
           "restSec": 75
+        },
+        {
+          "ex": "calfStand",
+          "label": null,
+          "sets": 6,
+          "reps": 12,
+          "rpe": 10,
+          "idx": false,
+          "amrap": false,
+          "failLast": 3,
+          "pctTop": null,
+          "lastHarder": null,
+          "restSec": 75
         }
       ]
     },
@@ -1376,6 +1460,19 @@
       "purpose": "The biggest single contributor to chest growth in the rotation \u2014 and since size is what eventually moves the bench, a major contributor to the 140 kg.",
       "key": "Strength is nearly volume-insensitive; hypertrophy is not. This is the session where you buy size, separately from the session where you buy strength.",
       "slots": [
+        {
+          "ex": "benchComp",
+          "label": "primer single",
+          "sets": 1,
+          "reps": 1,
+          "rpe": 7.5,
+          "idx": false,
+          "amrap": false,
+          "failLast": null,
+          "pctTop": null,
+          "lastHarder": null,
+          "restSec": 210
+        },
         {
           "ex": "benchComp",
           "label": "volume",
@@ -1390,9 +1487,9 @@
           "restSec": 165
         },
         {
-          "ex": "inclineDB",
+          "ex": "inclineSmith",
           "label": null,
-          "sets": 4,
+          "sets": 5,
           "reps": 10,
           "rpe": 8,
           "idx": true,
@@ -1400,7 +1497,7 @@
           "failLast": null,
           "pctTop": null,
           "lastHarder": null,
-          "restSec": 120
+          "restSec": 150
         },
         {
           "ex": "pullupWide",
@@ -1414,6 +1511,19 @@
           "pctTop": null,
           "lastHarder": null,
           "restSec": 150
+        },
+        {
+          "ex": "triOH",
+          "label": null,
+          "sets": 3,
+          "reps": 12,
+          "rpe": 10,
+          "idx": false,
+          "amrap": false,
+          "failLast": 1,
+          "pctTop": null,
+          "lastHarder": null,
+          "restSec": 75
         },
         {
           "ex": "lateral",
@@ -1453,6 +1563,19 @@
           "pctTop": null,
           "lastHarder": null,
           "restSec": 75
+        },
+        {
+          "ex": "pallof",
+          "label": null,
+          "sets": 3,
+          "reps": 10,
+          "rpe": 8,
+          "idx": false,
+          "amrap": false,
+          "failLast": null,
+          "pctTop": null,
+          "lastHarder": null,
+          "restSec": 75
         }
       ]
     },
@@ -1477,19 +1600,6 @@
           "restSec": 105
         },
         {
-          "ex": "cableFly",
-          "label": null,
-          "sets": 3,
-          "reps": 13,
-          "rpe": 10,
-          "idx": false,
-          "amrap": false,
-          "failLast": 3,
-          "pctTop": null,
-          "lastHarder": null,
-          "restSec": 75
-        },
-        {
           "ex": "ohpLadder",
           "label": null,
           "sets": 3,
@@ -1510,7 +1620,7 @@
           "rpe": 8,
           "idx": false,
           "amrap": false,
-          "failLast": null,
+          "failLast": 1,
           "pctTop": null,
           "lastHarder": null,
           "restSec": 150
@@ -1523,29 +1633,16 @@
           "rpe": 8.5,
           "idx": false,
           "amrap": false,
-          "failLast": null,
+          "failLast": 1,
           "pctTop": null,
           "lastHarder": null,
           "restSec": 120
         },
         {
-          "ex": "facepull",
+          "ex": "triOH",
           "label": null,
           "sets": 3,
-          "reps": 17,
-          "rpe": 9,
-          "idx": false,
-          "amrap": false,
-          "failLast": null,
-          "pctTop": null,
-          "lastHarder": null,
-          "restSec": 75
-        },
-        {
-          "ex": "lateral",
-          "label": null,
-          "sets": 3,
-          "reps": 15,
+          "reps": 12,
           "rpe": 10,
           "idx": false,
           "amrap": false,
@@ -1555,10 +1652,36 @@
           "restSec": 75
         },
         {
-          "ex": "triOH",
+          "ex": "cableFly",
           "label": null,
-          "sets": 4,
-          "reps": 12,
+          "sets": 3,
+          "reps": 13,
+          "rpe": 10,
+          "idx": false,
+          "amrap": false,
+          "failLast": 3,
+          "pctTop": null,
+          "lastHarder": null,
+          "restSec": 75
+        },
+        {
+          "ex": "facepull",
+          "label": null,
+          "sets": 3,
+          "reps": 17,
+          "rpe": 9,
+          "idx": false,
+          "amrap": false,
+          "failLast": 1,
+          "pctTop": null,
+          "lastHarder": null,
+          "restSec": 75
+        },
+        {
+          "ex": "lateral",
+          "label": null,
+          "sets": 3,
+          "reps": 15,
           "rpe": 10,
           "idx": false,
           "amrap": false,
@@ -1616,19 +1739,6 @@
           "restSec": 240
         },
         {
-          "ex": "benchVar",
-          "label": null,
-          "sets": 4,
-          "reps": 4,
-          "rpe": 7.5,
-          "idx": false,
-          "amrap": false,
-          "failLast": null,
-          "pctTop": null,
-          "lastHarder": null,
-          "restSec": 165
-        },
-        {
           "ex": "dip",
           "label": null,
           "sets": 3,
@@ -1640,6 +1750,28 @@
           "pctTop": null,
           "lastHarder": null,
           "restSec": 150
+        },
+        {
+          "ex": "benchVar",
+          "label": null,
+          "sets": 4,
+          "reps": 4,
+          "rpe": 7.5,
+          "idx": false,
+          "amrap": false,
+          "failLast": null,
+          "pctTop": null,
+          "lastHarder": null,
+          "restSec": 165,
+          "repsByBlock": {
+            "0": 6,
+            "1": 6,
+            "2": 4,
+            "3": 6,
+            "4": 4,
+            "5": 4,
+            "6": 4
+          }
         },
         {
           "ex": "inclineFly",
@@ -1662,7 +1794,7 @@
           "rpe": 8.5,
           "idx": false,
           "amrap": false,
-          "failLast": null,
+          "failLast": 1,
           "pctTop": null,
           "lastHarder": null,
           "restSec": 120
@@ -1691,7 +1823,8 @@
           "failLast": 2,
           "pctTop": null,
           "lastHarder": null,
-          "restSec": 75
+          "restSec": 75,
+          "myoReps": true
         },
         {
           "ex": "wrist",
@@ -1768,19 +1901,6 @@
           "restSec": 150
         },
         {
-          "ex": "calfSeat",
-          "label": null,
-          "sets": 4,
-          "reps": 16,
-          "rpe": 10,
-          "idx": false,
-          "amrap": false,
-          "failLast": 3,
-          "pctTop": null,
-          "lastHarder": null,
-          "restSec": 75
-        },
-        {
           "ex": "lateral",
           "label": null,
           "sets": 4,
@@ -1791,7 +1911,8 @@
           "failLast": 2,
           "pctTop": null,
           "lastHarder": null,
-          "restSec": 75
+          "restSec": 75,
+          "myoReps": true
         },
         {
           "ex": "reardelt",
@@ -1844,6 +1965,19 @@
           "pctTop": null,
           "lastHarder": null,
           "restSec": 75
+        },
+        {
+          "ex": "calfSeat",
+          "label": null,
+          "sets": 6,
+          "reps": 16,
+          "rpe": 10,
+          "idx": false,
+          "amrap": false,
+          "failLast": 3,
+          "pctTop": null,
+          "lastHarder": null,
+          "restSec": 75
         }
       ]
     }
@@ -1867,7 +2001,8 @@
         "Week 1: baseline tests (heavy triple on bench) + full accessory volume. Week 2: full structure, singles capped at RPE 7.5",
         "No jumps, no static holds",
         "Accessories at full volume from day one, since you are already volume-adapted"
-      ]
+      ],
+      "deloadSessions": 0
     },
     {
       "n": "1 \u00b7 Accumulation",
@@ -1886,7 +2021,8 @@
         "Jumps introduced from week 7",
         "Week 9 is a deload",
         "Working maxes refresh at the end"
-      ]
+      ],
+      "deloadSessions": 0
     },
     {
       "n": "2 \u00b7 Intensification",
@@ -1907,7 +2043,8 @@
         "Pin press paired with the holds, 5\u201310 cm off the chest",
         "Incline switches to Smith for precise loading",
         "Overhead ladder should reach rung 2 (landmine)"
-      ]
+      ],
+      "deloadSessions": 0
     },
     {
       "n": "3 \u00b7 Accumulation II",
@@ -1927,7 +2064,8 @@
         "Static holds continue, lighter",
         "Incline back to dumbbells for the longer stretch",
         "Mid-plan physique review \u2014 send me an export"
-      ]
+      ],
+      "deloadSessions": 0
     },
     {
       "n": "4 \u00b7 Intensification II",
@@ -1946,7 +2084,8 @@
         "Bodyweight gain throttles to 0.2\u20130.25 kg/week from here",
         "Overhead ladder should be at rung 4 (seated barbell)",
         "Watch the elbows \u2014 this is the highest cumulative joint load of the plan"
-      ]
+      ],
+      "deloadSessions": 0
     },
     {
       "n": "5 \u00b7 Specialisation",
@@ -1966,7 +2105,8 @@
         "Bench exposures rise to 5 if recovery allows",
         "Heavy static holds emphasised \u2014 this is where they pay off",
         "Cap rises to RPE 9, the highest of the plan"
-      ]
+      ],
+      "deloadSessions": 0
     },
     {
       "n": "Peak",
@@ -1986,7 +2126,8 @@
         "No failure work at all",
         "One true max attempt, spotted, at the end",
         "Do not cut food during the taper"
-      ]
+      ],
+      "deloadSessions": 0
     }
   ],
   "fallbacks": {
@@ -2160,6 +2301,41 @@
       "s": "Cardio and life",
       "t": "What we are aiming at, honestly",
       "c": "<table style=\"width:100%;font-size:13px\">\n<tr><td style=\"padding:5px 0\">Peaked 140 kg by end of March</td><td style=\"text-align:right;font-weight:700\">70\u201380% likely</td></tr>\n<tr><td style=\"padding:5px 0\">Normal-day 140 kg by end of March</td><td style=\"text-align:right;font-weight:700\">40\u201350%</td></tr>\n<tr><td style=\"padding:5px 0\">150 kg in any form by March</td><td style=\"text-align:right;font-weight:700\">unlikely</td></tr>\n</table>\n<p>The most probable outcome is a normal-day bench around 130\u2013135 with a peaked max of 140\u2013145, at roughly 95\u201398 kg bodyweight, with visibly bigger delts, arms and upper chest.</p>\n<p><strong>The thing that actually decides it is not in this app.</strong> Your history is short bursts of progress separated by long plateaus in a deficit \u2014 which means you have never once run a structured programme in a sustained surplus. That is not a small missing variable. It is the whole thing.</p>\n<p>Finishing 33 weeks of this matters more than any single decision inside it.</p>"
+    },
+    {
+      "s": "Execution",
+      "t": "Myo-reps \u2014 how to actually do them",
+      "c": "<p>One <strong>activation set</strong> taken to genuine failure at 12\u201320 reps. Rack it, breathe for 15\u201320 seconds, then do <strong>3\u20135 mini-sets of 3\u20135 reps</strong> with 15\u201320 seconds between them. Stop when you can no longer get three clean reps. The whole thing takes about two minutes.</p>\n<p><strong>Why it works.</strong> The activation set does the hard part \u2014 it fatigues the muscle enough that every subsequent rep recruits the high-threshold fibres immediately. The mini-sets are then almost pure effective reps, with none of the warm-up cost of a fresh straight set. A trial comparing myo-reps against traditional straight sets found the same size and strength gains with roughly 30% less total volume load, in about 60% less time.</p>\n<p><strong>What that means for you.</strong> The finding is about efficiency, not superiority. So they are <em>added</em> to the end of an exercise here rather than replacing sets \u2014 you are not short of time, you are chasing stimulus. Three exercises carry them: overhead triceps extension in A, EZ curl in E, lateral raise in F.</p>\n<p><strong>Where they do not belong.</strong> Anything heavy, anything barbell, anything where failure has a cost. Never on the bench.</p>"
+    },
+    {
+      "s": "The bench",
+      "t": "Static holds and why they are gated to block 2",
+      "c": "<p>2\u20133 holds of 5\u201310 seconds at <strong>105\u2013115% of your current max</strong>. Rack pins set, spotter present, always. Unrack, hold at lockout, re-rack. You never lower the bar.</p>\n<p><strong>What they do.</strong> Three things: they desensitise you to loads above your max, so competition weight stops feeling heavy; they build lockout strength and connective-tissue tolerance; and they can potentiate the sets that follow.</p>\n<p><strong>What they do not do.</strong> They are joint-angle specific \u2014 a lockout hold trains your lockout. At 190 cm with long arms your sticking point is almost certainly mid-range, so these are a confidence and load-exposure tool, not a fix for your weak point. That is what the pin press in the variation slot is for.</p>\n<p><strong>Why not before block 2.</strong> You are coming off a cut. Hanging 115% of your max on your elbows before the connective tissue has re-adapted is how you buy a six-week layoff. The app will not show them until block 2 \u2014 that is deliberate, not an oversight.</p>"
+    },
+    {
+      "s": "The bench",
+      "t": "Why there are two heavy singles a week now",
+      "c": "<p>Session A takes a top single at the block's RPE cap. Session C now opens with a <strong>primer single one full RPE point lighter</strong>, before the 5\u00d75.</p>\n<p><strong>Why this is nearly free.</strong> Heavy pressing singles are not very fatiguing \u2014 far less than heavy squats or pulls. The cost of a single is skill and connective tissue, not systemic recovery. Frequency is also the single strongest predictor of strength gain there is: each added bench day up to about four is worth roughly 28% faster progress, even with volume matched.</p>\n<p><strong>Why the primer is lighter.</strong> At RPE 7.5 it is practice, not a test. It also potentiates the volume work that follows, so the 5\u00d75 tends to feel better, not worse. The Eastern-bloc programmes that produced the best bench pressers in history are built almost entirely on submaximal frequency: build and practise, do not test.</p>\n<p><strong>The rule that still holds.</strong> Maximum two singles above 90% in a session, and never miss a rep. In blocks 4 and 5 session A takes two; everywhere else it takes one.</p>"
+    },
+    {
+      "s": "Execution",
+      "t": "Cheap tricks that buy real stimulus",
+      "c": "<p>The speed day is one of these \u2014 maximal intent at 60\u201370% recruits high-threshold fibres without the fatigue of a heavy set, and volume-equated it was worth <strong>+18.2% on the bench against +9.7%</strong> for deliberately slow lifting. Here are the others this plan uses, all on the same principle: buy stimulus without buying fatigue.</p>\n<ul>\n<li><strong>Lengthened-position emphasis.</strong> Flies with the arms travelling behind the torso, incline curls with the elbows behind you, overhead extensions with a full stretch. Training a muscle at long lengths produces meaningfully more growth than training it short, and it costs nothing but attention.</li>\n<li><strong>A pause in the stretch.</strong> One to two seconds at the bottom of a fly or a curl. Free, and it removes the bounce that was doing part of the work.</li>\n<li><strong>Myo-reps.</strong> Two minutes for roughly the stimulus of three straight sets, on movements where failure is free.</li>\n<li><strong>The primer single.</strong> A heavy single before volume work potentiates the sets that follow.</li>\n<li><strong>Failure aimed, not cut.</strong> Every row, face pull and isolation set finishes at or near failure. Every heavy press stops short. Proximity to failure drives hypertrophy and has essentially no relationship with strength gain \u2014 so this costs your bench nothing and buys size everywhere else.</li>\n</ul>\n<p>The common thread: fatigue is the currency. Anything that raises stimulus without spending it is worth taking.</p>"
+    },
+    {
+      "s": "Measuring progress",
+      "t": "Deloads are earned, not scheduled",
+      "c": "<p>This plan has <strong>no scheduled deload</strong>, and that is a deliberate change from how most programmes are written.</p>\n<p><strong>Why.</strong> The evidence is thinner than the folklore. A controlled trial that placed a one-week deload at the midpoint of a programme found it slightly <em>reduced</em> lower-body strength gains against training straight through, with no hypertrophy benefit either way. Another found complete cessation actively impaired strength, with more soreness and less motivation, not less. The risk of genuine non-functional overreaching without deloading is low.</p>\n<p><strong>What replaces it.</strong> The app watches the triggers this plan already names \u2014 a top set more than 5% below your rolling average, sleep under 7 hours, two or more niggles in a block \u2014 and offers a deload when <strong>two of them fire together</strong>. One trigger is a bad week. Two is a pattern.</p>\n<p><strong>What a deload looks like when you take one.</strong> Keep all six sessions. Cut volume about 45%, drop everything to RPE 7, nothing to failure, for one rotation. You are not resting; you are training lightly. That distinction is the whole point.</p>"
+    },
+    {
+      "s": "Measuring progress",
+      "t": "What the tape measure tells you that the scale cannot",
+      "c": "<p>The scale tells you whether you are gaining. It cannot tell you <strong>what</strong> you are gaining. That is what the tape is for, and it matters just as much on a cut as on a bulk.</p>\n<p><strong>On a bulk</strong>, you want arms, chest and shoulders climbing faster than the waist. If the waist is rising at more than roughly a third of the rate bodyweight is, the surplus is too big \u2014 slow it down regardless of what the scale says.</p>\n<p><strong>On a cut</strong>, you want the opposite: waist falling fast while the arms and chest hold. If the arms are falling as fast as the waist, you are losing muscle and the deficit is too aggressive.</p>\n<p><strong>How to take them.</strong> Same time of day, relaxed, no flexing, waist at the navel. Consistency of method beats precision \u2014 a slightly wrong number taken the same way every week is far more useful than an accurate one taken differently each time.</p>\n<p>The Progress screen shows every site with its rate of change per week, next to what bodyweight did over the same stretch. That comparison is the entire point of measuring.</p>"
+    },
+    {
+      "s": "Measuring progress",
+      "t": "How much volume is enough",
+      "c": "<p>The honest answer from the current evidence: <strong>more sets keep producing more growth, with diminishing returns and no clear ceiling</strong> that anyone has managed to identify. The largest meta-regression to date \u2014 67 studies, over 2,000 subjects \u2014 found hypertrophy still climbing at the top of the range studied. Strength, by contrast, shows much sharper diminishing returns: you do not need much volume to get strong, you need frequency and practice.</p>\n<p><strong>What limits you is not the stimulus.</strong> It is recovery, session length, and joints. That is why this plan puts its volume where it is cheap \u2014 cables, machines, isolation \u2014 and keeps it lean where it is expensive.</p>\n<p><strong>Per session</strong>, returns become hard to detect past roughly 11 fractional sets for one muscle in one workout. No session here exceeds that, which is why the work is spread across four to five exposures a week rather than piled into two.</p>\n<p><strong>On counting.</strong> A set counts fractionally: 1.0 where the muscle is the main mover, 0.5 for a meaningful supporting role, nothing below 0.3. That fractional method predicts growth better than counting direct sets alone. The whole-muscle figures on the Plan screen take the largest head contribution per set rather than adding heads together \u2014 adding them double counts, and the familiar ~20-sets-a-week figure is a whole-muscle number.</p>"
     }
   ]
 }

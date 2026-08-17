@@ -76,13 +76,16 @@ export function view(ctx) {
     } measurements · ${state.media.length} media · ${bytes(state.storage.usage)} used${
       state.storage.quota ? ` of ${bytes(state.storage.quota)} available` : ''
     }</p>
-    <button class="big mt" data-act="history-backup">Download a JSON backup now</button>
-    <button class="big ghost mt" data-act="not-yet" data-what="Zip export">Export everything as a zip</button>
-    <button class="big ghost mt" data-act="not-yet" data-what="Import">Import from a backup</button>
-    <button class="big ghost mt" data-act="not-yet" data-what="Backup verification">Verify backup can be restored</button>
-    <p class="hint">The JSON backup is a plain file with every record in it — enough to restore from by hand, and
-    what the app offers you before any deletion. The zip export with CSVs and photos arrives with the export stage.</p>
-    <p class="hint">The verify button restores your last export into a scratch copy and checks it matches, so you find out a backup is broken <b>before</b> you need it — not after.</p>
+    <button class="big mt" data-act="open-export">Export a zip</button>
+    <button class="big ghost mt" data-act="pick-import">Import from a zip</button>
+    <button class="big ghost mt" data-act="pick-verify">Verify a backup restores</button>
+    <button class="big ghost mt" data-act="history-backup">Download a plain JSON backup</button>
+    <input type="file" id="import-file" accept=".zip,application/zip" hidden data-act-file="import">
+    <input type="file" id="verify-file" accept=".zip,application/zip" hidden data-act-file="verify">
+    <p class="hint">The zip holds CSVs you can open in anything, a lossless <b>data.json</b> for restoring, your plan,
+    and your photos as real files. It is also how data moves between your phone and your laptop.</p>
+    <p class="hint">Verify reads a backup and checks it against what is stored, without touching your data — so you
+    find out a backup is broken <b>before</b> you need it, not after.</p>
   </div>
 
   <h3>Privacy &amp; permissions</h3>
@@ -102,12 +105,99 @@ export function view(ctx) {
     <p class="hint">Requires typing ERASE. Everything logged goes: sessions, sets, weigh-ins, measurements, photos and maxes. The plan file is untouched.</p></div>
 
   <h3>About</h3>
-  <div class="card"><p style="margin:0">Bulk · plan format ${state.plan.format} · database v${
-    state.integrity?.formatVersion ?? '—'
-  } · ${escape(state.plan.meta.id)}</p></div>`;
+  <div class="card"><p style="margin:0">Bulk · build <b>${escape(state.buildVersion || 'not cached')}</b> ·
+    plan format ${state.plan.format} · database v${state.integrity?.formatVersion ?? '—'} ·
+    ${escape(state.plan.meta.id)}</p>
+    <p class="hint">The build number comes from the service worker's cache version. If you update the app and this
+    does not change, the update has not reached this device — close every tab and reopen.</p></div>`;
 }
 
+/** File pickers, handled on change rather than click. */
+export const files = {
+  async import(ctx, file) {
+    const restored = await ctx.importZip(file);
+    openSheet(`<div class="ttl">Imported</div>
+      <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">Restored from ${escape(file.name)}.</p>
+      <p style="text-align:center;font-size:13px">${Object.entries(restored)
+        .filter(([, count]) => count)
+        .map(([store, count]) => `${count} ${store}`)
+        .join(' · ')}</p>
+      <button class="big mt" data-act="sheet-close">Done</button>`);
+  },
+
+  async verify(ctx, file) {
+    const report = await ctx.verifyBackup(file);
+    openSheet(`<div class="ttl">${report.ok ? 'Backup verified' : 'Backup does not match'}</div>
+      <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">${
+        report.ok
+          ? 'Every record in the backup is accounted for here.'
+          : escape(report.problems.join('; '))
+      }</p>
+      <p style="text-align:center;font-size:13px">${
+        report.ok
+          ? 'It was read, parsed and counted against your live data. Nothing was changed.'
+          : 'That is expected if the backup is older than your data. If it is not, take a fresh export now.'
+      }</p>
+      <button class="big mt" data-act="sheet-close">Close</button>`);
+  },
+};
+
 export const actions = {
+  'open-export'(ctx) {
+    const today = new Date().toISOString().slice(0, 10);
+    const earliest = ctx.state.logs[0]?.dateISO?.slice(0, 10) || today;
+
+    openSheet(`<div class="ttl">Export</div>
+      <p style="font-size:13px;margin:12px 0 8px;color:var(--ink2)">Pick a range and what to include. One zip comes
+      out: CSVs for reading, JSON for restoring, photos as files.</p>
+      <div class="g2">
+        <div><label for="ex-from">From</label><input id="ex-from" type="date" value="${earliest}"></div>
+        <div><label for="ex-to">To</label><input id="ex-to" type="date" value="${today}"></div>
+      </div>
+      <div style="margin-top:11px;font-size:13.5px;line-height:2.1">
+        ${[
+          ['sets', 'Sets &amp; sessions'],
+          ['daily', 'Daily — weight, body fat, sleep'],
+          ['measurements', 'Measurements'],
+          ['niggles', 'Niggles'],
+          ['media', 'Photos &amp; form-check references'],
+          ['maxes', 'Working maxes'],
+          ['plan', 'The plan itself'],
+        ]
+          .map(
+            ([id, label]) =>
+              `<label style="text-transform:none;letter-spacing:0;font-size:13.5px;color:var(--ink);font-weight:400">
+                <input type="checkbox" id="ex-${id}" checked style="width:auto;margin-right:8px">${label}</label>`
+          )
+          .join('')}
+      </div>
+      <button class="big mt" data-act="do-export">Build the zip</button>
+      <button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
+  },
+
+  async 'do-export'(ctx) {
+    const value = (id) => document.getElementById(id)?.value || null;
+    const checked = (id) => !!document.getElementById(`ex-${id}`)?.checked;
+    const include = Object.fromEntries(
+      ['sets', 'daily', 'measurements', 'niggles', 'media', 'maxes', 'plan'].map((id) => [id, checked(id)])
+    );
+
+    const meta = await ctx.exportZip({ from: value('ex-from'), to: value('ex-to'), include });
+    openSheet(`<div class="ttl">Exported</div>
+      <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">Your zip is in your downloads.</p>
+      <p style="text-align:center;font-size:13px">${meta.counts.sessionLogs} sessions · ${meta.counts.sets} sets ·
+      ${meta.counts.daily} daily · ${meta.counts.measurements} measurements · ${meta.counts.media} media</p>
+      <button class="big mt" data-act="sheet-close">Done</button>`);
+  },
+
+  'pick-import'() {
+    document.getElementById('import-file')?.click();
+  },
+
+  'pick-verify'() {
+    document.getElementById('verify-file')?.click();
+  },
+
   'not-yet'(_ctx, data) {
     openSheet(`<div class="ttl">${escape(data.what)}</div>
       <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">Not built yet.</p>

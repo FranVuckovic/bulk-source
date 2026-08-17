@@ -18,6 +18,10 @@ import {
   isPartialSession,
   blockProgress,
   planProgress,
+  resolveSlot,
+  resolveSession,
+  isDeloadSession,
+  applyDeload,
 } from '../js/progress.js';
 
 const PLAN = JSON.parse(
@@ -127,7 +131,7 @@ test('a partial session still advances the rotation', () => {
 
 test('prescribedSetCount adds up the plan slots', () => {
   const sessionA = PLAN.sessions.find((s) => s.id === 'A');
-  assert.equal(prescribedSetCount(sessionA), 30);
+  assert.equal(prescribedSetCount(sessionA), 34);
   assert.equal(prescribedSetCount({ slots: [] }), 0);
   assert.equal(prescribedSetCount(null), 0);
 });
@@ -276,4 +280,61 @@ test('a plan whose start date has not arrived yet still reports week one', () =>
   assert.equal(early.calendarWeek, 1);
   assert.equal(early.pace, null, 'no elapsed time, no pace');
   assert.equal(early.sessionsDone, 2);
+});
+
+/* ── resolving a session for the block you are in ────────────────────── */
+
+test('a slot gated to a later block does not exist before it', () => {
+  const session = {
+    id: 'A',
+    slots: [
+      { ex: 'benchComp', sets: 1, reps: 1, rpe: 8 },
+      { ex: 'staticHold', sets: 3, reps: 1, rpe: 8, fromBlock: 2 },
+    ],
+  };
+
+  assert.equal(resolveSession(session, 0).slots.length, 1, 'block 0 has no static holds');
+  assert.equal(resolveSession(session, 1).slots.length, 1);
+  assert.equal(resolveSession(session, 2).slots.length, 2, 'they appear at block 2');
+  assert.equal(resolveSession(session, 5).slots.length, 2, 'and stay from then on');
+});
+
+test('sets and reps can vary by block', () => {
+  const single = { ex: 'benchComp', sets: 1, reps: 1, rpe: 8, setsByBlock: { 4: 2, 5: 2 } };
+  assert.equal(resolveSlot(single, 1).sets, 1);
+  assert.equal(resolveSlot(single, 4).sets, 2, 'two heavy singles in the intensification blocks');
+
+  const variation = { ex: 'benchVar', sets: 4, reps: 4, rpe: 7.5, repsByBlock: { 0: 6, 1: 6, 3: 6 } };
+  assert.equal(resolveSlot(variation, 1).reps, 6, 'sixes when the block is for size');
+  assert.equal(resolveSlot(variation, 2).reps, 4, 'fours when it is for strength');
+  assert.equal(resolveSlot(variation, 4).reps, 4);
+
+  // Resolution never mutates the plan it was given.
+  const before = JSON.stringify(variation);
+  resolveSlot(variation, 0);
+  assert.equal(JSON.stringify(variation), before);
+});
+
+test('the deload is the last rotation of a block, not the middle of it', () => {
+  const block = { sessionTarget: 36, deloadSessions: 6 };
+
+  assert.equal(isDeloadSession(0, block), false);
+  assert.equal(isDeloadSession(17, block), false, 'the midpoint is not a deload');
+  assert.equal(isDeloadSession(29, block), false);
+  assert.equal(isDeloadSession(30, block), true, 'the final six sessions are');
+  assert.equal(isDeloadSession(35, block), true);
+
+  assert.equal(isDeloadSession(10, { sessionTarget: 12, deloadSessions: 0 }), false, 'short blocks have none');
+});
+
+test('a deload cuts volume and effort without removing the session', () => {
+  const slot = { ex: 'benchComp', sets: 5, reps: 5, rpe: 8, failLast: 2, myoReps: true };
+  const deloaded = applyDeload(slot);
+
+  assert.equal(deloaded.sets, 3, 'volume down about 45%');
+  assert.equal(deloaded.rpe, 7, 'nothing above RPE 7');
+  assert.equal(deloaded.failLast, null, 'and nothing to failure');
+  assert.equal(deloaded.myoReps, false);
+  assert.equal(deloaded.isDeload, true);
+  assert.equal(slot.sets, 5, 'the plan itself is untouched');
 });

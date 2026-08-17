@@ -14,6 +14,8 @@ import {
   epley,
   estimateE1rm,
   roundToIncrement,
+  warmupRamp,
+  platesFor,
   prescribedLoad,
   effectiveRpe,
   effectiveRpeDetail,
@@ -500,4 +502,45 @@ test('effectiveRpeDetail says when the table has run out', () => {
 
   assert.equal(effectiveRpeDetail(null, 115, 5), null);
   assert.equal(effectiveRpeDetail(90, null, 5), null);
+});
+
+/* ── warm-up ramps and plates ────────────────────────────────────────── */
+
+test('the warm-up ramp climbs to the working load and never past it', () => {
+  const ramp = warmupRamp(105, { bar: 20, increment: 2.5 });
+
+  assert.equal(ramp[0].load, 20, 'starts with the empty bar');
+  assert.equal(ramp[ramp.length - 1].load, 105, 'ends on the working set');
+  assert.equal(ramp[ramp.length - 1].isWarmup, false);
+
+  const loads = ramp.map((step) => step.load);
+  assert.deepEqual(loads, [...loads].sort((a, b) => a - b), 'monotonically heavier');
+  assert.ok(loads.every((load) => load <= 105));
+
+  // Reps fall as the load rises — the ramp must not accumulate fatigue.
+  const warmups = ramp.filter((step) => step.isWarmup);
+  for (let i = 1; i < warmups.length; i++) assert.ok(warmups[i].reps <= warmups[i - 1].reps);
+
+  assert.deepEqual(warmupRamp(20, { bar: 20 }), [], 'nothing to ramp to');
+  assert.deepEqual(warmupRamp(null), []);
+});
+
+test('plate maths uses the plates actually in the gym', () => {
+  // 20 kg bar, plates 20/10/5/2.5/1.25
+  const hundred = platesFor(100);
+  assert.deepEqual(hundred.perSide, [20, 20]);
+  assert.equal(hundred.achieved, 100);
+  assert.equal(hundred.exact, true);
+
+  const ninetyTwoFive = platesFor(92.5);
+  assert.deepEqual(ninetyTwoFive.perSide, [20, 10, 5, 1.25]);
+  assert.equal(ninetyTwoFive.achieved, 92.5);
+
+  // A load the plates cannot make says so rather than pretending.
+  const odd = platesFor(101);
+  assert.equal(odd.exact, false);
+  assert.equal(odd.achieved, 100);
+
+  assert.deepEqual(platesFor(20).perSide, [], 'just the bar');
+  assert.equal(platesFor(15).achieved, 20, 'nothing lighter than the bar exists');
 });

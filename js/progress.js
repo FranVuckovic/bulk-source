@@ -389,3 +389,93 @@ export function decisionFlags({ bodyweight = [], e1rmWeekly = [], sleep = [], ni
 
   return flags;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Resolving a session for the block you are actually in
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/*
+ * A plan slot can vary by block. Three ways, all data:
+ *
+ *   fromBlock     the slot does not exist before that block — static holds are
+ *                 introduced at block 2 and must not appear before it
+ *   setsByBlock   more sets in some blocks, e.g. two heavy singles when the
+ *                 block's job is intensification rather than accumulation
+ *   repsByBlock   the bench variation runs 4s in intensification blocks and 6s
+ *                 in accumulation blocks
+ *
+ * Resolving happens on read so the plan file stays a single description of all
+ * 33 weeks rather than seven copies of the same session.
+ */
+export function resolveSlot(slot, blockIdx) {
+  if (!slot) return null;
+  if (Number.isFinite(slot.fromBlock) && blockIdx < slot.fromBlock) return null;
+
+  const key = String(blockIdx);
+  return {
+    ...slot,
+    sets: slot.setsByBlock?.[key] ?? slot.sets,
+    reps: slot.repsByBlock?.[key] ?? slot.reps,
+  };
+}
+
+export function resolveSession(session, blockIdx) {
+  if (!session) return session;
+  return { ...session, slots: (session.slots || []).map((s) => resolveSlot(s, blockIdx)).filter(Boolean) };
+}
+
+/**
+ * Deloads are EARNED, not scheduled.
+ *
+ * The evidence for planned deloads is thinner than the folklore. A one-week
+ * deload at the midpoint of a programme has been found to slightly REDUCE
+ * strength gains against training through, with no hypertrophy benefit, and the
+ * risk of non-functional overreaching without deloading is low. A controlled
+ * trial also found complete cessation impaired strength relative to training
+ * through, with more soreness and less motivation, not less.
+ *
+ * So nothing here schedules one. `deloadSessions` is 0 in the shipped plan and
+ * this function returns false. What the app does instead is watch for the
+ * triggers the plan already names — a top set 5% below your rolling average
+ * twice, sleep under 7 h, two niggles in a block — and offer a deload when they
+ * fire. See shouldDeload().
+ */
+export function isDeloadSession(blockDone, block) {
+  const deload = block?.deloadSessions || 0;
+  const target = block?.sessionTarget || 0;
+  if (!deload || !target) return false;
+  return blockDone >= target - deload;
+}
+
+/**
+ * Whether the evidence in your own log says to take one now. The triggers are
+ * the plan's own, and two must fire together: any single one of them is a bad
+ * week, and a bad week is not a reason to cut training.
+ */
+export function shouldDeload({ topSetDrop = 0, sleepMean = null, nigglesThisBlock = 0, sessionsSinceDeload = 0 } = {}) {
+  const reasons = [];
+  if (topSetDrop >= FLAG_RULES.topSetDropPct) reasons.push('top set is more than 5% below your rolling average');
+  if (sleepMean != null && sleepMean < FLAG_RULES.sleepFloor) reasons.push(`sleep averaging ${sleepMean.toFixed(1)} h`);
+  if (nigglesThisBlock >= FLAG_RULES.nigglesPerBlock) reasons.push(`${nigglesThisBlock} niggles logged this block`);
+
+  return {
+    recommended: reasons.length >= 2 && sessionsSinceDeload >= 12,
+    reasons,
+    watch: reasons.length === 1,
+  };
+}
+
+/** Deload loads: volume down 40–50%, intensity down about 10%, nothing near failure. */
+export const DELOAD = Object.freeze({ setFactor: 0.55, loadFactor: 0.9, rpeCap: 7 });
+
+export function applyDeload(slot) {
+  if (!slot) return slot;
+  return {
+    ...slot,
+    sets: Math.max(1, Math.round(slot.sets * DELOAD.setFactor)),
+    rpe: Math.min(slot.rpe, DELOAD.rpeCap),
+    failLast: null,
+    myoReps: false,
+    isDeload: true,
+  };
+}

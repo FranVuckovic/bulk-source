@@ -15,7 +15,7 @@ const PLAN = JSON.parse(
 );
 
 test('the plan declares its format and its rotation', () => {
-  assert.equal(PLAN.format, 1);
+  assert.equal(PLAN.format, 2, 'bumped when slots gained block-dependent behaviour');
   assert.deepEqual(PLAN.meta.rotation, ['A', 'B', 'C', 'D', 'E', 'F']);
   assert.equal(PLAN.meta.startDateISO, '2026-08-17');
   assert.match(PLAN.meta.startDateISO, /^\d{4}-\d{2}-\d{2}$/);
@@ -81,7 +81,7 @@ test('exercises that track a max declare how much to trust it', () => {
   }
 
   // The lifts the protocol names as high-confidence strength numbers.
-  for (const id of ['benchComp', 'benchVar', 'inclineDB', 'pullupNorm', 'dip', 'legpress']) {
+  for (const id of ['benchComp', 'benchVar', 'inclineDB', 'inclineSmith', 'pullupNorm', 'dip', 'legpress']) {
     assert.equal(PLAN.exercises[id].maxConf, 'high', id);
   }
 
@@ -100,7 +100,7 @@ test('index sets are on the lifts the protocol names, one per lift per session',
     'A:benchComp',
     'A:pullupNorm',
     'B:legpress',
-    'C:inclineDB',
+    'C:inclineSmith',
     'C:pullupWide',
     'D:ohpLadder',
     'E:benchComp',
@@ -112,6 +112,32 @@ test('index sets are on the lifts the protocol names, one per lift per session',
   assert.equal(sessionE.slots[0].amrap, true);
   assert.equal(sessionE.slots[0].ex, 'benchComp');
   assert.equal(sessionE.slots[0].idx, true);
+});
+
+test('static holds exist, are gated to block 2, and count no volume', () => {
+  const hold = PLAN.sessions.find((s) => s.id === 'A').slots.find((slot) => slot.ex === 'staticHold');
+  assert.ok(hold, 'session A carries the static holds');
+  assert.equal(hold.fromBlock, 2, 'never before block 2 — connective tissue has to re-adapt first');
+  assert.deepEqual(PLAN.exercises.staticHold.m, {}, 'a 7-second hold is not a growth stimulus');
+  assert.equal(PLAN.exercises.staticHold.tracksMax, false);
+});
+
+test('the bench variation changes rep range by block', () => {
+  const variation = PLAN.sessions.find((s) => s.id === 'E').slots.find((slot) => slot.ex === 'benchVar');
+  assert.equal(variation.repsByBlock['1'], 6, 'sixes in the accumulation blocks');
+  assert.equal(variation.repsByBlock['2'], 4, 'fours in the intensification blocks');
+  assert.equal(variation.repsByBlock['4'], 4);
+});
+
+test('the heavy single doubles in the intensification blocks', () => {
+  const single = PLAN.sessions.find((s) => s.id === 'A').slots[0];
+  assert.equal(single.sets, 1);
+  assert.equal(single.setsByBlock['4'], 2, 'two singles above 90%, which is the plan\'s own maximum');
+  assert.equal(single.setsByBlock['5'], 2);
+});
+
+test('nothing schedules a deload — they are earned', () => {
+  for (const block of PLAN.blocks) assert.equal(block.deloadSessions, 0, block.n);
 });
 
 test('every block declares a session target derived from its weeks', () => {
@@ -189,7 +215,7 @@ test('session sizes match what the plan says they are', () => {
 
   // Straight from the shipped sessions — a slot added or dropped by hand shows
   // up here rather than quietly changing a session's length.
-  assert.deepEqual(setsPerSession, { A: 30, B: 29, C: 22, D: 35, E: 24, F: 32 });
+  assert.deepEqual(setsPerSession, { A: 34, B: 32, C: 30, D: 34, E: 24, F: 34 });
   for (const session of PLAN.sessions) {
     assert.ok(session.mins, `${session.id} has no duration estimate`);
     assert.ok(session.purpose && session.key, `${session.id} has no rationale`);

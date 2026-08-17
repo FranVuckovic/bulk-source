@@ -31,7 +31,19 @@ import {
   isPartialSession,
   sortLogsByDate,
 } from './progress.js';
-import { escape, openSheet, closeSheet, stopRest, fromDisplay, toDisplay, parseNumber } from './ui/components.js';
+import { e1rm, systemLoad } from './calc.js';
+import { buildExport, parseImport, restore } from './export.js';
+import {
+  escape,
+  fmtLoad,
+  fmtNum,
+  openSheet,
+  closeSheet,
+  stopRest,
+  fromDisplay,
+  toDisplay,
+  parseNumber,
+} from './ui/components.js';
 import * as train from './ui/train.js';
 import * as body from './ui/body.js';
 import * as progress from './ui/progress.js';
@@ -45,9 +57,10 @@ const TABS = { train: 'Bulk', body: 'Body', prog: 'Progress', plan: 'Plan', set:
 const state = {
   db: null,
   plan: null,
-  settings: { unit: 'kg', increment: 2.5, bodyweight: 90 },
+  settings: { unit: 'kg', increment: 2.5, bodyweight: 90, barKg: 20 },
   storage: { supported: false, persisted: false },
   integrity: null,
+  buildVersion: null,
 
   logs: [],
   sets: [],
@@ -256,10 +269,57 @@ async function saveSet(slotIndex, setIndex, values) {
     pauseStyle: values.pauseStyle ?? existing?.pauseStyle ?? null,
   };
 
+  // Was this a record? Ask BEFORE the set is stored, or it beats itself.
+  const beaten = personalBestBefore(record);
+
   const id = await put(state.db, 'sets', record);
   state.loggedSets.set(key, { ...record, id });
   state.sets = await getAll(state.db, 'sets');
   render();
+
+  if (beaten) celebrate(beaten);
+}
+
+/**
+ * The best e1RM this lift has ever shown, and whether this set beat it.
+ *
+ * Only high-confidence tracked lifts qualify: a curl "record" from a formula
+ * known to fail on isolation work is not a record. Existing sets are read from
+ * state, which is why this has to run before the new one lands.
+ */
+function personalBestBefore(record) {
+  const exercise = state.plan.exercises[record.exerciseId];
+  if (!exercise?.tracksMax || exercise.maxConf !== 'high') return null;
+  if (record.load == null || !record.reps) return null;
+
+  const value = e1rm(systemLoad(record.load, record.bodyweightUsed || 0), record.reps, record.rpe ?? 8);
+  if (value == null) return null;
+
+  let best = 0;
+  for (const set of state.sets) {
+    if (set.exerciseId !== record.exerciseId || set.id === record.id) continue;
+    if (set.load == null || !set.reps) continue;
+    const previous = e1rm(systemLoad(set.load, set.bodyweightUsed || 0), set.reps, set.rpe ?? 8);
+    if (previous != null && previous > best) best = previous;
+  }
+
+  if (!best || value <= best) return null;
+  return { name: exercise.name, value, previous: best, gain: value - best };
+}
+
+function celebrate(pr) {
+  const unit = state.settings.unit;
+  openSheet(`<div class="ttl">That is a record</div>
+    <p style="text-align:center;font-size:34px;font-weight:800;margin:14px 0 2px;letter-spacing:-.02em">${fmtLoad(
+      pr.value,
+      unit
+    )} ${unit}</p>
+    <p style="text-align:center;font-size:13px;margin:0 0 4px">estimated max · ${escape(pr.name)}</p>
+    <p style="text-align:center;font-size:14px;color:var(--goodtx);font-weight:650">+${fmtNum(pr.gain, 1)} ${unit} on your previous best of ${fmtLoad(
+      pr.previous,
+      unit
+    )}</p>
+    <button class="big mt" data-act="sheet-close">Back to it</button>`);
 }
 
 async function removeSet(slotIndex, setIndex) {
@@ -487,18 +547,57 @@ const ctx = {
     resetBodyDraft();
   },
 
+  /**
+   * The zip: CSVs for reading, data.json for restoring, photos as files.
+   * Selective by date range and by content type.
+   */
+  async exportZip(options = {}) {
+    const payload = await snapshot(state.db);
+    const { zip, meta } = buildExport(payload, state.plan, options);
+    downloadBytes(zip, `bulk-export-${todayISO()}.zip`, 'application/zip');
+    await writeSetting(state.db, 'lastBackupISO', todayISO());
+    state.settings.lastBackupISO = todayISO();
+    return meta;
+  },
+
+  /** Restore from a zip this app wrote. Replaces only what the export carries. */
+  async importZip(file) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const parsed = parseImport(bytes);
+    const restored = await restore(state.db, parsed, { put, clearStore });
+
+    await writeSetting(state.db, 'activeSessionLogId', null);
+    state.activeLog = null;
+    state.loggedSets = new Map();
+    await loadEverything();
+    resetBodyDraft();
+    render();
+    return restored;
+  },
+
+  /**
+   * Verify a backup restores, without touching the real data: the export is
+   * parsed and compared against what is stored, record for record. You find out
+   * a backup is broken BEFORE you need it, not after.
+   */
+  async verifyBackup(file) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const parsed = parseImport(bytes);
+    const live = await snapshot(state.db);
+
+    const problems = [];
+    for (const [store, rows] of Object.entries(parsed.data)) {
+      const here = live.data[store] || [];
+      if (store === 'settings') continue;
+      if (rows.length !== here.length) problems.push(`${store}: ${rows.length} in the backup, ${here.length} here`);
+    }
+    return { ok: problems.length === 0, problems, counts: parsed.counts ?? {} };
+  },
+
   /** A real file on disk, offered before anything is deleted. */
   async downloadBackup() {
     const payload = await snapshot(state.db);
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `bulk-backup-${todayISO()}.json`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    downloadBytes(JSON.stringify(payload, null, 2), `bulk-backup-${todayISO()}.json`, 'application/json');
   },
 
   async eraseEverything() {
@@ -579,6 +678,19 @@ const changeHandlers = {
   },
 };
 
+/** Hand a file to the browser. The only thing in the app that leaves the device. */
+function downloadBytes(data, filename, type) {
+  const blob = new Blob([data], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function showFailure(error) {
   console.error(error);
   openSheet(`<div class="ttl">That did not save</div>
@@ -629,6 +741,12 @@ function wireEvents() {
   document.addEventListener('change', (event) => {
     const name = event.target.dataset.actChange;
     if (name) changeHandlers[name]?.(event.target.value);
+
+    const fileAction = event.target.dataset.actFile;
+    if (fileAction && event.target.files?.length) {
+      Promise.resolve(settings.files[fileAction]?.(ctx, event.target.files[0])).catch(showFailure);
+      event.target.value = '';
+    }
   });
 }
 
@@ -656,6 +774,7 @@ async function boot() {
     // load. One number, edited in Settings — not read from the daily weigh-in,
     // so a 0.4 kg morning fluctuation cannot move every prescription.
     bodyweight: settings.bodyweight ?? state.plan.meta.referenceBodyweightKg ?? 90,
+    barKg: settings.barKg ?? 20,
   };
 
   await loadEverything();
@@ -671,7 +790,31 @@ async function boot() {
 
   // Asked for after the first render, so the prompt never delays the screen.
   state.storage = { ...(await requestPersistentStorage()), ...(await storageEstimate()) };
+  registerServiceWorker();
   if (state.tab === 'set') render();
+}
+
+/**
+ * The offline shell. Registered after boot so a failing service worker can
+ * never stop the app starting — the app works without it, it just needs a
+ * connection.
+ */
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+
+  navigator.serviceWorker
+    .register('./sw.js')
+    .then(() => navigator.serviceWorker.ready)
+    .then(() => {
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data?.version) {
+          state.buildVersion = event.data.version;
+          if (state.tab === 'set') render();
+        }
+      });
+      navigator.serviceWorker.controller?.postMessage('version');
+    })
+    .catch((error) => console.warn('service worker not registered:', error.message));
 }
 
 boot().catch((error) => {

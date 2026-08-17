@@ -426,3 +426,61 @@ export function proposeWorkingMax(currentMax, observations, { atBlockBoundary = 
     ? proposeBlockBoundaryMax(currentMax, observations)
     : proposeMidBlockBump(currentMax, observations);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Warm-up ramps and plate maths
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The ramp up to a working load: empty bar, then roughly 40, 60, 80, 88 and
+ * 95% of it. The ramp is not training — it exists to get you to the top set
+ * warm and unfatigued, so the reps fall as the load rises.
+ *
+ * Returns [{ load, reps, restSec }] with the working set last.
+ */
+export function warmupRamp(topLoad, { bar = 20, increment = DEFAULT_INCREMENT } = {}) {
+  if (!topLoad || topLoad <= bar) return [];
+
+  const steps = [
+    { fraction: null, reps: 12, restSec: 60 }, // the empty bar
+    { fraction: 0.4, reps: 5, restSec: 60 },
+    { fraction: 0.6, reps: 5, restSec: 90 },
+    { fraction: 0.8, reps: 3, restSec: 90 },
+    { fraction: 0.88, reps: 2, restSec: 150 },
+    { fraction: 0.95, reps: 1, restSec: 180 },
+  ];
+
+  const ramp = [];
+  for (const step of steps) {
+    const load = step.fraction == null ? bar : roundToIncrement(topLoad * step.fraction, increment);
+    if (load <= bar && step.fraction != null) continue;
+    if (ramp.length && load <= ramp[ramp.length - 1].load) continue;
+    if (load >= topLoad) break;
+    ramp.push({ load, reps: step.reps, restSec: step.restSec, isWarmup: true });
+  }
+  ramp.push({ load: topLoad, reps: null, restSec: null, isWarmup: false });
+  return ramp;
+}
+
+/** The plates in the owner's gym, heaviest first. */
+export const DEFAULT_PLATES = Object.freeze([20, 10, 5, 2.5, 1.25]);
+
+/**
+ * What to hang on each side of the bar. Returns the plates and the load that
+ * combination actually produces — which is not always the load you asked for,
+ * and saying so beats silently rounding.
+ */
+export function platesFor(totalLoad, { bar = 20, plates = DEFAULT_PLATES } = {}) {
+  if (totalLoad == null || totalLoad < bar) return { perSide: [], achieved: bar, exact: totalLoad === bar };
+
+  let remaining = (totalLoad - bar) / 2;
+  const perSide = [];
+  for (const plate of plates) {
+    while (remaining >= plate - 1e-9) {
+      perSide.push(plate);
+      remaining -= plate;
+    }
+  }
+  const achieved = bar + perSide.reduce((sum, plate) => sum + plate, 0) * 2;
+  return { perSide, achieved, exact: Math.abs(achieved - totalLoad) < 1e-9 };
+}

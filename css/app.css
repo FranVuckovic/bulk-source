@@ -79,6 +79,7 @@ nav svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.9;st
 .badge{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.06em;padding:2px 5px;border-radius:4px;margin-left:5px;vertical-align:2px}
 .badge.idx{background:var(--s1);color:#fff}
 .badge.amr{background:var(--s2);color:#fff}
+.badge.myo{background:var(--c4);color:#fff}
 .exbody{display:none;padding:0 13px 14px}
 .ex.open .exbody{display:block}
 

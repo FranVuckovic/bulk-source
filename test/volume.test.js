@@ -76,19 +76,27 @@ test('an unknown exercise is skipped rather than crashing the roll-up', () => {
 test('weekly per-muscle volume matches the reviewed plan', () => {
   const { volume } = weeklyVolume(sessions, exercises);
 
-  assert.equal(round2(volume.chestUpper), 13.9);
-  assert.equal(round2(volume.chestMid), 19.6);
-  assert.equal(round2(volume.triLong), 11);
-  assert.equal(round2(volume.triLat), 20.9);
-  assert.equal(round2(volume.deltSide), 19.9);
-  assert.equal(round2(volume.bicLong), 13);
+  assert.equal(round2(volume.chestUpper), 15.9);
+  assert.equal(round2(volume.chestMid), 20.6);
+  assert.equal(round2(volume.triLong), 13);
+  assert.equal(round2(volume.triLat), 25.1);
+  assert.equal(round2(volume.deltSide), 20.9);
+  assert.equal(round2(volume.bicLong), 16.5);
   assert.equal(round2(volume.lats), 14.2);
   assert.equal(round2(volume.upperBack), 14.5);
+  assert.equal(round2(volume.calves), 12);
 
   // Every muscle in the plan lands inside its target band — the state the
   // plan was signed off in.
+  // Bands are per head. Several are deliberately over after the hypertrophy
+  // revision — the priorities the owner named, plus quads which the plan always
+  // ran high.
+  const deliberatelyOver = [
+    'quads', 'triLat', 'deltSide', 'chestUpper', 'chestMid',
+    'bicLong', 'bicShort', 'deltFront', 'calves',
+  ];
   for (const [id, muscle] of Object.entries(muscles)) {
-    if (id === 'quads') continue; // deliberately over its band, per the plan
+    if (deliberatelyOver.includes(id)) continue;
     assert.equal(bandStatus(volume[id] || 0, muscle), 'in', `${id} at ${volume[id]}`);
   }
 });
@@ -97,15 +105,10 @@ test('whole-muscle roll-ups', () => {
   const { volume } = weeklyVolume(sessions, exercises);
   const rolls = rollUp(volume, muscles);
 
-  assert.equal(round1(rolls.Chest), 33.5);
-  assert.equal(round1(rolls.Triceps), 31.9);
-
-  // NOTE: back and biceps come out at 28.7 and 23.4 from the shipped plan data.
-  // BUILD-BRIEF.md quotes 28.1 and 23.3 for these two, which the data does not
-  // produce — flagged rather than fudged, since the muscle weights are training
-  // content and not ours to adjust.
+  assert.equal(round1(rolls.Chest), 36.5);
+  assert.equal(round1(rolls.Triceps), 38.1);
   assert.equal(round1(rolls.Back), 28.7);
-  assert.equal(round1(rolls.Biceps), 23.4);
+  assert.equal(round1(rolls.Biceps), 29.1);
   assert.equal(round1(rolls.Core), 16.2);
 
   // Roll-ups are the sum of their heads, and only muscles with a roll key join.
@@ -176,9 +179,9 @@ test('volumeByGroup keeps the per-head view alongside the roll-ups', () => {
 
   const chest = groups.get('Chest');
   assert.deepEqual(chest.map((r) => r.id), ['chestUpper', 'chestMid']);
-  assert.equal(round2(chest[0].sets), 13.9);
+  assert.equal(round2(chest[0].sets), 15.9);
   assert.equal(chest[0].roll, 'Chest');
-  assert.equal(chest[0].status, 'in');
+  assert.equal(chest[0].status, 'over', 'upper chest is deliberately above its band now');
 });
 
 test('diminishing returns is claimed on roll-ups only, never on a single head', () => {
