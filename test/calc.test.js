@@ -490,6 +490,14 @@ test('effectiveRpeDetail says when the table has run out', () => {
   assert.equal(overload.clamped, 'above');
   assert.equal(overload.rpe, 10);
 
+  // Rounding a prescription up to the nearest plate can tip it a hair past the
+  // table — 184.75 kg becomes 185, which is 0.1% over the RPE 10 row. That is
+  // not "off the scale", it is a rounded plate.
+  const rounded = effectiveRpeDetail(185, 250, 10);
+  assert.equal(rounded.clamped, null);
+  assert.equal(rounded.rpe, 10);
+  assert.equal(effectiveRpeDetail(190, 250, 10).clamped, 'above', 'genuinely over still says so');
+
   assert.equal(effectiveRpeDetail(null, 115, 5), null);
   assert.equal(effectiveRpeDetail(90, null, 5), null);
 });

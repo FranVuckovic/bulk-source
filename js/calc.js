@@ -206,6 +206,17 @@ export function effectiveRpe(load, workingMax, reps, { bodyweight = 0 } = {}) {
 }
 
 /**
+ * How far past the table's edge a load has to sit before the screen says so.
+ *
+ * Rounding a prescription to the nearest plate moves it by a fraction of a
+ * percent — a 250 kg leg press at RPE 10 rounds from 184.75 to 185 kg, which is
+ * 0.1% past the top of the table. Flagging that as off-scale would be true and
+ * useless. The table's own resolution is 0.1 percentage points; half a point of
+ * slack is smaller than a single plate at any realistic load.
+ */
+export const TABLE_EDGE_TOLERANCE = 0.5;
+
+/**
  * The effective RPE plus whether the table ran out underneath or above it.
  *
  * The scale only spans RPE 6 to 10, so a load lighter than the RPE 6 entry
@@ -225,7 +236,12 @@ export function effectiveRpeDetail(load, workingMax, reps, { bodyweight = 0 } = 
     rpe: rpeFor(system / workingMax, reps),
     percent,
     systemLoad: system,
-    clamped: percent > row[0] ? 'above' : percent < row[row.length - 1] ? 'below' : null,
+    clamped:
+      percent > row[0] + TABLE_EDGE_TOLERANCE
+        ? 'above'
+        : percent < row[row.length - 1] - TABLE_EDGE_TOLERANCE
+          ? 'below'
+          : null,
   };
 }
 

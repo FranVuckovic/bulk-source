@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bulk — sample data</title>
+<link rel="stylesheet" href="../css/app.css">
+<style>body{padding:0 0 40px}.wrap{padding-top:20px}</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 style="font-size:22px;margin:0 0 4px">Sample data</h1>
+  <p style="margin-bottom:14px">A development tool, not part of the app. It fills the same database the app
+  uses with five weeks of invented training so the charts and screens have something to show.</p>
+
+  <div class="flag f-warn" style="margin-bottom:12px"><i>!</i><span><b>Everything this writes is fake.</b>
+  Erase it before you log anything real — a mix of the two is worse than either.</span></div>
+
+  <div class="card">
+    <div id="status" class="hint" style="margin:0 0 12px">Reading the database…</div>
+    <button class="big" id="load">Load five weeks of sample data</button>
+    <button class="big danger mt" id="erase">Erase everything</button>
+    <p class="hint">Then open <a href="../index.html" style="color:var(--s1)">the app</a>. Sample data lands
+    on the five weeks up to today, so the rotation, the block review and every chart have real history behind
+    them.</p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">What it creates</h3>
+    <p style="margin:0">25 sessions across the full A–F rotation with every set logged, 35 daily weigh-ins
+    trending up about 0.45 kg a week, five weeks of tape measurements, two elbow niggles, five physique
+    check-in entries and one form-check reference. Loads come from the plan's own seed maxes and climb
+    about 1.2% a week, so the working-max review has something to propose.</p>
+  </div>
+</div>
+
+<script type="module">
+import { openDatabase, put, saveSession, writeSetting, clearStore, getAll, ALL_STORES } from '../js/db.js';
+
+const db = await openDatabase();
+const statusEl = document.getElementById('status');
+
+async function paintStatus() {
+  const counts = {};
+  for (const store of ['sessionLogs', 'sets', 'daily', 'measurements', 'niggles', 'media', 'maxes']) {
+    counts[store] = (await getAll(db, store)).length;
+  }
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  statusEl.innerHTML = total
+    ? `In the database now · <b>${counts.sessionLogs} sessions</b> · ${counts.sets} sets · ${counts.daily} daily ·
+       ${counts.measurements} measurements · ${counts.niggles} niggles · ${counts.media} media · ${counts.maxes} maxes`
+    : 'The database is empty.';
+}
+
+/* Plausible working weights for the accessories, which have no stored max to
+   calculate from. Sample data only — nothing here is a training recommendation. */
+const ACCESSORY_KG = {
+  benchSpeed: 75, inclineFly: 14, cableFly: 16, pulldown: 70, rowCSR: 60, facepull: 22,
+  reardelt: 14, lateral: 12, triOH: 25, skull: 30, pushdown: 30, curlIncline: 16,
+  curlBayesian: 14, curlEZ: 22, curlHammer: 16, wrist: 20, cableCrunch: 40,
+  hangingRaise: null, abWheel: null, pallof: 20, hackBulg: 100, legcurlSeat: 45,
+  legcurlLie: 40, quadext: 55, calfStand: 80, calfSeat: 60, revhyper: 20, jumps: null,
+};
+
+const iso = (date) => date.toISOString().slice(0, 10);
+const round = (value, step) => Math.round(value / step) * step;
+// Deterministic jitter, so reloading the page produces the same history twice.
+const wobble = (seed) => {
+  const x = Math.sin(seed * 12.9898) * 43758.5453;
+  return x - Math.floor(x);
+};
+
+async function loadSample() {
+  const plan = await (await fetch('../data/plan-bulk-v1.json')).json();
+  const bodyweight = plan.meta.referenceBodyweightKg ?? 90;
+  const rotation = plan.meta.rotation;
+
+  const start = new Date();
+  start.setUTCHours(0, 0, 0, 0);
+  start.setUTCDate(start.getUTCDate() - 34);
+
+  let sessionNo = 0;
+  let dayCursor = 0;
+
+  for (let week = 0; week < 5; week++) {
+    for (let i = 0; i < 5; i++) {
+      const date = new Date(start);
+      date.setUTCDate(start.getUTCDate() + dayCursor);
+      dayCursor += i === 4 ? 3 : 1; // five sessions, then a two-day gap
+      if (date > new Date()) continue;
+
+      const sessionId = rotation[sessionNo % rotation.length];
+      const session = plan.sessions.find((s) => s.id === sessionId);
+      const growth = 1 + week * 0.012;
+
+      const startedAt = new Date(date);
+      startedAt.setUTCHours(17, 30, 0, 0);
+      const endedAt = new Date(startedAt);
+      endedAt.setUTCMinutes(startedAt.getUTCMinutes() + 68 + Math.round(wobble(sessionNo) * 22));
+
+      const sets = [];
+      session.slots.forEach((slot, slotIndex) => {
+        const exercise = plan.exercises[slot.ex];
+        const seed = plan.meta.seedWorkingMaxes[slot.ex];
+
+        for (let setIndex = 0; setIndex < slot.sets; setIndex++) {
+          // The odd set genuinely does not get logged — the app has to cope.
+          if (wobble(sessionNo * 31 + slotIndex * 7 + setIndex) > 0.94) continue;
+
+          let load;
+          if (seed) {
+            const fraction = slot.pctTop ? 0.78 : slot.amrap ? 0.83 : 0.8;
+            const total = seed * growth * fraction;
+            load = round(exercise.bodyweightLoaded ? total - bodyweight : total, 2.5);
+          } else if (exercise.bodyweightLoaded) {
+            load = round(5 + week * 1.2, 2.5);
+          } else {
+            const base = ACCESSORY_KG[slot.ex];
+            load = base == null ? null : round(base * growth, base >= 40 ? 5 : 2.5);
+          }
+
+          sets.push({
+            exerciseId: slot.ex,
+            slotIndex,
+            setIndex,
+            load,
+            reps: slot.amrap ? 6 + Math.round(week / 2) : slot.reps,
+            rpe: slot.rpe,
+            rir: Math.max(0, 10 - slot.rpe),
+            toFailure: !!slot.failLast && setIndex >= slot.sets - slot.failLast,
+            isAmrap: !!slot.amrap,
+            isIndexSet: !!slot.idx,
+            isMyoRep: false,
+            velocity: null,
+            note: null,
+            wasPrescribed: true,
+            prescribedLoad: load,
+            timestampISO: startedAt.toISOString(),
+            gripWidth: exercise.grips ? exercise.grips[0] : null,
+            bodyweightUsed: exercise.bodyweightLoaded ? bodyweight : null,
+            variantUsed: null,
+            pauseStyle: slot.ex.startsWith('bench') ? 'paused' : null,
+          });
+        }
+      });
+
+      await saveSession(
+        db,
+        {
+          dateISO: iso(date),
+          startedAt: startedAt.toISOString(),
+          endedAt: endedAt.toISOString(),
+          sessionId,
+          blockId: 0,
+          rotationIndex: sessionNo % rotation.length,
+          bodyweight: Math.round((88.6 + week * 0.45) * 10) / 10,
+          sessionRpe: Math.round((6.5 + wobble(sessionNo * 3) * 2) * 2) / 2,
+          note: null,
+          isPartial: false,
+          deviations: { swaps: {}, extras: [], addedSets: {} },
+          grips: {},
+        },
+        sets
+      );
+      sessionNo++;
+    }
+  }
+
+  for (let day = 0; day < 35; day++) {
+    const date = new Date(start);
+    date.setUTCDate(start.getUTCDate() + day);
+    if (date > new Date()) break;
+
+    await put(db, 'daily', {
+      dateISO: iso(date),
+      bodyweight: Math.round((88.4 + day * 0.062 + (wobble(day) - 0.5) * 0.5) * 10) / 10,
+      bodyfatPct: Math.round((12.8 + day * 0.01) * 10) / 10,
+      sleepHours: Math.round((6.6 + wobble(day * 2) * 1.7) * 10) / 10,
+      steps: 8000 + Math.round(wobble(day * 5) * 5000),
+      mood: 3 + Math.round(wobble(day * 9) * 2),
+      caffeine: wobble(day * 11) > 0.5 ? 'yes' : 'no',
+      note: null,
+    });
+
+    if (day % 7 === 0) {
+      await put(db, 'measurements', {
+        dateISO: iso(date),
+        waist: Math.round((81.2 + day * 0.028) * 10) / 10,
+        chest: Math.round((107.5 + day * 0.032) * 10) / 10,
+        shoulders: Math.round((127.5 + day * 0.02) * 10) / 10,
+        armL: Math.round((38.1 + day * 0.012) * 10) / 10,
+        armR: Math.round((38.4 + day * 0.012) * 10) / 10,
+        quadL: 61.5,
+        quadR: 61.8,
+        neck: 39.5,
+        note: null,
+      });
+      await put(db, 'media', {
+        dateISO: iso(date),
+        kind: 'physique',
+        exerciseId: null,
+        load: null,
+        reps: null,
+        note: null,
+        fileRef: null,
+        imageBlob: null,
+      });
+    }
+  }
+
+  const nigglesOn = (daysAgo) => {
+    const date = new Date();
+    date.setUTCDate(date.getUTCDate() - daysAgo);
+    return iso(date);
+  };
+  await put(db, 'niggles', {
+    dateISO: nigglesOn(19),
+    site: 'Left elbow',
+    severity: 1,
+    context: 'Second set of skullcrushers',
+    note: null,
+  });
+  await put(db, 'niggles', {
+    dateISO: nigglesOn(7),
+    site: 'Left elbow',
+    severity: 2,
+    context: 'Close-grip bench, top set',
+    note: null,
+  });
+  await put(db, 'media', {
+    dateISO: nigglesOn(6),
+    kind: 'formcheck',
+    exerciseId: 'benchComp',
+    load: 95,
+    reps: 6,
+    note: 'Bench AMRAP · 95 kg × 6',
+    fileRef: 'IMG_4417.mov',
+    imageBlob: null,
+  });
+
+  await writeSetting(db, 'blockStartedISO', iso(start));
+  await writeSetting(db, 'blockIdx', 0);
+  await writeSetting(db, 'activeSessionLogId', null);
+}
+
+document.getElementById('load').addEventListener('click', async (event) => {
+  event.target.disabled = true;
+  event.target.textContent = 'Loading…';
+  await loadSample();
+  await paintStatus();
+  event.target.disabled = false;
+  event.target.textContent = 'Load five weeks of sample data';
+});
+
+document.getElementById('erase').addEventListener('click', async (event) => {
+  event.target.disabled = true;
+  for (const store of ALL_STORES) {
+    if (store !== 'settings') await clearStore(db, store);
+  }
+  await writeSetting(db, 'activeSessionLogId', null);
+  await paintStatus();
+  event.target.disabled = false;
+});
+
+await paintStatus();
+</script>
+</body>
+</html>
