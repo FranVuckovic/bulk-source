@@ -402,3 +402,34 @@ export async function checkIntegrity(db) {
 
   return { ok: problems.length === 0, problems, counts, formatVersion: settings.formatVersion };
 }
+
+/**
+ * Delete a session and every set attached to it, in one transaction. A session
+ * removed on its own would leave orphaned sets behind, which is exactly what
+ * the integrity check complains about.
+ */
+export function deleteSessionCascade(db, sessionLogId) {
+  return withTransaction(db, ['sessionLogs', 'sets'], 'readwrite', async ([logs, sets]) => {
+    const attached = await request(sets.index('sessionLogId').getAll(sessionLogId));
+    for (const set of attached) await request(sets.delete(set.id));
+    await request(logs.delete(sessionLogId));
+    return { deletedSets: attached.length };
+  });
+}
+
+/**
+ * Everything in the database as one plain object — the backup offered before a
+ * deletion. The zip export in export.js is the real thing; this exists so that
+ * "export first" is a genuine offer rather than a promise, and so a restore is
+ * possible from a file the owner already has.
+ */
+export async function snapshot(db) {
+  const data = {};
+  for (const store of ALL_STORES) data[store] = await getAll(db, store);
+  return {
+    format: FORMAT_VERSION,
+    takenAtISO: new Date().toISOString(),
+    kind: 'json-snapshot',
+    data,
+  };
+}

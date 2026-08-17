@@ -160,6 +160,11 @@ export function barChart(items, { color = 'var(--s1)', unit = '', height = 180, 
       return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${(
         height - PAD.bottom - y
       ).toFixed(1)}" rx="3" fill="${item.color || color}"/>
+      <text x="${(x + barWidth / 2).toFixed(1)}" y="${(y - 5).toFixed(
+        1
+      )}" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">${escape(
+        item.display ?? Math.round(item.value)
+      )}</text>
       <text x="${(x + barWidth / 2).toFixed(1)}" y="${height - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${escape(
         item.label
       )}</text>`;
@@ -183,7 +188,7 @@ export function barChart(items, { color = 'var(--s1)', unit = '', height = 180, 
     height,
     `${gridLines(0, y1, height, toY)}
      <line x1="${PAD.left}" y1="${height - PAD.bottom}" x2="${W - PAD.right}" y2="${height - PAD.bottom}" stroke="var(--axis)"/>
-     ${bars}${trend}
+     ${trend}${bars}
      <text x="${W - PAD.right}" y="${PAD.top + 2}" text-anchor="end" font-size="11.5" fill="var(--muted)">${escape(unit)}</text>`
   );
 }
@@ -250,16 +255,19 @@ export function scatterIso(points, { curves = [], pctFor, unit = 'kg', height = 
   const toY = (load) => PAD.top + (1 - load / maxLoad) * (height - PAD.top - PAD.bottom);
 
   const isoCurves = curves
-    .map((e1rm) => {
+    .map((e1rm, index) => {
       const path = [];
       for (let reps = 1; reps <= maxReps; reps++) {
         const load = (e1rm * pctFor(reps, 10)) / 100;
         path.push(`${reps === 1 ? 'M' : 'L'}${toX(reps).toFixed(1)},${toY(load).toFixed(1)}`);
       }
+      // Labelled at the right-hand end, where the curves are furthest apart and
+      // clear of both the y-axis numbers and the cloud of sets.
+      const labelReps = Math.min(maxReps, 10);
       return `<path d="${path.join(' ')}" fill="none" stroke="var(--axis)" stroke-width="1.2" stroke-dasharray="4 4"/>
-        <text x="${toX(2).toFixed(1)}" y="${(toY((e1rm * pctFor(2, 10)) / 100) - 5).toFixed(1)}" font-size="10" fill="var(--muted)">${Math.round(
-          e1rm
-        )}</text>`;
+        <text x="${(toX(labelReps) + 6).toFixed(1)}" y="${(toY((e1rm * pctFor(labelReps, 10)) / 100) - 4).toFixed(
+          1
+        )}" font-size="9.5" fill="var(--muted)">${index === curves.length - 1 ? 'e1RM ' : ''}${Math.round(e1rm)}</text>`;
     })
     .join('');
 
@@ -282,13 +290,21 @@ export function scatterIso(points, { curves = [], pctFor, unit = 'kg', height = 
     )
     .join('');
 
-  return svg(
+  const chart = svg(
     height,
     `${gridLines(0, maxLoad, height, toY)}
      <line x1="${PAD.left}" y1="${height - PAD.bottom}" x2="${W - PAD.right}" y2="${height - PAD.bottom}" stroke="var(--axis)"/>
      ${isoCurves}${dots}${xLabels}
-     <text x="${W - PAD.right}" y="${PAD.top + 2}" text-anchor="end" font-size="10.5" fill="var(--muted)">reps →</text>`
+     <text x="${(W - PAD.right).toFixed(1)}" y="${PAD.top + 2}" text-anchor="end" font-size="10.5" fill="var(--muted)">${escape(
+       unit
+     )} against reps</text>`
   );
+
+  // A touch device has no hover, so the legend has to carry what the colours mean.
+  return `${chart}<div class="lg" style="margin-top:6px">
+    <span><i style="background:var(--s2)"></i>last 14 days</span>
+    <span><i style="background:var(--s1);opacity:.5"></i>earlier</span>
+    <span><i style="background:var(--axis)"></i>equal e1RM</span></div>`;
 }
 
 /** Stacked bars over time — volume per muscle, week by week. */
@@ -349,16 +365,26 @@ export function timeline(events, { colors = {}, height = 150 } = {}) {
   const rows = lifts
     .map((lift, i) => {
       const y = PAD.top + i * rowHeight + rowHeight / 2;
-      const dots = events
-        .filter((e) => e.lift === lift)
-        .map(
-          (e) =>
-            `<circle cx="${toX(e.dateISO).toFixed(1)}" cy="${y.toFixed(1)}" r="${e.kind === 'tie' ? 3.4 : 5}" fill="${
-              colors[lift] || 'var(--s1)'
-            }" opacity="${e.kind === 'tie' ? 0.45 : 1}"><title>${escape(e.dateISO)} · ${num(e.value)} kg${
-              e.kind === 'tie' ? ' (tie)' : ''
-            }</title></circle>`
-        )
+      const rowEvents = events.filter((e) => e.lift === lift);
+      const dots = rowEvents
+        .map((e, i) => {
+          const isLast = i === rowEvents.length - 1;
+          // The most recent record on each row carries its value. Near the right
+          // edge the label flips to the left of the dot so it cannot run off.
+          const x = toX(e.dateISO);
+          const flip = x > W - PAD.right - 46;
+          const label =
+            isLast && e.kind !== 'tie'
+              ? `<text x="${(flip ? x - 8 : x + 8).toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="${
+                  flip ? 'end' : 'start'
+                }" font-size="10.5" font-weight="700" fill="var(--ink)">${num(e.value)}</text>`
+              : '';
+          return `<circle cx="${toX(e.dateISO).toFixed(1)}" cy="${y.toFixed(1)}" r="${e.kind === 'tie' ? 3.4 : 5}" fill="${
+            colors[lift] || 'var(--s1)'
+          }" opacity="${e.kind === 'tie' ? 0.45 : 1}"><title>${escape(e.dateISO)} · ${num(e.value)} kg${
+            e.kind === 'tie' ? ' (tie)' : ''
+          }</title></circle>${label}`;
+        })
         .join('');
       return `<line x1="${PAD.left}" y1="${y.toFixed(1)}" x2="${W - PAD.right}" y2="${y.toFixed(
         1

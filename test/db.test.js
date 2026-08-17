@@ -17,6 +17,8 @@ import {
   remove,
   count,
   saveSession,
+  deleteSessionCascade,
+  snapshot,
   setsForSession,
   setsForExercise,
   logsBetween,
@@ -391,4 +393,45 @@ test('key ranges bound both ends the way the queries assume', () => {
   assert.equal(range.includes('2026-08-31'), true);
   assert.equal(range.includes('2026-07-31'), false);
   assert.equal(range.includes('2026-09-01'), false);
+});
+
+test('deleting a session takes its sets with it', async () => {
+  const { db } = await freshDb();
+
+  const first = await saveSession(db, { dateISO: '2026-08-20', sessionId: 'A', blockId: 1 }, [
+    { exerciseId: 'benchComp', setIndex: 0, load: 105, reps: 1, rpe: 8 },
+    { exerciseId: 'benchComp', setIndex: 1, load: 90, reps: 3, rpe: 8 },
+  ]);
+  const second = await saveSession(db, { dateISO: '2026-08-22', sessionId: 'B', blockId: 1 }, [
+    { exerciseId: 'legpress', setIndex: 0, load: 200, reps: 10, rpe: 9 },
+  ]);
+
+  const result = await deleteSessionCascade(db, first.sessionLogId);
+  assert.equal(result.deletedSets, 2);
+
+  assert.equal((await getAll(db, 'sessionLogs')).length, 1, 'only the other session is left');
+  assert.equal((await setsForSession(db, first.sessionLogId)).length, 0);
+  assert.equal((await setsForSession(db, second.sessionLogId)).length, 1, 'the other session is untouched');
+
+  // No orphans is the point — that is exactly what the integrity check hunts for.
+  const report = await checkIntegrity(db);
+  assert.equal(report.ok, true, report.problems.join('; '));
+});
+
+test('a snapshot carries every store and can be read back', async () => {
+  const { db } = await freshDb();
+  await saveSession(db, { dateISO: '2026-08-20', sessionId: 'A', blockId: 1 }, [
+    { exerciseId: 'benchComp', setIndex: 0, load: 105, reps: 1, rpe: 8 },
+  ]);
+  await put(db, 'daily', { dateISO: '2026-08-20', bodyweight: 90.4 });
+
+  const backup = await snapshot(db);
+  assert.equal(backup.format, FORMAT_VERSION);
+  assert.equal(backup.kind, 'json-snapshot');
+  assert.deepEqual(Object.keys(backup.data).sort(), [...ALL_STORES].sort());
+  assert.equal(backup.data.sets.length, 1);
+  assert.equal(backup.data.daily[0].bodyweight, 90.4);
+
+  // It survives the round trip through a file.
+  assert.deepEqual(JSON.parse(JSON.stringify(backup)), backup);
 });

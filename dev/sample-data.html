@@ -19,6 +19,8 @@
   <div class="card">
     <div id="status" class="hint" style="margin:0 0 12px">Reading the database…</div>
     <button class="big" id="load">Load five weeks of sample data</button>
+    <p class="hint">Loading always clears what is there first. Sessions are keyed by an auto-incrementing id, so
+    loading twice on top of itself would silently give you every session twice.</p>
     <button class="big danger mt" id="erase">Erase everything</button>
     <p class="hint">Then open <a href="../index.html" style="color:var(--s1)">the app</a>. Sample data lands
     on the five weeks up to today, so the rotation, the block review and every chart have real history behind
@@ -243,9 +245,21 @@ async function loadSample() {
   await writeSetting(db, 'activeSessionLogId', null);
 }
 
+async function eraseAll() {
+  for (const store of ALL_STORES) {
+    if (store !== 'settings') await clearStore(db, store);
+  }
+  await writeSetting(db, 'activeSessionLogId', null);
+}
+
 document.getElementById('load').addEventListener('click', async (event) => {
+  const existing = (await getAll(db, 'sessionLogs')).length;
+  if (existing && !confirm(`This clears the ${existing} sessions already stored, then loads fresh sample data. Continue?`)) {
+    return;
+  }
   event.target.disabled = true;
   event.target.textContent = 'Loading…';
+  await eraseAll();
   await loadSample();
   await paintStatus();
   event.target.disabled = false;
@@ -254,10 +268,7 @@ document.getElementById('load').addEventListener('click', async (event) => {
 
 document.getElementById('erase').addEventListener('click', async (event) => {
   event.target.disabled = true;
-  for (const store of ALL_STORES) {
-    if (store !== 'settings') await clearStore(db, store);
-  }
-  await writeSetting(db, 'activeSessionLogId', null);
+  await eraseAll();
   await paintStatus();
   event.target.disabled = false;
 });

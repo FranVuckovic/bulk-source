@@ -76,9 +76,12 @@ export function view(ctx) {
     } measurements · ${state.media.length} media · ${bytes(state.storage.usage)} used${
       state.storage.quota ? ` of ${bytes(state.storage.quota)} available` : ''
     }</p>
-    <button class="big mt" data-act="not-yet" data-what="Export">Export everything now</button>
+    <button class="big mt" data-act="history-backup">Download a JSON backup now</button>
+    <button class="big ghost mt" data-act="not-yet" data-what="Zip export">Export everything as a zip</button>
     <button class="big ghost mt" data-act="not-yet" data-what="Import">Import from a backup</button>
     <button class="big ghost mt" data-act="not-yet" data-what="Backup verification">Verify backup can be restored</button>
+    <p class="hint">The JSON backup is a plain file with every record in it — enough to restore from by hand, and
+    what the app offers you before any deletion. The zip export with CSVs and photos arrives with the export stage.</p>
     <p class="hint">The verify button restores your last export into a scratch copy and checks it matches, so you find out a backup is broken <b>before</b> you need it — not after.</p>
   </div>
 

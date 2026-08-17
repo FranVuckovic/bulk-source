@@ -164,11 +164,15 @@ export function view(ctx) {
 
   <h3>Consistency</h3>
   <div class="card">${consistency(state)}
-    <p class="hint">One cell per day, coloured by session. Your single biggest risk is not finishing 33 weeks, and this is the only view that makes adherence visible.</p></div>
+    <p class="hint">${consistencySummary(state)} One cell per day, coloured by session. Your single biggest risk is
+    not finishing 33 weeks, and this is the only view that makes adherence visible.</p></div>
 
   <h3>Load and reps — every set of ${escape(state.plan.exercises[focus].name)}</h3>
   <div class="card">${scatter(state, focus, unit)}
-    <p class="hint">Dashed lines are equal estimated maxes. A cloud shifting up and to the right is progress; rising on the low-rep side only means strength is outpacing work capacity.</p></div>
+    <p class="hint">Every set you have logged, plotted as the load against the reps you got. The dashed curves join
+    loads worth the <b>same estimated max</b> — a set sitting on a higher curve is a better set, whatever the rep
+    count. Orange is the last fortnight: if it sits above the faded dots, you are getting stronger at every rep
+    range. Rising only on the low-rep side means strength is outpacing work capacity.</p></div>
 
   <h3>Strength vs bodyweight</h3>
   <div class="card">${strengthVsBodyweight(weekly, averaged)}
@@ -193,8 +197,15 @@ export function view(ctx) {
   <h3>Working maxes</h3>
   ${workingMaxes(ctx)}
 
+  <h3>Everything logged</h3>
+  <div class="card flush">
+    <div class="big-row" data-act="history-open-screen"><div class="ic">≡</div><div class="m"><b>History</b>
+      <span>Every session, weigh-in, measurement and niggle by date — and the only place anything can be deleted</span></div>
+      <div class="car">›</div></div>
+  </div>
+
   <h3>Export</h3>
-  <div class="card"><p style="margin:0">Selective export arrives with the export stage — one zip, CSV for reading and JSON for restoring.</p></div>`;
+  <div class="card"><p style="margin:0">Selective export arrives with the export stage — one zip, CSV for reading and JSON for restoring. Until then, <button data-act="history-backup" style="background:none;border:0;color:var(--s1);font:inherit;font-weight:650;padding:0;cursor:pointer">download a JSON backup</button>.</p></div>`;
 }
 
 function tiles(state, { best, change, latestAverage, gainRate, unit }) {
@@ -279,6 +290,16 @@ function consistency(state) {
   return heatmap(ordered, { sessionColors: SESSION_COLORS });
 }
 
+/** The heatmap in one sentence, for the days you do not want to count squares. */
+function consistencySummary(state) {
+  if (!state.logs.length) return '';
+  const first = state.logs[0].dateISO.slice(0, 10);
+  const days = Math.max(1, daysBetween(first, state.todayISO) + 1);
+  const trained = new Set(state.logs.map((log) => log.dateISO.slice(0, 10))).size;
+  const perWeek = (trained / days) * 7;
+  return `<b>${trained} training days in the last ${days}</b> — ${fmtNum(perWeek, 1)} a week.`;
+}
+
 function scatter(state, exerciseId, unit) {
   const byLog = new Map(state.logs.map((log) => [log.id, log]));
   const points = state.sets
@@ -314,10 +335,20 @@ function sessionLoadChart(state) {
   if (!loads.length) {
     return emptyChart('Needs a session RPE and a finish time — both come free once you finish a session.');
   }
-  return barChart(
-    loads.map((l) => ({ label: l.weekISO.slice(5), value: Math.round(l.value) })),
-    { color: 'var(--s1)', unit: 'sRPE × min', average: true }
-  );
+  const items = loads.map((l) => ({ label: l.weekISO.slice(5), value: Math.round(l.value) }));
+  const latest = items[items.length - 1];
+  const previous = items.length > 1 ? items[items.length - 2] : null;
+  const change =
+    previous && previous.value
+      ? `<p class="hint" style="margin-top:8px">This week <b>${latest.value}</b> against <b>${previous.value}</b> last
+         week — ${
+           latest.value > previous.value * 1.2
+             ? 'a jump of more than 20%, which is the pattern that precedes feeling run down'
+             : 'a normal week-to-week change'
+         }.</p>`
+      : '';
+
+  return `${barChart(items, { color: 'var(--s1)', unit: 'sRPE × min', average: true })}${change}`;
 }
 
 function volumeOverTime(state) {
@@ -343,7 +374,13 @@ function volumeOverTime(state) {
   return stackedBars(weeks, { keys: Object.keys(ROLL_COLORS), colors: ROLL_COLORS });
 }
 
+/**
+ * Records, as a dated list with the size of each jump — plus the timeline for
+ * the shape of it. A dot on an axis tells you a record happened; it does not
+ * tell you what it was, and that is the part worth reading.
+ */
 function prTimeline(state) {
+  const unit = state.settings.unit;
   const lifts = trackedLifts(state);
   const events = lifts.flatMap((lift) =>
     detectPRs(e1rmPoints(state, lift.id)).map((pr) => ({ ...pr, lift: lift.name.split(' (')[0] }))
@@ -354,7 +391,44 @@ function prTimeline(state) {
   const colors = Object.fromEntries(
     lifts.map((lift, i) => [lift.name.split(' (')[0], Object.values(SESSION_COLORS)[i % 6]])
   );
-  return timeline(events, { colors });
+
+  // One row per lift per day: two index sets in the same session at the same
+  // load are one event, not four. And the table lists records only — a tie is
+  // worth plotting but a list of them buries the actual records.
+  const perDay = new Map();
+  for (const event of events) {
+    const key = `${event.lift}:${event.dateISO}`;
+    const held = perDay.get(key);
+    if (!held || event.value > held.value || (event.kind === 'pr' && held.kind === 'tie')) {
+      perDay.set(key, event);
+    }
+  }
+  const deduped = [...perDay.values()].sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+  const records = deduped.filter((event) => event.kind === 'pr');
+  const ties = deduped.length - records.length;
+
+  const list = `<table style="margin-top:10px"><thead><tr><th>Date</th><th>Lift</th><th>e1RM</th><th>Gain</th></tr></thead><tbody>
+    ${[...records]
+      .reverse()
+      .slice(0, 6)
+      .map(
+        (event) => `<tr><td>${escape(event.dateISO.slice(5))}</td><td>${escape(event.lift)}</td><td>${fmtLoad(
+          event.value,
+          unit
+        )}</td><td>${
+          event.previousBest == null
+            ? '<span style="color:var(--muted)">first</span>'
+            : `<span style="color:var(--goodtx);font-weight:650">+${fmtNum(event.value - event.previousBest, 1)}</span>`
+        }</td></tr>`
+      )
+      .join('')}
+  </tbody></table>
+  <p class="hint" style="margin-top:8px">${records.length} record${records.length === 1 ? '' : 's'}${
+    ties ? ` and ${ties} day${ties === 1 ? '' : 's'} matching a best` : ''
+  } across ${new Set(deduped.map((e) => e.lift)).size} lifts. Matching your best is plotted faintly but not listed —
+  it happened, and it is not progress.</p>`;
+
+  return `${timeline(deduped, { colors })}${list}`;
 }
 
 function blockComparison(state) {
@@ -378,11 +452,17 @@ function blockComparison(state) {
   return barChart(
     [...byBlock.entries()]
       .sort(([a], [b]) => a - b)
-      .map(([blockId, entry]) => ({
-        label: `B${blockId}`,
-        value: Math.round((entry.last - entry.first) * 10) / 10,
-      })),
-    { color: 'var(--s3)', unit: 'kg gained' }
+      .map(([blockId, entry]) => {
+        const gained = Math.round((entry.last - entry.first) * 10) / 10;
+        return {
+          label: state.plan.blocks[blockId]
+            ? state.plan.blocks[blockId].n.split(' · ')[1] || state.plan.blocks[blockId].n
+            : `Block ${blockId}`,
+          value: gained,
+          display: `+${gained}`,
+        };
+      }),
+    { color: 'var(--s3)', unit: 'kg of e1RM gained' }
   );
 }
 
@@ -453,6 +533,12 @@ function workingMaxes(ctx) {
 }
 
 export const actions = {
+  'history-open-screen'(ctx) {
+    ctx.state.progressSection = 'history';
+    ctx.render();
+    window.scrollTo(0, 0);
+  },
+
   'focus-lift'(ctx, data) {
     ctx.state.progressLift = data.id;
     ctx.render();

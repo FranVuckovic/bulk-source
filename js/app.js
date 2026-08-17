@@ -14,6 +14,8 @@ import {
   put,
   remove,
   clearStore,
+  deleteSessionCascade,
+  snapshot,
   saveSession,
   confirmWorkingMax,
   requestPersistentStorage,
@@ -35,6 +37,7 @@ import * as body from './ui/body.js';
 import * as progress from './ui/progress.js';
 import * as plan from './ui/plan.js';
 import * as settings from './ui/settings.js';
+import * as history from './ui/history.js';
 
 const PLAN_URL = './data/plan-bulk-v1.json';
 const TABS = { train: 'Bulk', body: 'Body', prog: 'Progress', plan: 'Plan', set: 'Settings' };
@@ -79,6 +82,8 @@ const state = {
 
   // Progress and Plan
   progressLift: 'benchComp',
+  progressSection: null,
+  historyFilter: 'all',
   planSection: null,
   exerciseSearch: '',
   planProgress: { sessionsDone: 0, daysElapsed: null, calendarWeek: 1, pace: null },
@@ -134,25 +139,25 @@ async function loadEverything() {
 /** Most recent previous sets per exercise — the prefill and the "last time" line. */
 function buildHistory() {
   const byLog = new Map(state.logs.map((log) => [log.id, log]));
-  const history = new Map();
+  const latest = new Map();
 
   for (const set of state.sets) {
     if (state.activeLog && set.sessionLogId === state.activeLog.id) continue;
     const log = byLog.get(set.sessionLogId);
     if (!log) continue;
-    const entry = history.get(set.exerciseId);
+    const entry = latest.get(set.exerciseId);
     if (!entry || log.dateISO > entry.dateISO) {
-      history.set(set.exerciseId, { dateISO: log.dateISO, logId: log.id, sets: [set] });
+      latest.set(set.exerciseId, { dateISO: log.dateISO, logId: log.id, sets: [set] });
     } else if (log.id === entry.logId) {
       entry.sets.push(set);
     }
   }
 
-  for (const entry of history.values()) {
+  for (const entry of latest.values()) {
     entry.sets.sort((a, b) => (a.setIndex ?? 0) - (b.setIndex ?? 0));
     entry.note = entry.sets.map((s) => s.note).find(Boolean) || null;
   }
-  state.lastByExercise = history;
+  state.lastByExercise = latest;
 }
 
 /** Rebuilds the in-progress session from storage, so a reload loses nothing. */
@@ -368,7 +373,7 @@ function resetBodyDraft() {
 function screenFor(tab) {
   if (tab === 'train') return train.view(ctx);
   if (tab === 'body') return body.view(ctx);
-  if (tab === 'prog') return progress.view(ctx);
+  if (tab === 'prog') return state.progressSection === 'history' ? history.view(ctx) : progress.view(ctx);
   if (tab === 'plan') return plan.view(ctx);
   return settings.view(ctx);
 }
@@ -460,6 +465,42 @@ const ctx = {
     render();
   },
 
+  /**
+   * Deleting is the only irreversible thing here, so it goes through one path
+   * with one cascade rule: a session takes its sets with it.
+   */
+  async deleteEntry(kind, id) {
+    if (kind === 'session') {
+      await deleteSessionCascade(state.db, id);
+      if (state.activeLog?.id === id) {
+        state.activeLog = null;
+        state.loggedSets = new Map();
+        await writeSetting(state.db, 'activeSessionLogId', null);
+      }
+    } else {
+      const store = { daily: 'daily', measurement: 'measurements', niggle: 'niggles', media: 'media' }[kind];
+      if (!store) throw new Error(`nothing knows how to delete a ${kind}`);
+      await remove(state.db, store, id);
+    }
+    await loadEverything();
+    buildHistory();
+    resetBodyDraft();
+  },
+
+  /** A real file on disk, offered before anything is deleted. */
+  async downloadBackup() {
+    const payload = await snapshot(state.db);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `bulk-backup-${todayISO()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  },
+
   async eraseEverything() {
     for (const store of ALL_STORES) {
       if (store === 'settings') continue;
@@ -499,6 +540,7 @@ const ctx = {
 const globalActions = {
   tab(_ctx, data) {
     state.tab = data.tab;
+    if (data.tab !== 'prog') state.progressSection = null;
     closeSheet();
     render();
     window.scrollTo(0, 0);
@@ -555,6 +597,7 @@ function wireEvents() {
       train.actions[act] ||
       body.actions[act] ||
       progress.actions[act] ||
+      history.actions[act] ||
       plan.actions[act] ||
       settings.actions[act];
     if (!handler) return;
