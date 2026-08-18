@@ -172,6 +172,55 @@ export function weeklyRollUp(sessions, exercises, muscles) {
 }
 
 /**
+ * Whole-muscle volume from sets actually logged, counted the same way as the
+ * planned figure.
+ *
+ * v1 fed logged sets through rollUp(), which sums the heads: one incline fly
+ * added 1.3 sets of chest instead of 1.0. Planned and completed volume were
+ * therefore measured with two different rulers and could not be compared.
+ */
+export function rollUpFromSets(sets, exercises, muscles) {
+  const totals = {};
+  for (const set of sets || []) {
+    const exercise = exercises[set?.exerciseId];
+    if (!exercise) continue;
+    const value = set.isMyoRep ? MYO_REP_SET_VALUE : 1;
+
+    const byRoll = new Map();
+    for (const [muscleId, weight] of countedEntries(exercise.m)) {
+      const roll = muscles[muscleId]?.roll;
+      if (!roll) continue;
+      byRoll.set(roll, Math.max(byRoll.get(roll) ?? 0, weight));
+    }
+    for (const [roll, weight] of byRoll) addTo(totals, roll, value * weight);
+  }
+  return totals;
+}
+
+/**
+ * Planned against completed for one cycle, per whole muscle.
+ *
+ * The comparison the Progress screen should have been making all along: what
+ * the plan asked for this rotation, what was actually logged, and the share.
+ */
+export function plannedVsCompleted({ plannedSessions, loggedSets, exercises, muscles }) {
+  const planned = weeklyRollUp(plannedSessions, exercises, muscles);
+  const completed = rollUpFromSets(loggedSets, exercises, muscles);
+
+  const rolls = [...new Set([...Object.keys(planned), ...Object.keys(completed)])].sort();
+  return rolls.map((roll) => {
+    const plannedSets = planned[roll] || 0;
+    const completedSets = completed[roll] || 0;
+    return {
+      roll,
+      planned: Math.round(plannedSets * 10) / 10,
+      completed: Math.round(completedSets * 10) / 10,
+      share: plannedSets ? Math.round((completedSets / plannedSets) * 100) / 100 : null,
+    };
+  });
+}
+
+/**
  * Per-head volume arranged by display group, with each muscle's target band
  * attached. Both views have to be shown: the bands are per-head, the 20-set
  * literature is whole-muscle.

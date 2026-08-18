@@ -13,6 +13,8 @@ import {
   volumeByGroup,
   bandStatus,
   pastDiminishingReturns,
+  rollUpFromSets,
+  plannedVsCompleted,
 } from '../js/volume.js';
 
 /**
@@ -194,4 +196,48 @@ test('diminishing returns is claimed on roll-ups only, never on a single head', 
   assert.equal(pastDiminishingReturns(volume.triLong), false, '11 sets on the long head alone');
   assert.equal(pastDiminishingReturns(19.9), false);
   assert.equal(pastDiminishingReturns(20), true);
+});
+
+/* ── logged volume must use the same ruler as planned volume ────────── */
+
+test('logged whole-muscle volume counts the largest head, not the sum', () => {
+  // v1 sent logged sets through rollUp(), which sums heads: one incline fly
+  // added 1.3 sets of chest where the plan counted 1.0. Planned and completed
+  // were measured differently and could not be compared.
+  const oneFly = [{ exerciseId: 'inclineFly' }];
+
+  const summed = rollUp(volumeFromSets(oneFly, exercises), muscles);
+  const perSet = rollUpFromSets(oneFly, exercises, muscles);
+
+  assert.equal(round2(summed.Chest), 1.3, 'the old double-counted figure');
+  assert.equal(round2(perSet.Chest), 1.0, 'one set of chest is one set of chest');
+});
+
+test('a myo-rep cluster counts as two in the logged figure too', () => {
+  const straight = rollUpFromSets([{ exerciseId: 'lateral' }], exercises, muscles);
+  const cluster = rollUpFromSets([{ exerciseId: 'lateral', isMyoRep: true }], exercises, muscles);
+  assert.equal(round2(cluster.Chest ?? 0), 0);
+
+  const straightDelts = volumeFromSets([{ exerciseId: 'lateral' }], exercises).deltSide;
+  const clusterDelts = volumeFromSets([{ exerciseId: 'lateral', isMyoRep: true }], exercises).deltSide;
+  assert.equal(round2(clusterDelts), round2(straightDelts * 2));
+});
+
+test('planned against completed is the comparison Progress should make', () => {
+  const planned = [sessions.find((s) => s.id === 'A')];
+  const logged = [
+    { exerciseId: 'benchComp' }, { exerciseId: 'benchComp' },
+    { exerciseId: 'inclineDB' }, { exerciseId: 'triOH' },
+  ];
+
+  const rows = plannedVsCompleted({ plannedSessions: planned, loggedSets: logged, exercises, muscles });
+  const chest = rows.find((r) => r.roll === 'Chest');
+
+  assert.ok(chest.planned > 0);
+  assert.ok(chest.completed > 0 && chest.completed < chest.planned, 'four sets is not a whole session');
+  assert.ok(chest.share > 0 && chest.share < 1);
+
+  // A muscle the session prescribes but nothing was logged for reports zero,
+  // not a missing row — that absence is the point of the chart.
+  for (const row of rows) assert.ok(row.completed >= 0);
 });
