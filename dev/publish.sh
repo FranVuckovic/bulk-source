@@ -52,7 +52,12 @@ git remote add origin "$REMOTE"
 
 echo
 echo "Publishing $(find . -type f -not -path './.git/*' | wc -l | tr -d ' ') files to $REMOTE"
-git push -f origin main
+
+# HTTP/1.1 and a large buffer, set for this push only rather than in the user's
+# global config. git over HTTP/2 fails on some networks with "RPC failed;
+# HTTP 400 ... unexpected disconnect while reading sideband packet", and the
+# push dies after uploading every object.
+git -c http.version=HTTP/1.1 -c http.postBuffer=524288000 push -f origin main
 
 echo
 echo "Done. Now enable GitHub Pages: repo → Settings → Pages → Deploy from a branch → main → / (root)"
