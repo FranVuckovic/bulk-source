@@ -13,10 +13,10 @@
 export const DB_NAME = 'bulk';
 
 /** Bump this and add a migration. Never edit an existing migration. */
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 
 /** Written into settings so a future version can recognise this data. */
-export const FORMAT_VERSION = 2;
+export const FORMAT_VERSION = 3;
 
 export const DEFAULT_SETTINGS = Object.freeze({
   unit: 'kg',
@@ -161,7 +161,104 @@ export const MIGRATIONS = [
       tx.objectStore('settings').put({ key: 'formatVersion', value: 2 });
     },
   },
+  {
+    version: 3,
+    upgrade(db, tx) {
+      createStores(db, STORES_V3);
+
+      // New indexes on existing stores.
+      for (const [storeName, indexes] of Object.entries(INDEXES_V3)) {
+        const store = tx.objectStore(storeName);
+        for (const index of indexes) {
+          if (!store.indexNames.contains(index.name)) {
+            store.createIndex(index.name, index.keyPath, { unique: !!index.unique });
+          }
+        }
+      }
+
+      // Backfill: existing rows need the identities the new indexes require, or
+      // the unique constraint rejects the first write after the upgrade.
+      const sets = tx.objectStore('sets');
+      const setsRequest = sets.getAll();
+      setsRequest.onsuccess = () => {
+        for (const set of setsRequest.result || []) {
+          const patched = { ...set };
+          patched.logicalKey ??= `${set.sessionLogId}:${set.slotIndex ?? 0}:${set.setIndex ?? 0}`;
+          patched.operationId ??= `migrated-v3-set-${set.id}`;
+          patched.localDate ??= (set.timestampISO || '').slice(0, 10) || null;
+          patched.deletedAtISO ??= null;
+          sets.put(patched);
+        }
+      };
+
+      const logs = tx.objectStore('sessionLogs');
+      const logsRequest = logs.getAll();
+      logsRequest.onsuccess = () => {
+        for (const log of logsRequest.result || []) {
+          const patched = { ...log };
+          patched.cycleId ??= null;
+          patched.localDate ??= (log.dateISO || '').slice(0, 10) || null;
+          patched.status ??= log.endedAt ? (log.isPartial ? 'partial' : 'complete') : 'active';
+          patched.deletedAtISO ??= null;
+          logs.put(patched);
+        }
+      };
+
+      tx.objectStore('settings').put({ key: 'formatVersion', value: 3 });
+    },
+  },
 ];
+
+/**
+ * v3 — cycles, idempotency and recoverable deletion.
+ *
+ * Three v1 defects shared one cause: nothing had a stable identity beyond an
+ * auto-increment integer.
+ *
+ *   Two rapid taps both saw "no set logged here" and inserted two rows. No key
+ *   said they were the same logical set.
+ *   Deleting was permanent the instant it committed.
+ *   A rotation had no identity at all, so a partial cycle could not be told
+ *   from a complete one.
+ *
+ * `logicalKey` and `operationId` are unique indexes rather than conventions, so
+ * a duplicate is refused by the database itself and not by a UI lock that a
+ * fast thumb can beat.
+ */
+const STORES_V3 = [
+  {
+    name: 'cycles',
+    keyPath: 'id',
+    indexes: [
+      { name: 'sequence', keyPath: 'sequence' },
+      { name: 'status', keyPath: 'status' },
+      { name: 'blockId', keyPath: 'blockId' },
+    ],
+  },
+  {
+    name: 'auditLog',
+    keyPath: 'id',
+    autoIncrement: true,
+    indexes: [
+      { name: 'atISO', keyPath: 'atISO' },
+      { name: 'entity', keyPath: 'entity' },
+    ],
+  },
+];
+
+/** Indexes added to existing stores in v3. */
+const INDEXES_V3 = {
+  sets: [
+    { name: 'logicalKey', keyPath: 'logicalKey', unique: true },
+    { name: 'operationId', keyPath: 'operationId', unique: true },
+    { name: 'localDate', keyPath: 'localDate' },
+  ],
+  sessionLogs: [
+    { name: 'cycleId', keyPath: 'cycleId' },
+    { name: 'localDate', keyPath: 'localDate' },
+    { name: 'status', keyPath: 'status' },
+  ],
+};
 
 /** Applies every migration newer than what is on disk. Exported for tests. */
 export function runMigrations(db, tx, oldVersion, newVersion = DB_VERSION) {
@@ -289,6 +386,7 @@ export function count(db, storeName) {
 export const ALL_STORES = Object.freeze([
   ...STORES_V1.map((s) => s.name),
   ...STORES_V2.map((s) => s.name),
+  ...STORES_V3.map((s) => s.name),
 ]);
 
 export function setsForSession(db, sessionLogId) {
@@ -433,3 +531,158 @@ export async function snapshot(db) {
     data,
   };
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Idempotent, atomic operations (schema v3)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * A stable identity for one logical set: this session, this slot, this ordinal.
+ * Two taps on the same tick produce the same key, and the unique index refuses
+ * the second one — correctness lives in the database, not in a UI lock.
+ */
+export const logicalSetKey = (sessionLogId, slotIndex, setIndex) => `${sessionLogId}:${slotIndex}:${setIndex}`;
+
+/** Find a set by its logical identity, deleted rows included. */
+function findByIndex(store, indexName, value) {
+  return request(store.index(indexName).get(value));
+}
+
+/**
+ * Write a set exactly once.
+ *
+ * Repeating the same command — a double tap, a retried save, a replayed import
+ * — returns the existing row instead of inserting a second one. The whole
+ * operation is a single transaction, so a set and its session's updated
+ * timestamp either both exist or neither does.
+ */
+export function putSetIdempotent(db, record, { operationId }) {
+  return withTransaction(db, ['sets', 'sessionLogs'], 'readwrite', async ([sets, logs]) => {
+    if (operationId) {
+      const already = await findByIndex(sets, 'operationId', operationId);
+      if (already) return { set: already, created: false, duplicate: true };
+    }
+
+    const logicalKey = record.logicalKey || logicalSetKey(record.sessionLogId, record.slotIndex, record.setIndex);
+    const existing = await findByIndex(sets, 'logicalKey', logicalKey);
+
+    const row = {
+      ...record,
+      logicalKey,
+      operationId: operationId ?? record.operationId ?? `op-${logicalKey}-${Date.now()}`,
+      deletedAtISO: null,
+      ...(existing ? { id: existing.id, createdAtISO: existing.createdAtISO ?? record.createdAtISO } : {}),
+    };
+
+    const id = await request(sets.put(row));
+
+    // Touch the session so its updated time reflects the work, in the same
+    // transaction as the set itself.
+    const log = await request(logs.get(record.sessionLogId));
+    if (log) await request(logs.put({ ...log, updatedAtISO: row.timestampISO ?? log.updatedAtISO }));
+
+    return { set: { ...row, id }, created: !existing, duplicate: false };
+  });
+}
+
+/**
+ * Start a session, or return the one already running.
+ *
+ * v1 could create two active logs if the first two taps of a session raced,
+ * because both saw a null active pointer. Here the check and the write share
+ * one transaction, and an already-active session wins.
+ */
+export function startSessionAtomic(db, sessionLog, { operationId }) {
+  return withTransaction(db, ['sessionLogs', 'settings'], 'readwrite', async ([logs, settings]) => {
+    const pointer = await request(settings.get('activeSessionLogId'));
+    if (pointer?.value != null) {
+      const active = await request(logs.get(pointer.value));
+      // An ended session must never be restored as active.
+      if (active && !active.endedAt && !active.deletedAtISO) {
+        return { log: active, created: false };
+      }
+    }
+
+    if (operationId) {
+      const all = await request(logs.getAll());
+      const already = all.find((log) => log.operationId === operationId);
+      if (already) return { log: already, created: false };
+    }
+
+    const id = await request(logs.put({ ...sessionLog, operationId, status: 'active', deletedAtISO: null }));
+    await request(settings.put({ key: 'activeSessionLogId', value: id }));
+    return { log: { ...sessionLog, id }, created: true };
+  });
+}
+
+/**
+ * Finish a session and release the active pointer in one transaction.
+ *
+ * v1 wrote the end time and cleared the pointer separately. A failure between
+ * them left the pointer aimed at a finished session, which the next launch
+ * reopened — and more sets could then be appended to history.
+ */
+export function finishSessionAtomic(db, sessionLogId, patch) {
+  return withTransaction(db, ['sessionLogs', 'settings', 'cycles'], 'readwrite', async ([logs, settings, cycles]) => {
+    const log = await request(logs.get(sessionLogId));
+    if (!log) throw new Error('that session no longer exists');
+    if (log.endedAt) return { log, alreadyFinished: true };
+
+    const finished = { ...log, ...patch, status: patch.status ?? 'complete' };
+    await request(logs.put(finished));
+    await request(settings.put({ key: 'activeSessionLogId', value: null }));
+
+    if (finished.cycleId) {
+      const cycle = await request(cycles.get(finished.cycleId));
+      if (cycle) await request(cycles.put({ ...cycle, updatedAtISO: patch.endedAt ?? cycle.updatedAtISO }));
+    }
+
+    return { log: finished, alreadyFinished: false };
+  });
+}
+
+/**
+ * Soft delete: the row stays, marked, until it is purged.
+ *
+ * Deleting is the only irreversible thing the app does, and a mis-tap in a
+ * list should not be able to destroy a session permanently.
+ */
+export function softDeleteSession(db, sessionLogId, { reason = null } = {}) {
+  return withTransaction(db, ['sessionLogs', 'sets', 'auditLog'], 'readwrite', async ([logs, sets, audit]) => {
+    const log = await request(logs.get(sessionLogId));
+    if (!log) return { deletedSets: 0 };
+
+    const atISO = new Date().toISOString();
+    const attached = await request(sets.index('sessionLogId').getAll(sessionLogId));
+    for (const set of attached) {
+      if (!set.deletedAtISO) await request(sets.put({ ...set, deletedAtISO: atISO }));
+    }
+    await request(logs.put({ ...log, deletedAtISO: atISO, status: 'deleted' }));
+    await request(
+      audit.put({ atISO, entity: 'sessionLog', entityId: sessionLogId, action: 'delete', reason, restorable: true })
+    );
+
+    return { deletedSets: attached.length };
+  });
+}
+
+/** Undo a soft delete, sets included. */
+export function restoreSession(db, sessionLogId) {
+  return withTransaction(db, ['sessionLogs', 'sets', 'auditLog'], 'readwrite', async ([logs, sets, audit]) => {
+    const log = await request(logs.get(sessionLogId));
+    if (!log) throw new Error('that session no longer exists');
+
+    const attached = await request(sets.index('sessionLogId').getAll(sessionLogId));
+    for (const set of attached) await request(sets.put({ ...set, deletedAtISO: null }));
+    const restored = { ...log, deletedAtISO: null, status: log.endedAt ? 'complete' : 'active' };
+    await request(logs.put(restored));
+    await request(
+      audit.put({ atISO: new Date().toISOString(), entity: 'sessionLog', entityId: sessionLogId, action: 'restore' })
+    );
+
+    return { log: restored, restoredSets: attached.length };
+  });
+}
+
+/** Live rows only — everything the app reads should come through here. */
+export const alive = (rows) => (rows || []).filter((row) => !row.deletedAtISO);

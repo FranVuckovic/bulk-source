@@ -51,10 +51,10 @@ export function nearestRepRow(reps) {
  * Percentage of 1RM for a given reps × RPE, interpolating linearly between
  * columns for half-points (and any other fractional RPE).
  *
- * An RPE outside 6–10 — including a missing one — falls back to the RPE 8
- * column rather than throwing, because a prescription still has to render.
- * Callers that care about the difference should use estimateE1rm(), which
- * flags the fallback instead of hiding it.
+ * Returns null for an RPE the table cannot express — below 6, above 10, or
+ * missing. v1 silently mapped those onto the RPE 8 column, so a set logged
+ * without an effort rating produced a confident, wrong estimated max.
+ * Prescriptions use pctForPrescription(); logged sets use estimateE1rm().
  */
 export function pct(reps, rpe) {
   const row = RPE_TABLE[nearestRepRow(reps)];
@@ -67,7 +67,19 @@ export function pct(reps, rpe) {
       return row[k + 1] + f * (row[k] - row[k + 1]);
     }
   }
-  return row[4]; // off-table RPE → treat as RPE 8
+  return null; // off the table — the caller decides what to do about it
+}
+
+/**
+ * Percentage for prescribing, where a number always has to appear on screen.
+ *
+ * Prescriptions are written by the plan and their RPEs are always inside the
+ * table, so this only falls back when a slot is malformed. Reading a LOGGED set
+ * must never come through here — see estimateE1rm.
+ */
+export function pctForPrescription(reps, rpe) {
+  const value = pct(reps, rpe);
+  return value == null ? RPE_TABLE[nearestRepRow(reps)][4] : value;
 }
 
 /**
@@ -102,7 +114,12 @@ export function rpeFor(ratio, reps) {
  */
 export function e1rm(load, reps, rpe) {
   if (!load || !reps || reps > MAX_ESTIMABLE_REPS) return null;
-  return load / (pct(reps, rpe) / 100);
+  const percentage = pct(reps, rpe);
+  // An RPE the table cannot express produces no estimate. v1 mapped RPE 5 and
+  // missing RPEs onto the RPE 8 column, so a set logged without an effort
+  // rating reported 123.3 kg where Epley says 116.7 — a fabricated record.
+  if (percentage == null) return null;
+  return load / (percentage / 100);
 }
 
 /**
@@ -124,10 +141,32 @@ export function estimateE1rm(load, reps, rpe) {
   if (!load || !reps || reps > MAX_ESTIMABLE_REPS) return null;
 
   if (rpe == null) {
-    return { value: epley(load, reps), method: 'epley', confidence: 'low' };
+    return { value: epley(load, reps), method: 'epley', confidence: 'low', reason: 'no RPE recorded' };
   }
-  return { value: e1rm(load, reps, rpe), method: 'rpe', confidence: 'high' };
+
+  const table = e1rm(load, reps, rpe);
+  if (table == null) {
+    // RPE below 6 or above 10. Estimate it, but never let it claim a record or
+    // move a working max.
+    return {
+      value: epley(load, reps),
+      method: 'epley',
+      confidence: 'low',
+      reason: `RPE ${rpe} is outside the table's 6–10 range`,
+    };
+  }
+  return { value: table, method: 'rpe', confidence: 'high', reason: null };
 }
+
+/** The estimate for a stored set, honest about its own confidence. */
+export function estimateForSet(set, { bodyweight = 0 } = {}) {
+  if (!set) return null;
+  const total = systemLoad(set.load, set.bodyweightUsed ?? bodyweight);
+  return estimateE1rm(total, set.reps, set.rpe);
+}
+
+/** Only high-confidence estimates may claim a record or propose a working max. */
+export const isHighConfidence = (estimate) => !!estimate && estimate.confidence === 'high';
 
 /* ═══════════════════════════════════════════════════════════════════════
    Prescribed load
@@ -190,11 +229,11 @@ export function prescribedLoad(slot, workingMax, increment = DEFAULT_INCREMENT, 
   // Back-offs are a percentage of TODAY'S top single, not of the working max —
   // that is how the protocol they come from was actually run.
   if (slot.pctTop) {
-    const topSystem = systemLoad(roundAdded((workingMax * pct(1, 8)) / 100), bodyweight);
+    const topSystem = systemLoad(roundAdded((workingMax * pctForPrescription(1, 8)) / 100), bodyweight);
     return roundAdded(topSystem * slot.pctTop);
   }
 
-  return roundAdded((workingMax * pct(slot.reps, slot.rpe)) / 100);
+  return roundAdded((workingMax * pctForPrescription(slot.reps, slot.rpe)) / 100);
 }
 
 /** What the rounded load actually asks of you, at the slot's rep count. */

@@ -115,6 +115,11 @@ class FakeObjectStore {
     return { name, keyPath };
   }
 
+  get indexNames() {
+    const names = this.data.indexes;
+    return { contains: (name) => names.has(name), get length() { return names.size; } };
+  }
+
   index(name) {
     const spec = this.data.indexes.get(name);
     if (!spec) throw new Error(`no index "${name}" on ${this.data.name}`);
@@ -125,6 +130,21 @@ class FakeObjectStore {
     return this.transaction.enqueue(() => {
       const stored = clone(value);
       let key = this.data.keyPath ? stored?.[this.data.keyPath] : undefined;
+
+      // Unique indexes are enforced here, exactly as a real one would: a second
+      // row carrying an existing unique value is rejected, not merged.
+      for (const spec of this.data.indexes.values()) {
+        if (!spec.unique) continue;
+        const value = stored?.[spec.keyPath];
+        if (value === undefined || value === null) continue;
+        for (const [otherKey, other] of this.data.records) {
+          if (otherKey !== key && other?.[spec.keyPath] === value) {
+            const error = new Error(`unique constraint failed on index ${spec.name}`);
+            error.name = 'ConstraintError';
+            throw error;
+          }
+        }
+      }
 
       if (key === undefined || key === null) {
         if (!this.data.autoIncrement) throw new Error(`${this.data.name} requires a key`);
@@ -174,6 +194,17 @@ class FakeIndex {
     this.name = spec.name;
   }
 
+  /** First match for a key — what a unique-index lookup uses. */
+  get(query) {
+    return this.transaction.enqueue(() => {
+      for (const value of sortedValues(this.storeData)) {
+        const key = value?.[this.spec.keyPath];
+        if (key !== undefined && key !== null && compareKeys(key, query) === 0) return clone(value);
+      }
+      return undefined;
+    });
+  }
+
   getAll(query) {
     return this.transaction.enqueue(() => {
       const matches = [...this.storeData.records.entries()].filter(([, value]) => {
@@ -210,6 +241,33 @@ class FakeTransaction {
     this.pending = 0;
     this.finished = false;
     this.commitScheduled = false;
+
+    /*
+     * IndexedDB serialises readwrite transactions whose scopes overlap: the
+     * second cannot see a half-finished first. Without modelling that, two
+     * concurrent "log this set" calls both read an empty store and both write,
+     * and a test for idempotency would be testing this file's shortcut rather
+     * than the application's correctness.
+     */
+    this.ready = Promise.resolve();
+    if (mode === 'readwrite' && db?.data) {
+      const previous = db.data.writeChain || Promise.resolve();
+      let release;
+      const mine = new Promise((resolve) => {
+        release = resolve;
+      });
+      this.ready = previous;
+      this.release = release;
+      db.data.writeChain = previous.then(() => mine);
+    }
+  }
+
+  /** Let the next queued readwrite transaction start. */
+  releaseLock() {
+    if (this.release) {
+      this.release();
+      this.release = null;
+    }
   }
 
   objectStore(name) {
@@ -227,7 +285,7 @@ class FakeTransaction {
     const req = new FakeRequest(this);
     this.pending += 1;
 
-    queueMicrotask(() => {
+    this.ready.then(() => {
       if (this.finished) return;
       try {
         const result = work();
@@ -253,6 +311,7 @@ class FakeTransaction {
       if (this.finished) return;
       if (this.pending > 0) return this.scheduleCommit();
       this.finished = true;
+      this.releaseLock();
       if (this.oncomplete) this.oncomplete({ target: this });
     }, 0);
   }
@@ -260,6 +319,7 @@ class FakeTransaction {
   abort() {
     if (this.finished) return;
     this.finished = true;
+    this.releaseLock();
     if (this.onabort) this.onabort({ target: this });
   }
 }

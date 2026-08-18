@@ -9,6 +9,9 @@ import {
   MID_BLOCK_BUMP_RATIO,
   nearestRepRow,
   pct,
+  pctForPrescription,
+  estimateForSet,
+  isHighConfidence,
   rpeFor,
   e1rm,
   epley,
@@ -109,11 +112,50 @@ test('pct is monotonic in RPE within a row', () => {
   }
 });
 
-test('an off-table or missing RPE falls back to the RPE 8 column', () => {
-  assert.equal(pct(5, 11), pct(5, 8));
-  assert.equal(pct(5, 5), pct(5, 8));
-  assert.equal(pct(5, undefined), pct(5, 8));
-  assert.equal(pct(5, null), pct(5, 8));
+test('an off-table or missing RPE produces no percentage at all', () => {
+  // v1 returned the RPE 8 column here, which turned "I did not record the
+  // effort" into a confident estimated max 6.6 kg higher than Epley's.
+  assert.equal(pct(5, 11), null);
+  assert.equal(pct(5, 5), null);
+  assert.equal(pct(5, undefined), null);
+  assert.equal(pct(5, null), null);
+
+  // Prescriptions still have to render a number, so they have their own path.
+  assert.equal(pctForPrescription(5, 8), 81.1);
+  assert.equal(pctForPrescription(5, 5), pct(5, 8), 'a malformed slot falls back rather than blanking the screen');
+});
+
+test('an unsupported RPE cannot produce a high-confidence estimate', () => {
+  assert.equal(e1rm(100, 5, 5), null, 'RPE 5 is off the table');
+  assert.equal(e1rm(100, 5, null), null);
+
+  const rpe5 = estimateE1rm(100, 5, 5);
+  assert.equal(rpe5.method, 'epley');
+  assert.equal(rpe5.confidence, 'low');
+  close(rpe5.value, 100 * (1 + 5 / 30));
+  assert.match(rpe5.reason, /outside the table/);
+
+  const missing = estimateE1rm(100, 5, null);
+  assert.equal(missing.confidence, 'low');
+  assert.equal(missing.reason, 'no RPE recorded');
+
+  assert.equal(isHighConfidence(estimateE1rm(100, 5, 8)), true);
+  assert.equal(isHighConfidence(rpe5), false);
+  assert.equal(isHighConfidence(missing), false);
+  assert.equal(isHighConfidence(null), false);
+});
+
+test('estimateForSet reads a stored set, bodyweight included', () => {
+  const barbell = estimateForSet({ load: 100, reps: 5, rpe: 8 });
+  close(barbell.value, 100 / 0.811);
+  assert.equal(barbell.confidence, 'high');
+
+  // A +10 kg pull-up at 90 kg bodyweight is a 100 kg lift.
+  const pullup = estimateForSet({ load: 10, reps: 5, rpe: 8, bodyweightUsed: 90 });
+  close(pullup.value, 100 / 0.811);
+
+  assert.equal(estimateForSet({ load: 60, reps: 15, rpe: 8 }), null, 'above 12 reps');
+  assert.equal(estimateForSet(null), null);
 });
 
 /* ── e1RM ────────────────────────────────────────────────────────────── */

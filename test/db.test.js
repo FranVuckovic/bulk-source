@@ -18,6 +18,13 @@ import {
   count,
   saveSession,
   deleteSessionCascade,
+  putSetIdempotent,
+  startSessionAtomic,
+  finishSessionAtomic,
+  softDeleteSession,
+  restoreSession,
+  logicalSetKey,
+  alive,
   snapshot,
   setsForSession,
   setsForExercise,
@@ -204,7 +211,7 @@ test('deleting removes only what was asked for', async () => {
 /* ── migrations ──────────────────────────────────────────────────────── */
 
 test('the migration list is ordered, contiguous and ends at DB_VERSION', () => {
-  assert.deepEqual(MIGRATIONS.map((m) => m.version), [1, 2]);
+  assert.deepEqual(MIGRATIONS.map((m) => m.version), [1, 2, 3]);
   assert.equal(MIGRATIONS[MIGRATIONS.length - 1].version, DB_VERSION);
 });
 
@@ -434,4 +441,152 @@ test('a snapshot carries every store and can be read back', async () => {
 
   // It survives the round trip through a file.
   assert.deepEqual(JSON.parse(JSON.stringify(backup)), backup);
+});
+
+/* ── v3: identity, idempotency and recoverable deletion ─────────────── */
+
+test('v2 → v3 backfills the identities the new unique indexes require', async () => {
+  const env = createFakeEnv();
+
+  const v2 = await openAt(env, 2);
+  const { sessionLogId } = await saveSession(
+    v2,
+    { dateISO: '2026-08-20', sessionId: 'A', blockId: 1, startedAt: '2026-08-20T17:00:00.000Z', endedAt: '2026-08-20T18:15:00.000Z' },
+    [
+      { exerciseId: 'benchComp', slotIndex: 0, setIndex: 0, load: 105, reps: 1, rpe: 8 },
+      { exerciseId: 'benchComp', slotIndex: 1, setIndex: 0, load: 90, reps: 3, rpe: 8 },
+    ]
+  );
+  v2.close();
+
+  const v3 = await openAt(env, 3);
+  const sets = await getAll(v3, 'sets');
+
+  assert.equal(sets.length, 2, 'nothing was lost');
+  for (const set of sets) {
+    assert.ok(set.logicalKey, 'every set gained a logical key');
+    assert.ok(set.operationId, 'and an operation id');
+    assert.equal(set.deletedAtISO, null);
+  }
+  assert.equal(new Set(sets.map((s) => s.logicalKey)).size, 2, 'the keys are distinct');
+
+  const [log] = await getAll(v3, 'sessionLogs');
+  assert.equal(log.status, 'complete', 'an ended session migrates as complete');
+  assert.equal(log.deletedAtISO, null);
+
+  // And the upgraded database still accepts writes under the new constraints.
+  const written = await putSetIdempotent(
+    v3,
+    { sessionLogId, slotIndex: 2, setIndex: 0, exerciseId: 'lateral', load: 12, reps: 15, rpe: 10 },
+    { operationId: 'after-migration' }
+  );
+  assert.equal(written.created, true);
+});
+
+test('the same set command twice creates one row', async () => {
+  const { db } = await freshDb();
+  const { log } = await startSessionAtomic(
+    db,
+    { dateISO: '2026-08-20', localDate: '2026-08-20', sessionId: 'A', blockId: 1, startedAt: '2026-08-20T17:00:00.000Z' },
+    { operationId: 'start-1' }
+  );
+
+  const record = {
+    sessionLogId: log.id, slotIndex: 0, setIndex: 0, exerciseId: 'benchComp',
+    load: 105, reps: 1, rpe: 8, timestampISO: '2026-08-20T17:05:00.000Z',
+  };
+
+  // Two taps race: both see no logged set and both write.
+  const [first, second] = await Promise.all([
+    putSetIdempotent(db, record, { operationId: 'tap-1' }),
+    putSetIdempotent(db, record, { operationId: 'tap-2' }),
+  ]);
+
+  const sets = await getAll(db, 'sets');
+  assert.equal(sets.length, 1, 'one logical set, one row');
+  assert.equal(sets[0].logicalKey, logicalSetKey(log.id, 0, 0));
+  assert.equal(first.set.id, second.set.id, 'both calls describe the same row');
+  assert.equal(first.created && second.created, false, 'only one of them created it');
+
+  // Replaying the command that won is recognised rather than written again.
+  const replay = await putSetIdempotent(db, record, { operationId: sets[0].operationId });
+  assert.equal(replay.duplicate, true);
+  assert.equal((await getAll(db, 'sets')).length, 1);
+
+  // A genuine edit of the same logical set updates it rather than adding one.
+  await putSetIdempotent(db, { ...record, reps: 2 }, { operationId: 'edit-1' });
+  const afterEdit = await getAll(db, 'sets');
+  assert.equal(afterEdit.length, 1, 'still one row');
+  assert.equal(afterEdit[0].reps, 2, 'with the new value');
+});
+
+test('two starts cannot produce two active sessions', async () => {
+  const { db } = await freshDb();
+  const log = { dateISO: '2026-08-20', localDate: '2026-08-20', sessionId: 'A', blockId: 1, startedAt: '2026-08-20T17:00:00.000Z' };
+
+  const [a, b] = await Promise.all([
+    startSessionAtomic(db, log, { operationId: 'start-a' }),
+    startSessionAtomic(db, log, { operationId: 'start-b' }),
+  ]);
+
+  const logs = await getAll(db, 'sessionLogs');
+  const active = logs.filter((l) => !l.endedAt && !l.deletedAtISO);
+  assert.equal(active.length, 1, 'exactly one active session');
+  assert.ok(a.created || b.created, 'one of them created it');
+  assert.equal(a.created && b.created, false, 'but not both');
+});
+
+test('finishing is atomic and a finished session never reopens', async () => {
+  const { db } = await freshDb();
+  const { log } = await startSessionAtomic(
+    db,
+    { dateISO: '2026-08-20', localDate: '2026-08-20', sessionId: 'A', blockId: 1, startedAt: '2026-08-20T17:00:00.000Z' },
+    { operationId: 'start' }
+  );
+
+  const finished = await finishSessionAtomic(db, log.id, {
+    endedAt: '2026-08-20T18:20:00.000Z',
+    sessionRpe: 7,
+    isPartial: false,
+  });
+  assert.equal(finished.alreadyFinished, false);
+
+  const settings = await readSettings(db);
+  assert.equal(settings.activeSessionLogId, null, 'the pointer is released in the same transaction');
+
+  // Finishing twice is harmless, and starting again does not resurrect it.
+  const again = await finishSessionAtomic(db, log.id, { endedAt: '2026-08-20T19:00:00.000Z' });
+  assert.equal(again.alreadyFinished, true);
+  assert.equal(again.log.endedAt, '2026-08-20T18:20:00.000Z', 'the original end time stands');
+
+  const restarted = await startSessionAtomic(
+    db,
+    { dateISO: '2026-08-21', localDate: '2026-08-21', sessionId: 'B', blockId: 1, startedAt: '2026-08-21T17:00:00.000Z' },
+    { operationId: 'start-2' }
+  );
+  assert.equal(restarted.created, true, 'a new session starts cleanly');
+  assert.notEqual(restarted.log.id, log.id);
+});
+
+test('deleting is recoverable, and restores the sets with it', async () => {
+  const { db } = await freshDb();
+  const { sessionLogId } = await saveSession(db, { dateISO: '2026-08-20', sessionId: 'A', blockId: 1 }, [
+    { exerciseId: 'benchComp', slotIndex: 0, setIndex: 0, load: 105, reps: 1, rpe: 8 },
+    { exerciseId: 'benchComp', slotIndex: 1, setIndex: 0, load: 90, reps: 3, rpe: 8 },
+  ]);
+
+  const deleted = await softDeleteSession(db, sessionLogId, { reason: 'logged the wrong session' });
+  assert.equal(deleted.deletedSets, 2);
+
+  assert.equal(alive(await getAll(db, 'sessionLogs')).length, 0, 'gone from every live read');
+  assert.equal(alive(await getAll(db, 'sets')).length, 0);
+  assert.equal((await getAll(db, 'sets')).length, 2, 'but still on disk');
+
+  const audit = await getAll(db, 'auditLog');
+  assert.equal(audit[0].action, 'delete');
+  assert.equal(audit[0].reason, 'logged the wrong session');
+
+  const restored = await restoreSession(db, sessionLogId);
+  assert.equal(restored.restoredSets, 2);
+  assert.equal(alive(await getAll(db, 'sets')).length, 2, 'and it comes back');
 });
