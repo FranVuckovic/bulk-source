@@ -22,7 +22,7 @@ import {
   platesFor,
   pct,
 } from '../calc.js';
-import { resolveSession } from '../progress.js';
+import { resolveSession, toDisplaySession } from '../plan.js';
 import {
   escape,
   fmtLoad,
@@ -48,11 +48,18 @@ const tracksPause = (exerciseId) => exerciseId.startsWith('bench');
 
 /** Slots for the displayed session: the plan's, with swaps and additions. */
 export function slotsFor(state) {
-  const raw = state.plan.sessions.find((s) => s.id === state.trainSessionId);
-  // Static holds appear at block 2, the heavy single doubles in blocks 4–5, the
-  // variation changes rep range — all resolved here, from the plan data.
-  const session = resolveSession(raw, state.block.idx);
-  const planned = (session?.slots || []).map((slot, i) => {
+  // Everything block-specific comes from the plan engine: the bench work for
+  // this block, the failure permission for this rotation's effort mode, the
+  // accessory multiplier, the static hold if one is offered, and any readiness
+  // adjustment. The screen never decides what the session is.
+  const resolved = toDisplaySession(
+    resolveSession(state.plan, {
+      rotation: state.cycle.sequence,
+      sessionId: state.trainSessionId,
+      readiness: state.readiness || 'normal',
+    })
+  );
+  const planned = (resolved.slots || []).map((slot, i) => {
     const swappedTo = state.deviations.swaps[i];
     const extraSets = state.deviations.addedSets[i] || 0;
     return {
@@ -132,6 +139,11 @@ export function view(ctx) {
   const { state } = ctx;
   const session = state.plan.sessions.find((s) => s.id === state.trainSessionId);
   const slots = slotsFor(state);
+  const resolved = resolveSession(state.plan, {
+    rotation: state.cycle.sequence,
+    sessionId: state.trainSessionId,
+    readiness: state.readiness || 'normal',
+  });
   const unit = state.settings.unit;
 
   let prescribedSets = 0;
@@ -163,8 +175,9 @@ export function view(ctx) {
     <div class="bar"><i style="width:${prescribedSets ? (doneSets / prescribedSets) * 100 : 0}%"></i></div>
     <div class="meta">
       <span>${doneSets} / ${prescribedSets} sets</span>
-      <span>~${escape(session.mins)} min</span>
-      <span>Block ${escape(state.block.label)} · ${state.blockProgress.blockDone}/${state.blockProgress.sessionTarget}</span>
+      <span>~${estimateMinutes(state, slots)} min</span>
+      <span>Cycle ${state.cycle.sequence}/${state.plan.meta.rotations} · ${escape(state.block.name)}</span>
+      <span>${state.cycleProgress.complete}/${state.plan.meta.rotationOrder.length} this rotation</span>
     </div>
   </div>
 
@@ -184,6 +197,20 @@ export function view(ctx) {
     <p class="hint">Session RPE = how hard the <b>whole session</b> felt, 0–10, rated about 20 minutes after you finish. Multiplied by duration it gives a session load — the earliest warning sign that weekly fatigue is climbing, usually a week before you feel it.</p>
     <button class="big mt" data-act="finish">Finish session</button>
   </div>`;
+}
+
+/**
+ * A duration estimate from the work actually prescribed, not a fixed string.
+ * v1 carried hand-written minute ranges that went stale the moment the plan
+ * changed. Roughly the rest between sets plus about 40 seconds of work each.
+ */
+function estimateMinutes(state, slots) {
+  const seconds = slots.reduce((total, slot) => {
+    const rest = slot.restSec || state.plan.exercises[slot.ex]?.defaultRestSec || 90;
+    return total + slot.sets * (rest + 40);
+  }, 0);
+  const minutes = Math.round(seconds / 60);
+  return `${Math.round(minutes * 0.9 / 5) * 5}–${Math.round(minutes * 1.1 / 5) * 5}`;
 }
 
 const calibrationCard = () => `<div class="card" style="border-color:var(--s2);border-width:2px">
@@ -212,7 +239,11 @@ function exerciseBlock(state, slot, slotIndex) {
       <div class="tick ${all ? 'done' : done ? 'part' : ''}">${all ? '✓' : done || ''}</div>
       <div class="exnm"><b>${name}${slot.idx ? '<span class="badge idx">INDEX</span>' : ''}${
         slot.amrap ? '<span class="badge amr">AMRAP</span>' : ''
-      }${slot.myoReps ? '<span class="badge myo">MYO</span>' : ''}</b>
+      }${slot.myoReps ? '<span class="badge myo">MYO</span>' : ''}${
+        slot.isTest ? '<span class="badge test">TEST</span>' : ''
+      }${slot.role === 'hold' ? '<span class="badge hold">HOLD</span>' : ''}${
+        slot.optional ? '<span class="badge opt">OPTIONAL</span>' : ''
+      }</b>
         <span class="sc">${slot.sets} × ${slot.amrap ? 'max' : slot.reps} @ RPE ${slot.rpe}${
           prescribed != null
             ? ` · ${workingMaxFor(state, slot.ex) && bodyweightFor(state, slot.ex) ? '+' : ''}${fmtLoad(prescribed, unit)} ${unit}`
@@ -229,6 +260,23 @@ function exerciseBlock(state, slot, slotIndex) {
           : `<p class="hint"><b>${slot.idx ? 'Find your baseline.' : 'No stored max for this one.'}</b> Pick a weight you think lands at the target RPE, log what actually happened, and the app carries it forward from here.</p>`
       }
       ${previous?.note ? `<p class="hint">Your last note · <b>${escape(previous.note)}</b></p>` : ''}
+      ${
+        slot.note
+          ? `<div class="cue" style="border-left-color:${slot.isTest || slot.role === 'hold' ? 'var(--crit)' : 'var(--s1)'}">${escape(
+              slot.note
+            )}</div>`
+          : ''
+      }
+      ${
+        slot.scaledFrom
+          ? `<p class="hint">Reduced from <b>${slot.scaledFrom} sets</b> — ${escape(slot.scaleReason)}.</p>`
+          : ''
+      }
+      ${
+        slot.adjusted
+          ? `<p class="hint">Adjusted for a <b>${escape(slot.adjusted)}</b> day.</p>`
+          : ''
+      }
       ${
         slot.myoReps
           ? `<div class="cue" style="border-left-color:var(--s2)"><b>Last set is a myo-rep cluster.</b>

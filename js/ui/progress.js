@@ -645,9 +645,7 @@ function blockComparison(state) {
       .map(([blockId, entry]) => {
         const gained = Math.round((entry.last - entry.first) * 10) / 10;
         return {
-          label: state.plan.blocks[blockId]
-            ? state.plan.blocks[blockId].n.split(' · ')[1] || state.plan.blocks[blockId].n
-            : `Block ${blockId}`,
+          label: state.plan.blocks.find((b) => b.id === blockId)?.name ?? `Block ${blockId}`,
           value: gained,
           display: `+${gained}`,
         };

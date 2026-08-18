@@ -439,3 +439,39 @@ export function validatePlan(plan) {
 
 /** Physical working sets in a resolved session. */
 export const setCount = (resolved) => resolved.slots.reduce((total, slot) => total + slot.sets, 0);
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Adapter for the screens
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * A resolved slot in the shape the Train screen already renders.
+ *
+ * The v2 resolver speaks in rep ranges, roles and failure permissions; the
+ * screens were written against v1's single `reps` and `failLast`. Rather than
+ * rewrite every view at the same time as the engine — which is how new bugs
+ * get in — the engine output is adapted here, in one place, with the extra
+ * fields carried through for the screens that want them.
+ */
+export function toDisplaySlot(slot, index) {
+  const reps = slot.repsHigh ?? slot.repsLow ?? slot.reps ?? null;
+  return {
+    ...slot,
+    // The rep target shown and prefilled is the top of the range: double
+    // progression means you own the top before the load goes up.
+    reps,
+    repsLow: slot.repsLow ?? reps,
+    repsHigh: slot.repsHigh ?? reps,
+    failLast: slot.failSets ?? 0,
+    myoReps: !!slot.myoOption,
+    idx: !!slot.idx,
+    amrap: !!slot.amrap,
+    pctTop: null,
+    slotIndex: index,
+  };
+}
+
+/** The whole resolved session, ready for the Train screen. */
+export function toDisplaySession(resolved) {
+  return { ...resolved, slots: resolved.slots.map(toDisplaySlot) };
+}

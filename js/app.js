@@ -14,6 +14,13 @@ import {
   put,
   remove,
   clearStore,
+  alive,
+  putSetIdempotent,
+  startSessionAtomic,
+  finishSessionAtomic,
+  softDeleteSession,
+  restoreSession,
+  logicalSetKey,
   deleteSessionCascade,
   snapshot,
   saveSession,
@@ -31,7 +38,10 @@ import {
   isPartialSession,
   sortLogsByDate,
 } from './progress.js';
-import { e1rm, systemLoad } from './calc.js';
+import { e1rm, systemLoad, estimateForSet, isHighConfidence } from './calc.js';
+import { localDate, nowISO, timeZone, utcOffsetMinutes, daysBetween } from './dates.js';
+import { blockFor, effortModeFor, resolveSession, toDisplaySession, validatePlan } from './plan.js';
+import { newCycle, cycleProgress, nextSession, blockBoundary, completionRatio, sessionStatusFor, projectedFinish } from './cycle.js';
 import { buildExport, parseImport, restore } from './export.js';
 import {
   escape,
@@ -51,7 +61,7 @@ import * as plan from './ui/plan.js';
 import * as settings from './ui/settings.js';
 import * as history from './ui/history.js';
 
-const PLAN_URL = './data/plan-bulk-v1.json';
+const PLAN_URL = './data/plan-fopip-v2.json';
 const TABS = { train: 'Bulk', body: 'Body', prog: 'Progress', plan: 'Plan', set: 'Settings' };
 
 const state = {
@@ -64,6 +74,14 @@ const state = {
 
   logs: [],
   sets: [],
+  cycles: [],
+  cycle: null,
+  cycleProgress: null,
+  next: null,
+  boundary: null,
+  effortMode: null,
+  projection: null,
+  readiness: 'normal',
   daily: [],
   measurements: [],
   niggles: [],
@@ -106,8 +124,9 @@ const state = {
    Loading
    ═══════════════════════════════════════════════════════════════════════ */
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
-const nowISO = () => new Date().toISOString();
+// Civil dates come from the device's own calendar. v1 used toISOString, which
+// is UTC: anything logged after local midnight was filed under the previous day.
+const todayISO = () => localDate();
 
 async function loadEverything() {
   state.todayISO = todayISO();
@@ -119,32 +138,55 @@ async function loadEverything() {
   state.media = (await getAll(state.db, 'media')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
   state.maxes = new Map((await getAll(state.db, 'maxes')).map((m) => [m.exerciseId, m]));
 
-  const finished = state.logs.filter((log) => log.endedAt);
-  state.position = rotationPosition(finished, state.plan.meta.rotation);
+  state.cycles = (await getAll(state.db, 'cycles')).filter((c) => !c.deletedAtISO).sort((a, b) => a.sequence - b.sequence);
+  const finished = alive(state.logs).filter((log) => log.endedAt);
 
-  const blockIdx = Number((await readSettings(state.db)).blockIdx ?? 0);
-  const blockStartedISO = (await readSettings(state.db)).blockStartedISO ?? state.plan.meta.startDateISO;
-  const block = state.plan.blocks[blockIdx];
-  state.block = { idx: blockIdx, label: block.n.split(' · ')[0], startedISO: blockStartedISO, ...block };
-  state.blockProgress = blockProgress(
-    finished,
-    { id: blockIdx, sessionTarget: block.sessionTarget, startedISO: blockStartedISO, weeks: block.weeks },
-    todayISO()
-  );
+  // ── where the plan actually is ──
+  const stored = await readSettings(state.db);
+  const sequence = Math.min(Math.max(1, Number(stored.cycleSequence ?? 1)), state.plan.meta.rotations);
+  state.cycle =
+    state.cycles.find((c) => c.sequence === sequence) ||
+    newCycle(state.plan, { sequence, startedAtISO: stored.cycleStartedAtISO ?? null, localStartDate: stored.cycleStartedDate ?? null });
 
-  // Pace runs from whichever came first: the plan's start date or the earliest
-  // session logged against it.
-  const firstLogged = finished.length ? finished[0].dateISO.slice(0, 10) : null;
-  const effectiveStart =
-    firstLogged && firstLogged < state.plan.meta.startDateISO ? firstLogged : state.plan.meta.startDateISO;
-  state.planProgress = planProgress(finished, effectiveStart, state.todayISO);
+  state.cycleProgress = cycleProgress(state.plan, state.cycle, finished);
+  state.next = nextSession(state.plan, state.cycle, finished);
+  state.boundary = blockBoundary(state.plan, state.cycle);
 
-  // Calibration only applies when there is genuinely nothing to prescribe from.
-  // The shipped plan carries seed working maxes, so it stays off until a plan
-  // without them is loaded.
-  const hasAnyMax =
-    state.maxes.size > 0 || Object.keys(state.plan.meta.seedWorkingMaxes || {}).length > 0;
-  state.calibration = !hasAnyMax && finished.length < state.plan.meta.rotation.length;
+  const block = blockFor(state.plan, state.cycle.sequence);
+  state.block = { idx: block.id, label: String(block.id), name: block.name, ...block };
+  state.effortMode = effortModeFor(state.plan, state.cycle.sequence);
+
+  // Kept in the shape the screens already read, so the engine change does not
+  // ripple through every view at once.
+  state.position = {
+    nextSessionId: state.next.position,
+    sessionsDone: finished.length,
+    lastSessionId: finished.length ? finished[finished.length - 1].rotationPosition ?? null : null,
+  };
+  state.blockProgress = {
+    blockDone: state.cycleProgress.complete,
+    sessionTarget: state.plan.meta.rotationOrder.length,
+    readyForReview: state.cycleProgress.finished && state.boundary.atBoundary,
+    daysElapsed: state.cycle.localStartDate ? daysBetween(state.cycle.localStartDate, state.todayISO) : null,
+  };
+
+  const firstLogged = finished.length ? (finished[0].localDate || finished[0].dateISO || '').slice(0, 10) : null;
+  state.planProgress = {
+    sessionsDone: finished.length,
+    cyclesDone: Math.max(0, state.cycle.sequence - 1) + (state.cycleProgress.finished ? 1 : 0),
+    daysElapsed: firstLogged ? daysBetween(firstLogged, state.todayISO) : null,
+    calendarWeek: firstLogged ? Math.floor(Math.max(0, daysBetween(firstLogged, state.todayISO)) / 7) + 1 : 1,
+    pace: null,
+  };
+  if (state.planProgress.daysElapsed > 0) {
+    state.planProgress.pace = finished.length / (state.planProgress.daysElapsed / 7);
+    state.projection = projectedFinish(state.plan, {
+      cyclesDone: state.planProgress.cyclesDone,
+      daysElapsed: state.planProgress.daysElapsed,
+    });
+  }
+
+  state.calibration = false;
 
   buildHistory();
 }
@@ -181,7 +223,7 @@ async function restoreActiveSession() {
 
   if (!active) {
     state.activeLog = null;
-    state.trainSessionId = state.trainSessionId || state.position.nextSessionId || state.plan.meta.rotation[0];
+    state.trainSessionId = state.trainSessionId || state.position.nextSessionId || state.plan.meta.rotationOrder[0];
     return;
   }
 
@@ -189,9 +231,13 @@ async function restoreActiveSession() {
   state.trainSessionId = active.sessionId;
   state.deviations = active.deviations || { swaps: {}, extras: [], addedSets: {} };
   state.grips = active.grips || {};
+  // Stored values are kilograms; the draft is labelled with the display unit.
+  // v1 copied the raw kg straight into a field labelled lb, so a 90 kg session
+  // reopened as "90 lb" and finishing converted it again to 40.8 kg.
   state.draft = {
     note: active.note || '',
-    bodyweight: active.bodyweight == null ? '' : String(active.bodyweight),
+    bodyweight:
+      active.bodyweight == null ? '' : String(Math.round(toDisplay(active.bodyweight, state.settings.unit) * 10) / 10),
     sessionRpe: active.sessionRpe == null ? '' : String(active.sessionRpe),
   };
 
@@ -215,11 +261,19 @@ async function ensureActiveLog() {
     state.db,
     {
       dateISO: todayISO(),
+      localDate: todayISO(),
+      timeZone: timeZone(),
       startedAt: nowISO(),
       endedAt: null,
       sessionId: state.trainSessionId,
+      rotationPosition: state.trainSessionId,
+      cycleId: state.cycle.id,
+      cycleSequence: state.cycle.sequence,
       blockId: state.block.idx,
-      rotationIndex: state.plan.meta.rotation.indexOf(state.trainSessionId),
+      effortMode: state.effortMode,
+      readiness: state.readiness || 'normal',
+      status: 'active',
+      rotationIndex: state.plan.meta.rotationOrder.indexOf(state.trainSessionId),
       bodyweight: null,
       sessionRpe: null,
       note: null,
@@ -245,6 +299,7 @@ async function saveSet(slotIndex, setIndex, values) {
   const record = {
     ...(existing ? { id: existing.id } : {}),
     sessionLogId: log.id,
+    logicalKey: logicalSetKey(log.id, slotIndex, setIndex),
     exerciseId: slot.ex,
     slotIndex,
     setIndex,
@@ -255,12 +310,15 @@ async function saveSet(slotIndex, setIndex, values) {
     toFailure: !!values.toFailure,
     isAmrap: !!values.isAmrap,
     isIndexSet: !!slot.idx,
-    isMyoRep: false,
+    isMyoRep: !!values.isMyoRep,
     velocity: values.velocity ?? null,
     note: values.note ?? null,
     wasPrescribed: !!values.wasPrescribed,
     prescribedLoad: values.prescribedLoad ?? null,
     timestampISO: nowISO(),
+    localDate: todayISO(),
+    timeZone: timeZone(),
+    utcOffsetMinutes: utcOffsetMinutes(),
     gripWidth: state.grips[`${state.trainSessionId}-${slotIndex}`] ?? null,
     // Stored per set: without it, a pull-up log stops being interpretable the
     // moment your bodyweight changes.
@@ -272,8 +330,12 @@ async function saveSet(slotIndex, setIndex, values) {
   // Was this a record? Ask BEFORE the set is stored, or it beats itself.
   const beaten = personalBestBefore(record);
 
-  const id = await put(state.db, 'sets', record);
-  state.loggedSets.set(key, { ...record, id });
+  // Idempotent: a double tap, or a retried save, resolves to one row because
+  // the logical key is a unique index rather than a convention.
+  const { set: written } = await putSetIdempotent(state.db, record, {
+    operationId: values.operationId ?? `${record.logicalKey}-${record.timestampISO}`,
+  });
+  state.loggedSets.set(key, written);
   state.sets = await getAll(state.db, 'sets');
   render();
 
@@ -358,18 +420,24 @@ async function persistDraft() {
 async function finishSession() {
   await persistDraft();
   const session = state.plan.sessions.find((s) => s.id === state.trainSessionId);
-  const prescribed = prescribedSetCount({ slots: train.slotsFor(state) }) || prescribedSetCount(session);
+  const prescribed = prescribedSetCount({ slots: train.slotsFor(state) });
   const logged = state.loggedSets.size;
+  const ratio = completionRatio(logged, prescribed);
 
-  state.activeLog = {
-    ...state.activeLog,
+  // One transaction: the end state and the active pointer move together, so a
+  // failure between them cannot leave a finished session looking active.
+  const { log: finishedLog } = await finishSessionAtomic(state.db, state.activeLog.id, {
     endedAt: nowISO(),
-    isPartial: isPartialSession(logged, prescribed),
-  };
-  await put(state.db, 'sessionLogs', state.activeLog);
-  await writeSetting(state.db, 'activeSessionLogId', null);
+    localEndDate: todayISO(),
+    isPartial: ratio != null && ratio < 0.5,
+    completionRatio: ratio,
+    prescribedSets: prescribed,
+    loggedSets: logged,
+    status: sessionStatusFor(ratio),
+    note: state.draft.note || null,
+  });
+  state.activeLog = finishedLog;
 
-  const finishedLog = state.activeLog;
   const minutes = Math.round(
     (Date.parse(finishedLog.endedAt) - Date.parse(finishedLog.startedAt)) / 60000
   );
@@ -657,8 +725,23 @@ const globalActions = {
     stopRest();
   },
   async unit(_ctx, data) {
-    state.settings.unit = data.id;
-    await writeSetting(state.db, 'unit', data.id);
+    const from = state.settings.unit;
+    const to = data.id;
+    if (from === to) return;
+
+    // Convert anything typed but not yet saved, so the number on screen keeps
+    // meaning the same weight.
+    const convert = (text) => {
+      const parsed = parseNumber(text);
+      if (parsed == null) return text;
+      const kg = fromDisplay(parsed, from);
+      return String(Math.round(toDisplay(kg, to) * 10) / 10);
+    };
+    state.draft.bodyweight = convert(state.draft.bodyweight);
+    state.bodyDraft.bodyweight = convert(state.bodyDraft.bodyweight);
+
+    state.settings.unit = to;
+    await writeSetting(state.db, 'unit', to);
     render();
   },
 };

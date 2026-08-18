@@ -32,14 +32,14 @@ function overview(state) {
   <div class="shead"><div class="lbl">Active plan</div><div class="nm">${escape(state.plan.meta.name)}</div>
     <p class="why">${escape(state.plan.meta.sub)}</p>
     <div class="bar"><i style="width:${Math.min(100, (week / totalWeeks) * 100)}%"></i></div>
-    <div class="meta"><span>Block ${escape(state.block.label)} · week ${week}</span><span>Rotation ${state.plan.meta.rotation.join(
+    <div class="meta"><span>Block ${escape(state.block.label)} · week ${week}</span><span>Rotation ${state.plan.meta.rotationOrder.join(
       ' → '
     )}</span></div></div>
 
   <h3>Where you are</h3>
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
-      <b style="font-size:15px">${escape(state.block.n)}</b>
+      <b style="font-size:15px">${escape(state.block.name)}</b>
       <span style="font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums">${done} / ${target} sessions</span></div>
     <div class="bar"><i style="width:${target ? Math.min(100, (done / target) * 100) : 0}%"></i></div>
     <table style="margin-top:12px"><tbody>
@@ -70,17 +70,14 @@ function overview(state) {
   <h3>Blocks through March — what changes and when</h3>
   <div class="card">${state.plan.blocks
     .map(
-      (block, i) => `<details ${i === state.block.idx ? 'open' : ''}><summary>${escape(block.n)} <span style="font-weight:500;color:var(--muted);font-size:12px">wk ${escape(
-        block.w
-      )}</span></summary><div class="c">
+      (block) => `<details ${block.id === state.block.idx ? 'open' : ''}><summary>${escape(block.name)} <span style="font-weight:500;color:var(--muted);font-size:12px">rotations ${block.from}–${block.to}</span></summary><div class="c">
       <p style="margin:0 0 10px">${escape(block.theme)}</p>
       <table style="margin-bottom:10px"><tbody>
-        <tr><td>Bench top set</td><td>${escape(block.top)}</td></tr>
-        <tr><td>Bench volume</td><td>${escape(block.vol)}</td></tr>
-        <tr><td>Variation</td><td>${escape(block.v)}</td></tr>
-        <tr><td>Incline</td><td>${escape(block.incline)}</td></tr>
-        <tr><td>Effort cap</td><td>${escape(block.cap)}</td></tr>
-        <tr><td>Session target</td><td>${block.sessionTarget} sessions</td></tr>
+        <tr><td>Rotations</td><td>${block.from}–${block.to}</td></tr>
+        <tr><td>Type</td><td>${escape(block.type)}</td></tr>
+        <tr><td>Bench variation</td><td>${escape(block.variation)}</td></tr>
+        <tr><td>Accessory volume</td><td>${Math.round(block.accessoryMultiplier * 100)}%</td></tr>
+        <tr><td>Failure mode</td><td>${escape(block.effortWave || 'none')}</td></tr>
       </tbody></table>
       <p style="margin:0 0 4px"><strong>What is different this block</strong></p>
       <ul>${block.changes.map((c) => `<li>${escape(c)}</li>`).join('')}</ul>
@@ -237,7 +234,7 @@ function exercisesView(state) {
 function workoutsView(state) {
   return `<button class="back" data-act="plan-back">‹ ${escape(state.plan.meta.name)}</button>
   <h3 style="margin-top:0">Workouts</h3>
-  <p style="margin:0 2px 12px">Run in order: <b>${state.plan.meta.rotation.join(
+  <p style="margin:0 2px 12px">Run in order: <b>${state.plan.meta.rotationOrder.join(
     ' → '
   )} → repeat</b>. Train when you can and always just do the next one — missing a day is not a decision, the rotation simply slides.</p>
   ${state.plan.sessions
