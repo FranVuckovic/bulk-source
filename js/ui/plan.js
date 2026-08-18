@@ -30,6 +30,7 @@ function overview(state) {
 
   return `
   <div class="shead"><div class="lbl">Active plan</div><div class="nm">${escape(state.plan.meta.name)}</div>
+    <p class="why" style="margin-bottom:6px"><b>${escape(state.plan.meta.longName)}</b></p>
     <p class="why">${escape(state.plan.meta.sub)}</p>
     <div class="bar"><i style="width:${Math.min(100, (week / totalWeeks) * 100)}%"></i></div>
     <div class="meta"><span>Block ${escape(state.block.label)} · week ${week}</span><span>Rotation ${state.plan.meta.rotationOrder.join(

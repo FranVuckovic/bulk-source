@@ -14,7 +14,7 @@
  * so it is obvious from inside the app whether an update actually landed.
  */
 
-const CACHE = 'bulk-v1';
+const CACHE = 'bulk-v2';
 
 const SHELL = [
   './',
