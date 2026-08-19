@@ -288,6 +288,21 @@ test('verification compares contents, not row counts', () => {
 
   assert.equal(verifyAgainst(backup, snapshot).ok, true, 'identical data verifies');
 
+  // The failure this guards against was not in either function: `exportZip`
+  // wrote `lastBackupISO` *after* taking its snapshot, so the archive was
+  // always one setting short of the database and every fresh export failed the
+  // app's own "verify a backup restores" check the moment it was taken —
+  // "settings: 4 records in the backup against 5 stored". A verifier that cries
+  // wolf on a good backup teaches you to ignore the one time it is right, and
+  // importing that archive then rolled the setting back.
+  const withLaterSetting = {
+    ...snapshot,
+    data: { ...snapshot.data, settings: [...(snapshot.data.settings || []), { key: 'lastBackupISO', value: '2026-08-19' }] },
+  };
+  const stale = verifyAgainst(backup, withLaterSetting);
+  assert.equal(stale.ok, false, 'a setting written after the snapshot is a real mismatch');
+  assert.match(stale.problems.join(' '), /settings/, 'and it is reported as one, so the ordering cannot regress silently');
+
   const tampered = JSON.parse(JSON.stringify(backup));
   tampered.data.sets[0].load = 105;
 

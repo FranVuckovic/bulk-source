@@ -831,11 +831,28 @@ const ctx = {
    * Selective by date range and by content type.
    */
   async exportZip(options = {}) {
+    /*
+     * `lastBackupISO` is written BEFORE the snapshot, so the archive contains
+     * the same settings the database does.
+     *
+     * Written after, it was a setting the database had and the backup did not,
+     * which meant every export failed the app's own "verify a backup restores"
+     * check the moment it was taken — *settings: 4 records in the backup
+     * against 5 stored*. A verifier that cries wolf on a good backup is worse
+     * than no verifier: it teaches you to ignore the one time it is right.
+     * Importing that archive then rolled the setting back, so a restore quietly
+     * forgot when you last backed up.
+     *
+     * The cost of this order is that a failed export leaves the date optimistic
+     * by one attempt — and a failure is loud, because every write path in the
+     * app reports.
+     */
+    await writeSetting(state.db, 'lastBackupISO', todayISO());
+    state.settings.lastBackupISO = todayISO();
+
     const payload = await snapshot(state.db);
     const { zip, meta } = buildExport(payload, state.plan, options);
     downloadBytes(zip, `bulk-export-${todayISO()}.zip`, 'application/zip');
-    await writeSetting(state.db, 'lastBackupISO', todayISO());
-    state.settings.lastBackupISO = todayISO();
     return meta;
   },
 
