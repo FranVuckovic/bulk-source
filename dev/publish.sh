@@ -41,6 +41,11 @@ APP_FILES=$(node -e "
 
 [ -n "$APP_FILES" ] || { echo "could not read SHELL from sw.js" >&2; exit 1; }
 
+# The worker itself is never in its own shell — it does not precache itself —
+# so it has to be added back by hand. Leaving it out publishes an app that
+# looks complete and has no offline mode and no update path.
+APP_FILES="$APP_FILES sw.js"
+
 rm -rf dist
 for path in $APP_FILES; do
   [ -f "$path" ] || { echo "missing: $path" >&2; exit 1; }

@@ -159,3 +159,27 @@ test('nothing the app publishes carries a personal identifier', () => {
     assert.doesNotMatch(text, /Fran|Vuckovic|fran-bulk/i, `${path} is published and names its owner`);
   }
 });
+
+
+test('the published build includes the service worker itself', () => {
+  // A worker never appears in its own precache list, so deriving the publish
+  // set from SHELL drops it — and an app with no sw.js looks completely normal
+  // right up until it needs to work offline or take an update.
+  const publish = read('dev/publish.sh');
+  const shell = new Set(shellPaths());
+
+  assert.ok(!shell.has('sw.js'), 'the worker is not expected to precache itself');
+  assert.match(publish, /APP_FILES="\$APP_FILES sw\.js"/, 'so publish.sh has to add it back explicitly');
+});
+
+test('the published build includes everything index.html asks for', () => {
+  // index.html is the entry point; anything it references by src or href has
+  // to be in the build or the app is broken on arrival.
+  const html = read('index.html');
+  const shell = new Set([...shellPaths(), 'sw.js']);
+
+  const referenced = [...html.matchAll(/(?:src|href)="\.\/([^"]+)"/g)].map((m) => m[1]);
+  for (const path of referenced) {
+    assert.ok(shell.has(path), `index.html references ${path}, which is not published`);
+  }
+});
