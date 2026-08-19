@@ -52,7 +52,7 @@ with the output. If something was skipped, say that.
 ## Commands
 
 ```bash
-npm test          # 225 tests, ~0.6s, node:test only
+npm test          # 230 tests, ~1s, node:test only
 npm run serve     # dev server on :8123, no-store headers
 npm run publish -- https://github.com/FranVuckovic/bulk.git
 ```

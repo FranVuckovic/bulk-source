@@ -262,6 +262,53 @@ Say which option you want and it is one commit.
 
 ---
 
+---
+
+## Separately: one piece of in-app text contradicts the plan
+
+Found while checking that the General tips still describe FOPIP. Not about set
+counting, but it is training guidance and therefore yours to decide, so it is
+here rather than fixed.
+
+**Plan → Tips → Cardio and life → "Deloads"** currently reads:
+
+> Week 6 of every block. Keep all six sessions, cut volume 40–50%, drop top-end
+> intensity about 10%, everything at 3+ RIR minimum. Never take a full rest
+> week…
+
+That is a **scheduled** deload, on a **calendar week**. The plan you are
+actually running has neither:
+
+- `docs/plan-rationale.md` §"Why deloads are earned rather than scheduled" says
+  planned deloads slightly reduce strength gains against training through, and
+  that the app watches your own triggers instead.
+- `docs/v2-status.md` records the same decision: *"Deloads are not scheduled.
+  The kit keeps a Recovery Rotation 15, which is implemented."*
+- The app implements exactly that: Recovery Rotation 15, plus a deload offered
+  when two of your own triggers fire together.
+- And "week 6 of every block" is a v1 sentence in a plan where **blocks advance
+  on sessions completed, not on weeks** — the retired structure the whole v2
+  rewrite moved away from.
+
+So the app's own advice screen tells you to deload on a schedule the app does
+not have, in units the plan does not use. Of everything in this document this
+is the one I would fix first, because unlike the orange bars it can be acted on
+directly and wrongly.
+
+Suggested replacement, for you to approve or rewrite — the volume and intensity
+numbers are carried over unchanged, only the trigger changes:
+
+> **Earned, not scheduled.** There is no fixed deload week. Rotation 15 is a
+> planned Recovery rotation, and beyond that the app offers a deload when two of
+> your own triggers fire together — the readings it is already watching. Taking
+> one: keep all six sessions, cut volume 40–50%, drop top-end intensity about
+> 10%, everything at 3+ RIR minimum. Never take a full rest week: complete
+> cessation was found worse than training through.
+
+One line in `data/plan-fopip-v2.json` under `knowledge`. Say the word.
+
+---
+
 ## Sources
 
 - Pelland, Remmert, Robinson, Hinson & Zourdos — *The Resistance Training Dose

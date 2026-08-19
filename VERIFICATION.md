@@ -1,9 +1,13 @@
 # Bulk v2 — verification
 
-**Build:** `sw.js` VERSION `v2.1.3` · database v3 · plan format 3 · plan `fopip-v2`
+**Build:** `sw.js` VERSION `v2.2.0` · database v3 · plan format 3 · plan `fopip-v2`
 **Verified:** 19 August 2026
-**Method:** 221 automated tests, plus a manual pass in a 390 × 844 viewport in
-both colour schemes against twelve rotations of generated history.
+**Method:** 230 automated tests, plus a driven pass in a real Chromium at
+390 × 844 against twelve rotations of generated history.
+
+v2.2.0 adds demo mode, the five-section navigation, the repair tools and the
+version display. Everything below marked **v2.2.0** was verified by driving the
+built app in a browser rather than by reading the code.
 
 v1 is archived at `archive/v1/` and tagged `v1.0`. It still runs and still
 reads a v1 export.
@@ -20,8 +24,10 @@ npm test
 npm run serve
 ```
 
-Then open `http://localhost:8123/dev/sample-data.html`, press **Load twelve
-rotations of sample data**, and open `http://localhost:8123/`.
+Then either turn on **demo mode** in Settings, or open
+`http://localhost:8123/dev/sample-data.html` and press **Load twelve rotations
+of sample data** — they run the same generator and both write to the *demo*
+database, never to the real one.
 
 The sample data resolves every session through the same plan engine the Train
 screen uses, so what it writes is what the app would have prescribed on that
@@ -42,19 +48,21 @@ version bump. To exercise the update path itself, open `http://localhost:8123/?s
 | `calc.test.js` | 48 | The RPE table, e1RM and its confidence, rounding, prescriptions, the working-max rule and its exceptions |
 | `db.test.js` | 26 | Migrations with backfill, idempotent writes under a real race, atomic session start and finish, cascade and soft delete |
 | `progress.test.js` | 25 | Rolling averages, slopes, records, decision flags, deload triggers |
-| `plan.test.js` / `plan-engine.test.js` | 33 | The plan file itself, and that all 33 × 6 rotations resolve |
+| `plan-engine.test.js` | 16 | That all 33 × 6 rotations resolve, and what readiness does to them |
 | `volume.test.js` | 15 | Fractional sets, head against whole-muscle counting, planned versus completed |
 | `export.test.js` | 14 | Zip round-trip with CRC, staged validation, atomic apply, content verification |
-| `analytics.test.js` | 12 | Every metric the Progress screen renders, including the four v1 defects |
+| `analytics.test.js` | 13 | Every metric the Progress screen renders, including the four v1 defects |
+| `plan.test.js` | 17 | The plan file's own shape and rules |
 | `cycle.test.js` | 11 | Rotation progress, partial and skipped positions, corrections, projection |
-| `performance.test.js` | 6 | 200 sessions and 6,000 sets against explicit budgets |
-| `recovery.test.js` | 5 | Soft delete, restore, the bin listing, and refusing stores it cannot recover |
-| `photos.test.js` | 4 | Orientation-independent fitting and size formatting |
+| `shell.test.js` | 12 | The offline shell covers the module graph, and the app calls the safe paths rather than merely containing them |
 | `service-worker.test.js` | 7 | The takeover rule, and that no branch can answer a module request with the shell |
+| `performance.test.js` | 6 | 200 sessions and 6,000 sets against explicit budgets |
+| `recovery.test.js` | 6 | Soft delete, restore, the bin listing, that a cascade-deleted set is not listed apart from its session, and refusing stores it cannot recover |
 | `screens.test.js` | 6 | Every screen on an empty database, and at both ends of every block, with no arithmetic leaking into the page |
-| `shell.test.js` | 6 | The offline shell covers the module graph, and the app calls the safe paths rather than merely containing them |
+| `readiness.test.js` | 4 | The four defects reachable by flagging a day part-way through a session |
+| `photos.test.js` | 4 | Orientation-independent fitting and size formatting |
 
-**221 passing, 0 failing**, about 0.6 s.
+**230 passing, 0 failing**, about 1 s.
 
 `shell.test.js` exists because two of the defects found during this pass were
 not wrong code but unused code. `js/photos.js` was imported by the Body screen
@@ -193,6 +201,69 @@ any host but the one the app was served from. Going private stops updates
 arriving; it does not touch what is already on the phone.
 
 ---
+
+## v2.2.0 — verified by driving the app
+
+Each of these was performed in Chromium at 390 × 844 against the built app, and
+the database was read directly to confirm what actually landed.
+
+### Demo mode cannot touch real data
+
+- One set logged to the real database (`bulk`): 1 set, 1 session.
+- Demo mode on: `bulk-demo` seeded with **69 sessions and 1,817 sets**; the
+  orange band appeared in the header on every screen.
+- Ticking a set in demo mode left the demo count at 1,817 and showed the
+  refusal. The write is turned away inside `withTransaction`, which every write
+  in the app passes through.
+- The real database read **1 set, 1 session** throughout.
+- Demo mode off: the real database was byte-identical to before.
+
+### Versions
+
+- With v2.1.3 controlling and a newer build published under it, the header read
+  **`v2.1.3 → v2.2.0`** and the banner named both ends of the move.
+- On a development machine, where the offline shell is off, it reads
+  **not cached** rather than inventing a number.
+
+### The site going away
+
+Both cases, with the app already installed and the worker in control:
+
+| | Renders | Worker | Cache | Can still log |
+|---|---|---|---|---|
+| **Origin answers 404** (repo made private) | yes | registered, active | 28 files intact | yes |
+| **Origin unreachable** (no signal) | yes | registered, active | 28 files intact | yes |
+
+Every tab rendered in both. **What you lose while private is updates and the
+ability to install it somewhere new — not the app you already have, and not one
+byte of what you logged.**
+
+### Nothing phones home
+
+Every network request the app made across a full pass — boot, service-worker
+registration, all five sections, Settings — went to **one host, the one it was
+served from**. Zero external hosts. There is no analytics, no font, no CDN, no
+remote image and no telemetry, and the content-security policy would refuse one
+if it were added by mistake.
+
+### Repairs
+
+- A session moved from 19 Aug to 11 Aug took **both its sets** with it and wrote
+  one audit row.
+- A finished session reopened, landed on the Train screen with its logged work
+  intact, and was refused while another session was open.
+- One set had five fields corrected — load, reps, RPE, exercise, note — with
+  **five audit rows**, and its note then appeared in the session detail.
+- Deleting that one set left it recoverable in the Bin, and the twenty-seven
+  sets of a cascade-deleted session did **not** each appear there.
+
+### Readiness, mid-session
+
+- Rotation 11 session A with a bench set logged: a red day is **refused**, and
+  the slot order is unchanged. Before this, red removed the static hold at
+  index 0 and shifted every logged set onto the wrong exercise.
+- Rotation 1: switching to yellow after logging keeps the logged set visible,
+  writes `readiness: yellow` to the session log, and survives a reload.
 
 ## Known limits
 
