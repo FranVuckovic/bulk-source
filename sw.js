@@ -34,6 +34,7 @@ const SHELL = [
   './js/cycle.js',
   './js/dates.js',
   './js/db.js',
+  './js/demo.js',
   './js/export.js',
   './js/photos.js',
   './js/plan.js',

@@ -8,6 +8,8 @@
 
 import {
   openDatabase,
+  blockWrites,
+  allowWrites,
   readSettings,
   writeSetting,
   getAll,
@@ -77,6 +79,7 @@ import * as progress from './ui/progress.js';
 import * as plan from './ui/plan.js';
 import * as settings from './ui/settings.js';
 import * as history from './ui/history.js';
+import { demoModeOn, setDemoMode, openDemoDatabase, seedDemoData, DEMO_ROTATIONS } from './demo.js';
 
 const PLAN_URL = './data/plan-fopip-v2.json';
 const TABS = { train: 'Bulk', body: 'Body', prog: 'Progress', plan: 'Plan', set: 'Settings' };
@@ -90,6 +93,7 @@ const state = {
   buildVersion: null,
   updateVersion: null,
   shellReport: null,
+  demo: false,
 
   logs: [],
   sets: [],
@@ -640,6 +644,9 @@ function versionLabel() {
 function render() {
   document.getElementById('ttl').textContent = TABS[state.tab];
 
+  document.body.classList.toggle('demo', state.demo);
+  document.getElementById('demostrip').hidden = !state.demo;
+
   const version = document.getElementById('ver');
   version.textContent = versionLabel();
   version.classList.toggle('up', !!state.updateVersion && state.updateVersion !== state.buildVersion);
@@ -1020,6 +1027,45 @@ const globalActions = {
       <button class="big ghost mt" data-act="sheet-close">Close</button>`);
   },
 
+  /**
+   * Into and out of demo mode.
+   *
+   * Both directions reload. The database handle, the write lock and every
+   * derived thing in `state` are decided during boot, and re-deriving them in
+   * place would be a second code path doing the same job as the first — the
+   * kind that works until the day it does not. A reload has one path, and it is
+   * the one that runs every time the app starts.
+   */
+  'demo-on'() {
+    openSheet(`<div class="ttl">Turn on demo mode</div>
+      <p style="text-align:center;font-size:13.5px;margin:14px 0 10px;color:var(--ink)">Every screen and chart fills
+      with <b>twelve rotations of invented training</b>, so you can see what the app looks like with a history behind it.</p>
+      ${flag('ok', '✓', `<b>Your real data is not at risk, by construction.</b> Demo data lives in a separate database. While
+        demo mode is on the app does not open your real log at all — so there is nothing for it to damage, and turning
+        demo mode off gives it back exactly as it is now.`)}
+      ${flag('ok', '✓', `<b>Nothing can be logged.</b> Writing is switched off at the database, not hidden in the screens.
+        A save button that still works would fail loudly rather than quietly succeed.`)}
+      ${flag('info', 'i', `<b>It is unmistakable.</b> An orange band sits in the header on every screen until you turn it off.`)}
+      <button class="big mt" data-act="demo-on-confirm">Show me the demo</button>
+      <button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
+  },
+
+  'demo-on-confirm'() {
+    if (!setDemoMode(true)) {
+      openSheet(`<div class="ttl">Could not switch</div>
+        <p style="text-align:center;font-size:13.5px;margin:14px 0">This browser will not let the app remember the
+        setting, so demo mode cannot be turned on. Your data is untouched.</p>
+        <button class="big mt" data-act="sheet-close">Close</button>`);
+      return;
+    }
+    location.reload();
+  },
+
+  'demo-off'() {
+    setDemoMode(false);
+    location.reload();
+  },
+
   /** The rotation chip goes where the rotation is explained. */
   'chip-tap'() {
     state.tab = 'plan';
@@ -1179,6 +1225,22 @@ function downloadBytes(data, filename, type) {
 }
 
 function showFailure(error) {
+  /*
+   * A refusal is not a failure. In demo mode every write is turned away at the
+   * database on purpose, and reporting that as "that did not save" would read
+   * as a bug in the app rather than the guarantee it actually is.
+   */
+  if (state.demo) {
+    openSheet(`<div class="ttl">Nothing saves in demo mode</div>
+      <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">That is the point of it — writing is
+      switched off at the database, so it is not possible rather than merely discouraged.</p>
+      <p style="text-align:center;font-size:13px">Your real training log is in a different database and has not been
+      opened since demo mode came on. Turn demo mode off and it is exactly as you left it.</p>
+      <button class="big mt" data-act="demo-off">Back to my data</button>
+      <button class="big ghost mt" data-act="sheet-close">Keep looking around</button>`);
+    return;
+  }
+
   console.error(error);
   openSheet(`<div class="ttl">That did not save</div>
     <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">${escape(error.message || String(error))}</p>
@@ -1270,7 +1332,31 @@ async function boot() {
   const response = await fetch(PLAN_URL);
   if (!response.ok) throw new Error(`Could not load the plan (${response.status} ${response.statusText}).`);
   state.plan = await response.json();
-  state.db = await openDatabase();
+
+  /*
+   * Which database — and it is a decision made once, here, before anything else
+   * happens. In demo mode the app opens `bulk-demo` and never opens the real
+   * log at all, which is why turning demo mode off cannot have cost anything:
+   * there was no handle through which it could have.
+   *
+   * The seed runs with writes still allowed, because filling the demo database
+   * is a write. The lock goes on immediately afterwards and stays on for the
+   * whole session, so from the first render onwards nothing anywhere in the app
+   * can commit a readwrite transaction.
+   */
+  state.demo = demoModeOn();
+  if (state.demo) {
+    state.db = await openDemoDatabase();
+    if (!(await getAll(state.db, 'sessionLogs')).length) {
+      await seedDemoData(state.db, state.plan, { rotations: DEMO_ROTATIONS });
+    }
+    blockWrites(
+      'Demo mode is on, so nothing can be saved. Turn it off in Settings to get back to your own training log.'
+    );
+  } else {
+    allowWrites();
+    state.db = await openDatabase();
+  }
 
   const settings = await readSettings(state.db);
   state.settings = {

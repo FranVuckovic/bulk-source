@@ -12,6 +12,13 @@
 
 export const DB_NAME = 'bulk';
 
+/**
+ * Demo mode's database. A different name is a different database: IndexedDB
+ * gives no way for one to read, write or even see the other, so the real log is
+ * not protected by care taken here — it is out of reach.
+ */
+export const DEMO_DB_NAME = 'bulk-demo';
+
 /** Bump this and add a migration. Never edit an existing migration. */
 export const DB_VERSION = 3;
 
@@ -305,12 +312,48 @@ export function openDatabase({
   });
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   The write lock
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/*
+ * Every write in this app — a set, a setting, a soft delete, an import, a
+ * cascade — reaches IndexedDB through `withTransaction` and nothing else.
+ * `writeSetting` goes through `put`, `put` goes through here; there is exactly
+ * one `db.transaction(` call in the codebase and it is eleven lines below.
+ *
+ * That is what makes this lock worth having rather than decorative. Demo mode
+ * needs writing to be *impossible*, not hidden: a screen that merely stops
+ * drawing its save buttons is one forgotten button away from being wrong, and
+ * the thing on the other side of that mistake is months of training. Refusing
+ * at the only door means a write attempted from anywhere fails loudly, whether
+ * or not anyone remembered this feature existed.
+ *
+ * Demo mode also runs against a different database entirely, so this is the
+ * second of two independent guarantees rather than the only one.
+ */
+let writesBlocked = null;
+
+/** Refuse every write until `allowWrites()`. The reason is what the user sees. */
+export function blockWrites(reason) {
+  writesBlocked = reason || 'Writing is switched off.';
+}
+
+export function allowWrites() {
+  writesBlocked = null;
+}
+
+export const writesAreBlocked = () => writesBlocked;
+
 /**
  * Runs `body` inside one transaction and resolves when the transaction
  * completes — not when the last request succeeds. Anything that writes must
  * wait for the commit, or a reload straight after logging a set can lose it.
  */
 export function withTransaction(db, storeNames, mode, body) {
+  if (mode === 'readwrite' && writesBlocked) {
+    return Promise.reject(new Error(writesBlocked));
+  }
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeNames, mode);
     let result;
