@@ -370,6 +370,73 @@ export function blockComparison(sets, { exercises, logs, lifts }) {
   return rows.sort((a, b) => a.blockId - b.blockId || a.name.localeCompare(b.name));
 }
 
+/**
+ * How a record got to where it is.
+ *
+ * The records card showed the current best and the date it was set, which
+ * answers "what is my best" and nothing else. It cannot tell you whether a
+ * record is three days old or four months old, how hard it was to beat, or
+ * whether it has been creeping up steadily or jumped once and stalled — which
+ * is the question you actually have when you look at it.
+ *
+ * This walks the sets in date order and emits an entry every time the running
+ * best is beaten, so what comes back is the staircase rather than the top step.
+ * Each rung carries what it gained on the one below and how long it took, both
+ * of which are facts about the pair rather than about either one.
+ */
+export function recordHistory(sets, { exercises, logs }) {
+  const byLog = new Map(logs.map((log) => [log.id, log]));
+
+  const dated = (sets || [])
+    .filter((set) => !set.deletedAtISO && set.load != null && set.reps)
+    .map((set) => ({ set, dateISO: (byLog.get(set.sessionLogId)?.localDate || byLog.get(set.sessionLogId)?.dateISO || '').slice(0, 10) }))
+    .filter((row) => row.dateISO)
+    .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+
+  const heaviest = new Map();
+  const estimated = new Map();
+
+  const push = (map, key, entry) => {
+    const list = map.get(key) || [];
+    const previous = list[list.length - 1];
+    if (previous) {
+      entry.gain = entry.value - previous.value;
+      entry.daysSince = Math.round(
+        (Date.parse(`${entry.dateISO}T00:00:00Z`) - Date.parse(`${previous.dateISO}T00:00:00Z`)) / 86400000
+      );
+    }
+    list.push(entry);
+    map.set(key, list);
+  };
+
+  for (const { set, dateISO } of dated) {
+    const exercise = exercises[set.exerciseId];
+    if (!exercise) continue;
+
+    const heavyList = heaviest.get(set.exerciseId);
+    const bestLoad = heavyList ? heavyList[heavyList.length - 1].value : -Infinity;
+    if (set.load > bestLoad) {
+      push(heaviest, set.exerciseId, { dateISO, value: set.load, load: set.load, reps: set.reps });
+    }
+
+    if (set.isIndexSet && exercise.maxConf === 'high') {
+      const estimate = estimateForSet(set);
+      if (isHighConfidence(estimate)) {
+        const list = estimated.get(set.exerciseId);
+        const best = list ? list[list.length - 1].value : -Infinity;
+        if (estimate.value > best) {
+          push(estimated, set.exerciseId, { dateISO, value: estimate.value, load: set.load, reps: set.reps });
+        }
+      }
+    }
+  }
+
+  return {
+    heaviest: Object.fromEntries(heaviest),
+    estimated: Object.fromEntries(estimated),
+  };
+}
+
 /** Records, by concrete category rather than a wall of derived e1RM dots. */
 export function records(sets, { exercises, logs }) {
   const byLog = new Map(logs.map((log) => [log.id, log]));

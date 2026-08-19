@@ -744,7 +744,15 @@ export const alive = (rows) => (rows || []).filter((row) => !row.deletedAtISO);
    ═══════════════════════════════════════════════════════════════════════ */
 
 /** Stores whose rows can be soft-deleted and brought back. */
-export const RECOVERABLE_STORES = Object.freeze(['daily', 'measurements', 'niggles', 'media']);
+/*
+ * `sets` is recoverable too. Deleting one set out of a session — the duplicate
+ * you logged twice, the one you put on the wrong exercise — is a correction
+ * people make, and until it was reachable from the Log the only delete that
+ * touched a set was un-ticking it on the Train screen, which destroyed it
+ * outright. Everything the app removes should be somewhere you can get it back
+ * from.
+ */
+export const RECOVERABLE_STORES = Object.freeze(['daily', 'measurements', 'niggles', 'media', 'sets']);
 
 /*
  * Not every store is keyed by an autoincrementing id: a weigh-in is keyed by
@@ -802,11 +810,24 @@ export async function restoreRow(db, storeName, id) {
 /** Everything currently in the bin, newest deletion first. */
 export async function deletedRecords(db) {
   const out = [];
+
+  /*
+   * Deleting a session soft-deletes its sets with it, so every one of the
+   * twenty-seven would otherwise appear in the bin as its own restorable row,
+   * beside the session that already restores all of them. A set is listed here
+   * only when it was deleted on its own — the duplicate, the one logged against
+   * the wrong exercise. If its session is in the bin too, the session is the
+   * thing you put back.
+   */
+  const deletedLogs = new Set(
+    (await getAll(db, 'sessionLogs')).filter((log) => log.deletedAtISO).map((log) => log.id)
+  );
+
   for (const store of ['sessionLogs', ...RECOVERABLE_STORES]) {
     for (const row of await getAll(db, store)) {
-      if (row.deletedAtISO) {
-        out.push({ store, id: storeKeyOf(store, row), deletedAtISO: row.deletedAtISO, row });
-      }
+      if (!row.deletedAtISO) continue;
+      if (store === 'sets' && deletedLogs.has(row.sessionLogId)) continue;
+      out.push({ store, id: storeKeyOf(store, row), deletedAtISO: row.deletedAtISO, row });
     }
   }
   return out.sort((a, b) => b.deletedAtISO.localeCompare(a.deletedAtISO));

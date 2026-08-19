@@ -80,6 +80,11 @@ test('the bin lists every recoverable store, newest deletion first', async () =>
   ids.measurements = await put(db, 'measurements', { dateISO: '2026-08-01', waist: 82 });
   ids.niggles = await put(db, 'niggles', { dateISO: '2026-08-01', site: 'Left elbow', severity: 1 });
   ids.media = await put(db, 'media', { dateISO: '2026-08-01', kind: 'physique' });
+  // `sets` joined the recoverable stores when deleting a single set became
+  // reachable from the Log — the duplicate you logged twice, the one you put on
+  // the wrong exercise. A set with no session of its own is listed on its own;
+  // sets deleted by a session cascade are not, because the session restores them.
+  ids.sets = await put(db, 'sets', { sessionLogId: 9999, exerciseId: 'benchComp', slotIndex: 0, setIndex: 0, load: 100, reps: 5 });
 
   for (const store of RECOVERABLE_STORES) {
     await softDeleteRow(db, store, ids[store]);
@@ -89,18 +94,38 @@ test('the bin lists every recoverable store, newest deletion first', async () =>
   }
 
   const bin = await deletedRecords(db);
-  assert.equal(bin.length, 4);
+  assert.equal(bin.length, 5);
   assert.deepEqual(
     [...bin].map((entry) => entry.store),
-    ['media', 'niggles', 'measurements', 'daily'],
+    ['sets', 'media', 'niggles', 'measurements', 'daily'],
     'newest deletion first'
   );
+});
+
+test('a set deleted with its session is not listed apart from it', async () => {
+  // Deleting a session soft-deletes its sets by cascade. Listing each of them
+  // as its own restorable row would put twenty-seven entries in the bin beside
+  // the one session that already restores all of them.
+  const db = await openFresh();
+  const { sessionLogId } = await saveSession(
+    db,
+    { dateISO: '2026-08-05', sessionId: 'A', status: 'complete' },
+    [
+      { exerciseId: 'benchComp', slotIndex: 0, setIndex: 0, load: 100, reps: 5, rpe: 8 },
+      { exerciseId: 'benchComp', slotIndex: 0, setIndex: 1, load: 100, reps: 5, rpe: 8 },
+    ]
+  );
+  await softDeleteSession(db, sessionLogId, { reason: 'wrong day' });
+
+  const bin = await deletedRecords(db);
+  assert.equal(bin.length, 1, 'the session, and not its two sets');
+  assert.equal(bin[0].store, 'sessionLogs');
 });
 
 test('an unrecoverable store is refused rather than silently ignored', async () => {
   const db = await openFresh();
   await assert.rejects(() => softDeleteRow(db, 'maxes', 1), /not a recoverable store/);
-  await assert.rejects(() => restoreRow(db, 'sets', 1), /not a recoverable store/);
+  await assert.rejects(() => restoreRow(db, 'cycles', 1), /not a recoverable store/);
 });
 
 test('restoring something that is gone says so', async () => {

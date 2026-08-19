@@ -380,8 +380,120 @@ function sessionDetail(ctx, row) {
         )
         .join('')}
     </div>
+    <button class="big ghost mt" data-act="repair-session" data-id="${log.id}">Fix something about this session</button>
     <button class="big danger mt" data-act="history-delete" data-key="${escape(row.key)}">Delete this session</button>
     <button class="big ghost mt" data-act="sheet-close">Close</button>`;
+}
+
+/**
+ * The repair menu.
+ *
+ * Deleting has been recoverable since v2; editing was not recoverable and
+ * mostly was not possible. A session on the wrong day stayed on the wrong day,
+ * and the only fix was to delete the whole thing and log it again from memory —
+ * which is not a repair, it is a re-enactment.
+ */
+function repairSheet(ctx, log) {
+  const { state } = ctx;
+  const sets = state.sets.filter((set) => set.sessionLogId === log.id);
+  const date = (log.dateISO || '').slice(0, 10);
+
+  const sameDay = state.logs.filter(
+    (other) => other.id !== log.id && (other.dateISO || '').slice(0, 10) === date && other.sessionId === log.sessionId
+  );
+
+  return `<div class="ttl">Fix this session</div>
+    <p style="text-align:center;font-size:13px;margin:10px 0 12px">${escape(log.sessionId)} \u00b7 ${escape(
+      longDate(date)
+    )} \u00b7 ${sets.length} sets</p>
+
+    ${
+      sameDay.length
+        ? flag(
+            'warn',
+            '!',
+            `<b>Logged twice.</b> There ${sameDay.length === 1 ? 'is' : 'are'} ${sameDay.length} other session${
+              sameDay.length === 1 ? '' : 's'
+            } marked <b>${escape(log.sessionId)}</b> on this date. If one of them is a duplicate, delete it \u2014 it
+             goes to the Bin, so a wrong guess costs nothing.`
+          )
+        : ''
+    }
+
+    <div class="mt"><label for="fix-date">The date this was trained</label>
+      <input id="fix-date" type="date" value="${escape(date)}">
+      <p class="hint">Moves the session and all ${sets.length} of its sets together. They carry their own dates, and a
+      session moved without them would sit on one day while its work sat on another.</p></div>
+    <button class="big mt" data-act="repair-date" data-id="${log.id}">Move it to that date</button>
+
+    ${
+      log.endedAt
+        ? `<h3>Finished too early?</h3>
+           <button class="big ghost" data-act="repair-reopen" data-id="${log.id}">Reopen and carry on</button>
+           <p class="hint">Puts it back as the session in progress so you can log the rest. Only one session can be
+           open at a time, so this is refused while another one is.</p>`
+        : flag('info', 'i', '<b>This session is still open.</b> It is on the Train screen where you left it.')
+    }
+
+    <h3>One set wrong?</h3>
+    <p class="hint" style="margin-top:0">Tap a set to change its numbers, its note, or which exercise it was logged
+    against \u2014 and to delete just that one. Deleted sets go to the Bin like everything else.</p>
+    <div style="max-height:34vh;overflow:auto">${sets
+      .slice()
+      .sort((a, b) => a.slotIndex - b.slotIndex || a.setIndex - b.setIndex)
+      .map((set) => {
+        const name = state.plan.exercises[set.exerciseId]?.name || set.exerciseId;
+        return `<div class="big-row" data-act="repair-set-open" data-id="${set.id}">
+          <div class="ic">${set.setIndex + 1}</div>
+          <div class="m"><b>${escape(name)}</b><span>${
+            set.load == null ? '\u2014' : fmtLoad(set.load, state.settings.unit)
+          } \u00d7 ${set.reps ?? '\u2014'} @ ${set.rpe ?? '\u2014'}${
+            set.note ? ` \u00b7 ${escape(set.note)}` : ''
+          }</span></div><div class="car">\u203a</div></div>`;
+      })
+      .join('')}</div>
+
+    <button class="big ghost mt" data-act="sheet-close">Close</button>`;
+}
+
+/** One set, editable. */
+function repairSetSheet(ctx, set) {
+  const { state } = ctx;
+  const unit = state.settings.unit;
+  const name = state.plan.exercises[set.exerciseId]?.name || set.exerciseId;
+
+  // Every exercise in the plan, so a set logged against the wrong one can be
+  // moved to the right one rather than deleted and retyped.
+  const options = Object.entries(state.plan.exercises)
+    .map(([id, x]) => `<option value="${escape(id)}" ${id === set.exerciseId ? 'selected' : ''}>${escape(x.name)}</option>`)
+    .join('');
+
+  return `<div class="ttl">Fix this set</div>
+    <p style="text-align:center;font-size:13px;margin:10px 0 12px">${escape(name)} \u00b7 set ${set.setIndex + 1}</p>
+
+    <div class="g3">
+      <div><label for="fix-load">Load (${escape(unit)})</label>
+        <input id="fix-load" type="number" inputmode="decimal" step="0.5" value="${
+          set.load == null ? '' : fmtLoad(set.load, unit)
+        }"></div>
+      <div><label for="fix-reps">Reps</label>
+        <input id="fix-reps" type="number" inputmode="numeric" step="1" value="${set.reps ?? ''}"></div>
+      <div><label for="fix-rpe">RPE</label>
+        <input id="fix-rpe" type="number" inputmode="decimal" step="0.5" value="${set.rpe ?? ''}"></div>
+    </div>
+
+    <div class="mt"><label for="fix-ex">Exercise</label>
+      <select id="fix-ex">${options}</select>
+      <p class="hint">For a set logged against the wrong lift. The estimate is recomputed from the stored numbers
+      every time it is read, so nothing derived needs correcting alongside this.</p></div>
+
+    <div class="mt"><label for="fix-note">Note</label>
+      <input id="fix-note" type="text" value="${escape(set.note || '')}" placeholder="What happened on this set"></div>
+
+    <button class="big mt" data-act="repair-set-save" data-id="${set.id}">Save the correction</button>
+    <button class="big danger mt" data-act="repair-set-delete" data-id="${set.id}">Delete just this set</button>
+    <button class="big ghost mt" data-act="sheet-close">Cancel</button>
+    <p class="hint">Every correction is recorded with the field, the old value and the new one.</p>`;
 }
 
 function plainDetail(row) {
@@ -444,6 +556,90 @@ export const actions = {
   async 'history-restore'(ctx, data) {
     await ctx.restoreEntry(data.store, data.id);
     ctx.render();
+  },
+
+  'repair-session'(ctx, data) {
+    const log = ctx.state.logs.find((row) => row.id === Number(data.id));
+    if (log) openSheet(repairSheet(ctx, log));
+  },
+
+  async 'repair-date'(ctx, data) {
+    const dateISO = document.getElementById('fix-date')?.value;
+    const result = await ctx.repairSessionDate(Number(data.id), dateISO);
+    closeSheet();
+    ctx.render();
+    openSheet(`<div class="ttl">${result.moved ? 'Moved' : 'Not changed'}</div>
+      <p style="text-align:center;font-size:13.5px;margin:14px 0">${
+        result.moved
+          ? `The session and its ${result.sets} sets moved from ${escape(longDate(result.from))} to ${escape(
+              longDate(result.to)
+            )}.`
+          : 'That is the date it was already on.'
+      }</p>
+      <button class="big mt" data-act="sheet-close">Close</button>`);
+  },
+
+  async 'repair-reopen'(ctx, data) {
+    const result = await ctx.reopenSession(Number(data.id));
+    closeSheet();
+    ctx.render();
+    if (!result.ok) {
+      openSheet(`<div class="ttl">Not reopened</div>
+        <p style="text-align:center;font-size:13.5px;margin:14px 0">${escape(result.reason)}</p>
+        <button class="big mt" data-act="sheet-close">Close</button>`);
+      return;
+    }
+    openSheet(`<div class="ttl">Reopened</div>
+      <p style="text-align:center;font-size:13.5px;margin:14px 0">Session ${escape(
+        result.sessionId
+      )} is open again on the Train screen, with everything you had already logged still in it.</p>
+      <button class="big mt" data-act="sheet-close">Carry on</button>`);
+  },
+
+  'repair-set-open'(ctx, data) {
+    const set = ctx.state.sets.find((row) => row.id === Number(data.id));
+    if (set) openSheet(repairSetSheet(ctx, set));
+  },
+
+  async 'repair-set-save'(ctx, data) {
+    const { state } = ctx;
+    const num = (id) => {
+      const raw = document.getElementById(id)?.value;
+      if (raw == null || raw.trim() === '') return null;
+      const parsed = Number(raw.replace(',', '.'));
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+    const load = num('fix-load');
+    const note = document.getElementById('fix-note')?.value?.trim() || null;
+
+    const result = await ctx.repairSet(Number(data.id), {
+      // Typed in whatever unit is on display, stored in kilograms like
+      // everything else.
+      load: load == null ? null : ctx.toKg(load),
+      reps: num('fix-reps'),
+      rpe: num('fix-rpe'),
+      exerciseId: document.getElementById('fix-ex')?.value,
+      note,
+    });
+    closeSheet();
+    ctx.render();
+    openSheet(`<div class="ttl">${result.changed ? 'Corrected' : 'Nothing changed'}</div>
+      <p style="text-align:center;font-size:13.5px;margin:14px 0">${
+        result.changed
+          ? `${result.changed} field${result.changed === 1 ? '' : 's'} updated, each one recorded with what it was before.`
+          : 'Everything was already as you typed it.'
+      }</p>
+      <button class="big mt" data-act="sheet-close">Close</button>`);
+  },
+
+  async 'repair-set-delete'(ctx, data) {
+    await ctx.deleteSet(Number(data.id), { reason: 'corrected from the log' });
+    closeSheet();
+    ctx.render();
+    openSheet(`<div class="ttl">Set deleted</div>
+      <p style="text-align:center;font-size:13.5px;margin:14px 0">It is out of every chart and average, and waiting
+      in the Bin if you want it back.</p>
+      <button class="big mt" data-act="sheet-close">Close</button>`);
   },
 
   async 'history-delete-confirm'(ctx, data) {

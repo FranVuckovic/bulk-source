@@ -33,6 +33,7 @@ import {
   goalProgress,
   blockComparison as blockChanges,
   records as recordsFor,
+  recordHistory,
   GAIN_TARGETS,
 } from '../analytics.js';
 import { weeklyLoads, decisionFlags, weekStartISO, daysBetween, shouldDeload } from '../progress.js';
@@ -692,9 +693,51 @@ function recordsCard(state, m, unit) {
     return `<div class="card">${emptyChart('No records yet — they appear after a few index sets.')}</div>`;
   }
 
-  const row = (label, sub, value, small) =>
-    `<div class="rec"><div class="lb"><b>${escape(label)}</b><span>${escape(sub)}</span></div>
-      <div class="vl">${escape(value)}<small> ${escape(small)}</small></div></div>`;
+  const history = recordHistory(m.sets, { exercises: m.exercises, logs: m.logs });
+
+  /**
+   * The staircase behind a record.
+   *
+   * A record with only its current value tells you nothing about whether it is
+   * three days old or four months old, or whether it has been creeping up or
+   * jumped once and stalled. Every previous best is listed newest first, each
+   * with what it gained and how long it took.
+   */
+  const progression = (kind, exerciseId) => {
+    const steps = history[kind]?.[exerciseId] || [];
+    if (steps.length < 2) {
+      return steps.length === 1
+        ? '<div class="rec-hist"><span>First one on record — nothing to compare it with yet.</span></div>'
+        : '';
+    }
+    return `<div class="rec-hist">${[...steps]
+      .reverse()
+      .map((step, i) => {
+        const isCurrent = i === 0;
+        return `<div class="rec-step${isCurrent ? ' now' : ''}">
+          <span class="d">${escape(step.dateISO)}</span>
+          <span class="v">${fmtLoad(step.value, unit)} ${escape(unit)}</span>
+          <span class="g">${
+            step.gain == null
+              ? 'first'
+              : `+${fmtNum(step.gain, 1)} after ${step.daysSince} day${step.daysSince === 1 ? '' : 's'}`
+          }</span></div>`;
+      })
+      .join('')}
+      <p class="hint" style="margin:6px 0 0">${steps.length} record${steps.length === 1 ? '' : 's'} on this lift,
+      ${fmtNum(steps[steps.length - 1].value - steps[0].value, 1)} ${escape(unit)} from the first to the latest over
+      ${Math.round(
+        (Date.parse(`${steps[steps.length - 1].dateISO}T00:00:00Z`) -
+          Date.parse(`${steps[0].dateISO}T00:00:00Z`)) /
+          86400000
+      )} days.</p></div>`;
+  };
+
+  const row = (label, sub, value, small, hist = '') =>
+    `<details class="rec-wrap"><summary class="rec"><div class="lb"><b>${escape(label)}</b><span>${escape(
+      sub
+    )}</span></div>
+      <div class="vl">${escape(value)}<small> ${escape(small)}</small></div></summary>${hist}</details>`;
 
   // On a dip or a pull-up the stored load is what was added, but the estimate
   // is of the whole system. Printing "5.0 kg × 10 → 139.7" without saying so
@@ -714,7 +757,8 @@ function recordsCard(state, m, unit) {
           state.plan.exercises[r.exerciseId].name.split(' (')[0],
           `${setLine(r)} on ${r.dateISO}`,
           fmtLoad(r.value, unit),
-          unit
+          unit,
+          progression('estimated', r.exerciseId)
         )
       )
       .join('')}</div>
@@ -727,10 +771,12 @@ function recordsCard(state, m, unit) {
             r.reps === 1 ? '' : 's'
           } on ${r.dateISO}`,
           fmtLoad(r.load, unit),
-          unit
+          unit,
+          progression('heaviest', r.exerciseId)
         )
       )
       .join('')}</div>
+    <p class="hint">Tap any record to see how it got there — every previous best, what it gained, and how long it took.</p>
     <p class="hint">Estimated maxes come only from index sets on lifts where the estimate means something — no curl
     record, because the equations are known to fail on isolation work. Heaviest load is a fact about every lift, so
     it needs no estimate at all. On pull-ups, chin-ups and dips the load shown is what was added to the bar.</p></div>`;

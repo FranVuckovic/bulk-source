@@ -886,6 +886,109 @@ const ctx = {
     return { ok: true };
   },
 
+  /* ═══════════════════════════════════════════════════════════════════════
+     Repairs
+     ═══════════════════════════════════════════════════════════════════════ */
+
+  /*
+   * Deleting has been recoverable since v2. Editing was not recoverable and,
+   * mostly, was not possible: a session logged on the wrong day stayed on the
+   * wrong day, a set logged against the wrong exercise stayed there, and a
+   * session finished by a mis-tap was finished. The only repair was to delete
+   * the whole thing and log it again from memory.
+   *
+   * Every repair below writes an audit entry naming the field, the old value
+   * and the new one. Nothing about what you did changes without a record of the
+   * change — the same rule the plan position has always been held to.
+   */
+
+  /** Move a session to a different date, taking its sets with it. */
+  async repairSessionDate(logId, dateISO) {
+    const log = state.logs.find((row) => row.id === logId);
+    if (!log) throw new Error('that session no longer exists');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateISO || '')) throw new Error('that is not a date');
+    const from = (log.dateISO || '').slice(0, 10);
+    if (from === dateISO) return { moved: false };
+
+    // The sets carry their own local date, which every per-day figure reads. A
+    // session moved without them would sit on one day while its work sat on
+    // another, and nothing would look wrong until a chart disagreed with a list.
+    const sets = state.sets.filter((set) => set.sessionLogId === logId);
+    await put(state.db, 'sessionLogs', { ...log, dateISO, localDate: dateISO });
+    for (const set of sets) await put(state.db, 'sets', { ...set, localDate: dateISO });
+    await put(state.db, 'auditLog', {
+      atISO: nowISO(), entity: 'sessionLog', entityId: logId, action: 'edit',
+      field: 'dateISO', from, to: dateISO, movedSets: sets.length,
+    });
+
+    await loadEverything();
+    await restoreActiveSession();
+    render();
+    return { moved: true, from, to: dateISO, sets: sets.length };
+  },
+
+  /**
+   * Reopen a finished session so it can be carried on.
+   *
+   * For the session ended by a mis-tap with half the work still to do. Refused
+   * while another session is open, because two active sessions is the state
+   * `startSessionAtomic` exists to prevent.
+   */
+  async reopenSession(logId) {
+    if (state.activeLog) {
+      return { ok: false, reason: `Session ${state.activeLog.sessionId} is already open. Finish that one first.` };
+    }
+    const log = state.logs.find((row) => row.id === logId);
+    if (!log) return { ok: false, reason: 'that session no longer exists' };
+
+    await put(state.db, 'sessionLogs', {
+      ...log, endedAt: null, localEndDate: null, status: 'active', isPartial: false,
+    });
+    await writeSetting(state.db, 'activeSessionLogId', logId);
+    await put(state.db, 'auditLog', {
+      atISO: nowISO(), entity: 'sessionLog', entityId: logId, action: 'reopen', from: log.endedAt, to: null,
+    });
+
+    await loadEverything();
+    await restoreActiveSession();
+    buildHistory();
+    state.tab = 'train';
+    render();
+    return { ok: true, sessionId: log.sessionId };
+  },
+
+  /** Correct one stored set: its numbers, its note, or which exercise it was. */
+  async repairSet(setId, patch) {
+    const set = state.sets.find((row) => row.id === setId);
+    if (!set) throw new Error('that set no longer exists');
+
+    const changed = Object.entries(patch).filter(([key, value]) => (set[key] ?? null) !== (value ?? null));
+    if (!changed.length) return { changed: 0 };
+
+    // The estimate is recomputed from the stored numbers on every read, so
+    // nothing derived has to be corrected alongside them. That is the whole
+    // reason nothing derived is ever stored.
+    await put(state.db, 'sets', { ...set, ...patch });
+    for (const [field, to] of changed) {
+      await put(state.db, 'auditLog', {
+        atISO: nowISO(), entity: 'set', entityId: setId, action: 'edit', field, from: set[field] ?? null, to: to ?? null,
+      });
+    }
+
+    await loadEverything();
+    buildHistory();
+    render();
+    return { changed: changed.length };
+  },
+
+  /** Remove one set, recoverably. */
+  async deleteSet(setId, { reason = null } = {}) {
+    await softDeleteRow(state.db, 'sets', setId, { reason });
+    await loadEverything();
+    buildHistory();
+    render();
+  },
+
   /**
    * Today's readiness. Applied to the resolved session, never stored as plan.
    *
