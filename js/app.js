@@ -14,6 +14,8 @@ import {
   put,
   remove,
   clearStore,
+  withTransaction,
+  request,
   alive,
   putSetIdempotent,
   startSessionAtomic,
@@ -41,8 +43,17 @@ import {
 import { e1rm, systemLoad, estimateForSet, isHighConfidence } from './calc.js';
 import { localDate, nowISO, timeZone, utcOffsetMinutes, daysBetween } from './dates.js';
 import { blockFor, effortModeFor, resolveSession, toDisplaySession, validatePlan } from './plan.js';
-import { newCycle, cycleProgress, nextSession, blockBoundary, completionRatio, sessionStatusFor, projectedFinish } from './cycle.js';
-import { buildExport, parseImport, restore } from './export.js';
+import {
+  newCycle,
+  cycleProgress,
+  nextSession,
+  blockBoundary,
+  completionRatio,
+  sessionStatusFor,
+  projectedFinish,
+  planCorrection,
+} from './cycle.js';
+import { buildExport, parseImport, validateImport, applyImport, verifyAgainst } from './export.js';
 import {
   escape,
   fmtLoad,
@@ -460,12 +471,26 @@ async function finishSession() {
     <p style="text-align:center;font-size:13px">${logged} of ${prescribed} sets${
       finishedLog.isPartial ? ' — logged as a partial session' : ''
     }${Number.isFinite(minutes) && minutes > 0 ? ` · ${minutes} min` : ''}</p>
-    <p style="text-align:center;font-size:13px">Next in the rotation: <b>${escape(state.position.nextSessionId)}</b>${
-      state.blockProgress.readyForReview
-        ? '<br><br>You have reached this block’s session target. The block review opens from Progress — nothing advances on its own.'
-        : ''
-    }</p>
-    <button class="big mt" data-act="sheet-close">Done</button>`);
+    ${
+      state.cycleProgress.finished
+        ? `<p style="text-align:center;font-size:13px">That completes <b>rotation ${state.cycle.sequence}</b>${
+            state.cycleProgress.partial || state.cycleProgress.skipped
+              ? ` — with ${state.cycleProgress.partial + state.cycleProgress.skipped} position${
+                  state.cycleProgress.partial + state.cycleProgress.skipped === 1 ? '' : 's'
+                } partial or skipped`
+              : ''
+          }.${
+            state.boundary.atBoundary
+              ? ` It also ends <b>${escape(state.boundary.fromName)}</b>. Review your working maxes before moving on.`
+              : ''
+          }</p>
+          <button class="big mt" data-act="advance-cycle">Start rotation ${state.cycle.sequence + 1}</button>
+          <button class="big ghost mt" data-act="sheet-close">Not yet</button>`
+        : `<p style="text-align:center;font-size:13px">Next in the rotation: <b>${escape(
+            state.position.nextSessionId
+          )}</b> · ${state.cycleProgress.pending} still to do in rotation ${state.cycle.sequence}.</p>
+          <button class="big mt" data-act="sheet-close">Done</button>`
+    }`);
 }
 
 /** Today's Body entries, prefilled from whatever is already stored for today. */
@@ -628,44 +653,126 @@ const ctx = {
     return meta;
   },
 
-  /** Restore from a zip this app wrote. Replaces only what the export carries. */
-  async importZip(file) {
+  /**
+   * Advance to the next rotation. One deliberate action, never automatic.
+   *
+   * v1 read blockIdx and never wrote it, so the block could not advance at all
+   * and three encoded plan features were unreachable for the whole 33 weeks.
+   */
+  async advanceCycle({ reason = 'rotation complete' } = {}) {
+    const from = state.cycle.sequence;
+    const to = Math.min(from + 1, state.plan.meta.rotations);
+    if (to === from) return { moved: false, reason: 'this is the last rotation of the plan' };
+
+    // Close the cycle that is finishing, then open the next one.
+    await put(state.db, 'cycles', {
+      ...state.cycle,
+      status: state.cycleProgress.finished && !state.cycleProgress.partial && !state.cycleProgress.skipped
+        ? 'complete'
+        : 'partial',
+      endedAtISO: nowISO(),
+      localEndDate: todayISO(),
+    });
+
+    const next = newCycle(state.plan, { sequence: to, startedAtISO: nowISO(), localStartDate: todayISO() });
+    await put(state.db, 'cycles', next);
+    await writeSetting(state.db, 'cycleSequence', to);
+    await put(state.db, 'auditLog', {
+      atISO: nowISO(), entity: 'cycle', action: 'advance', from, to, reason,
+    });
+
+    await loadEverything();
+    render();
+    return { moved: true, from, to };
+  },
+
+  /**
+   * Correct the rotation number by hand, with a reason recorded.
+   *
+   * Needed after an import, a mis-tap, or training that happened away from the
+   * app. Nothing about the plan position may change silently.
+   */
+  async correctCycle(to, reason) {
+    const correction = planCorrection({
+      field: 'cycleSequence', from: state.cycle.sequence, to, reason, atISO: nowISO(),
+    });
+    if (!correction.ok) return correction;
+
+    const existing = state.cycles.find((c) => c.sequence === to);
+    if (!existing) {
+      await put(state.db, 'cycles', newCycle(state.plan, { sequence: to, startedAtISO: nowISO(), localStartDate: todayISO() }));
+    }
+    await writeSetting(state.db, 'cycleSequence', to);
+    await put(state.db, 'auditLog', correction.entry);
+
+    await loadEverything();
+    render();
+    return { ok: true };
+  },
+
+  /** Today's readiness. Applied to the resolved session, never stored as plan. */
+  setReadiness(value) {
+    state.readiness = value;
+    render();
+  },
+
+  /** A plain JSON file with every record in it, offered before anything is lost. */
+  async downloadBackup({ label = 'backup' } = {}) {
+    const payload = await snapshot(state.db);
+    const bytes = new TextEncoder().encode(JSON.stringify(payload, null, 2));
+    downloadBytes(bytes, `bulk-${label}-${todayISO()}.json`, 'application/json');
+  },
+
+  /**
+   * Step one: read and check. Nothing is written.
+   *
+   * v1 cleared and repopulated each store the moment a file was chosen, one
+   * store at a time, with no validation and no way back. Importing into a
+   * populated database silently replaced settings and any store the archive
+   * happened to contain.
+   */
+  async stageImport(file) {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const parsed = parseImport(bytes);
-    const restored = await restore(state.db, parsed, { put, clearStore });
 
-    await writeSetting(state.db, 'activeSessionLogId', null);
-    state.activeLog = null;
-    state.loggedSets = new Map();
+    const current = {};
+    for (const store of ALL_STORES) current[store] = (await getAll(state.db, store)).length;
+
+    const report = validateImport(parsed, { current });
+    state.pendingImport = report.ok ? { parsed, report, name: file.name } : null;
+    return report;
+  },
+
+  /**
+   * Step two: apply, in one transaction across every affected store. Either the
+   * whole restore lands or the database is untouched.
+   *
+   * A safety export is taken first, because the thing being replaced is the
+   * only copy of months of training.
+   */
+  async applyStagedImport() {
+    const staged = state.pendingImport;
+    if (!staged) throw new Error('nothing staged to import');
+
+    await ctx.downloadBackup({ label: 'before-import' });
+
+    const restored = await applyImport(state.db, staged.parsed, { withTransaction, request });
+    state.pendingImport = null;
+
     await loadEverything();
+    await restoreActiveSession();
+    buildHistory();
     resetBodyDraft();
     render();
     return restored;
   },
 
-  /**
-   * Verify a backup restores, without touching the real data: the export is
-   * parsed and compared against what is stored, record for record. You find out
-   * a backup is broken BEFORE you need it, not after.
-   */
+  /** Read a backup and compare its contents with what is stored. Writes nothing. */
   async verifyBackup(file) {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const parsed = parseImport(bytes);
     const live = await snapshot(state.db);
-
-    const problems = [];
-    for (const [store, rows] of Object.entries(parsed.data)) {
-      const here = live.data[store] || [];
-      if (store === 'settings') continue;
-      if (rows.length !== here.length) problems.push(`${store}: ${rows.length} in the backup, ${here.length} here`);
-    }
-    return { ok: problems.length === 0, problems, counts: parsed.counts ?? {} };
-  },
-
-  /** A real file on disk, offered before anything is deleted. */
-  async downloadBackup() {
-    const payload = await snapshot(state.db);
-    downloadBytes(JSON.stringify(payload, null, 2), `bulk-backup-${todayISO()}.json`, 'application/json');
+    return verifyAgainst(parsed, live);
   },
 
   async eraseEverything() {
@@ -705,6 +812,58 @@ const ctx = {
 };
 
 const globalActions = {
+  async 'advance-cycle'(ctx) {
+    const result = await ctx.advanceCycle();
+    closeSheet();
+    if (result.moved) {
+      openSheet(`<div class="ttl">Rotation ${result.to}</div>
+        <p style="text-align:center;font-size:14px;margin:14px 0 4px;color:var(--ink)">${escape(state.block.name)}</p>
+        <p style="text-align:center;font-size:13px">${escape(state.block.theme)}</p>
+        ${
+          state.effortMode === 'high' || state.effortMode === 'standard'
+            ? `<p style="text-align:center;font-size:13px">Effort mode this rotation: <b>${escape(state.effortMode)} failure</b>.</p>`
+            : ''
+        }
+        <button class="big mt" data-act="sheet-close">Start</button>`);
+    }
+  },
+
+  'open-cycle-control'(ctx) {
+    openSheet(`<div class="ttl">Where the plan is</div>
+      <p style="text-align:center;font-size:13px;margin:12px 0 4px">Rotation <b>${state.cycle.sequence}</b> of ${
+        state.plan.meta.rotations
+      } · ${escape(state.block.name)}</p>
+      <p style="text-align:center;font-size:13px">${state.cycleProgress.complete} of ${
+        state.plan.meta.rotationOrder.length
+      } sessions done this rotation</p>
+      <div class="mt"><label for="cycle-to">Set the rotation number</label>
+        <input id="cycle-to" type="number" min="1" max="${state.plan.meta.rotations}" value="${state.cycle.sequence}"></div>
+      <div class="mt"><label for="cycle-why">Why</label>
+        <input id="cycle-why" type="text" placeholder="Trained away from the app, imported twice…"></div>
+      <p class="hint">Corrections are recorded with their reason. Nothing about the plan position changes silently.</p>
+      <button class="big mt" data-act="correct-cycle">Correct it</button>
+      <button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
+  },
+
+  async 'correct-cycle'(ctx) {
+    const to = Number(document.getElementById('cycle-to')?.value);
+    const reason = document.getElementById('cycle-why')?.value?.trim();
+    const result = await ctx.correctCycle(to, reason);
+
+    if (!result.ok) {
+      openSheet(`<div class="ttl">Not changed</div>
+        <p style="text-align:center;font-size:14px;margin:14px 0;color:var(--ink)">${escape(result.reason)}</p>
+        <button class="big mt" data-act="sheet-close">Close</button>`);
+      return;
+    }
+    closeSheet();
+    render();
+  },
+
+  readiness(ctx, data) {
+    ctx.setReadiness(data.id);
+  },
+
   tab(_ctx, data) {
     state.tab = data.tab;
     if (data.tab !== 'prog') state.progressSection = null;

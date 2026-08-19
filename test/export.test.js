@@ -7,7 +7,31 @@ import { join } from 'node:path';
 
 import { createFakeEnv } from './helpers/fake-indexeddb.js';
 import { openDatabase, put, clearStore, saveSession, snapshot, DB_VERSION } from '../js/db.js';
-import { makeZip, readZip, crc32, toCsv, buildExport, parseImport, restore } from '../js/export.js';
+import {
+  makeZip,
+  readZip,
+  crc32,
+  toCsv,
+  buildExport,
+  parseImport,
+  restore,
+  validateImport,
+  verifyAgainst,
+  applyImport,
+} from '../js/export.js';
+
+
+/** A snapshot shaped exactly as db.snapshot() produces one. */
+const snapshotOf = (data) => ({
+  format: 3,
+  takenAtISO: '2026-08-19T10:00:00.000Z',
+  kind: 'json-snapshot',
+  data: {
+    sessionLogs: [], sets: [], daily: [], measurements: [], media: [],
+    niggles: [], maxes: [], settings: [], maxHistory: [], cycles: [], auditLog: [],
+    ...data,
+  },
+});
 
 /** Split CSV into records, respecting quoted fields that contain newlines. */
 function splitCsvRows(csv) {
@@ -64,7 +88,7 @@ async function populate(db) {
   await put(db, 'daily', { dateISO: '2026-09-20', bodyweight: 92.1, bodyfatPct: null, sleepHours: null, steps: null, mood: null, caffeine: null, note: null });
   await put(db, 'measurements', { dateISO: '2026-08-18', waist: 82.3, chest: 108.5, shoulders: null, armL: 38.4, armR: 38.7, quadL: null, quadR: null, neck: null, note: null });
   await put(db, 'niggles', { dateISO: '2026-08-19', site: 'Left elbow', severity: 1, context: 'skullcrushers', note: null });
-  await put(db, 'media', { dateISO: '2026-08-18', kind: 'physique', exerciseId: null, load: null, reps: null, note: null, fileRef: null, imageBlob: new Uint8Array([255, 216, 255, 224, 1, 2, 3]) });
+  await put(db, 'media', { dateISO: '2026-08-18', kind: 'physique', exerciseId: null, load: null, reps: null, note: null, fileRef: null, imageBytes: new Uint8Array([255, 216, 255, 224, 1, 2, 3]) });
   await put(db, 'maxes', { exerciseId: 'benchComp', workingMax: 115, conf: 'high', setAtISO: '2026-08-18', sourceSetId: null, blockId: 0 });
   return first.sessionLogId;
 }
@@ -163,16 +187,16 @@ test('photos survive the round trip byte for byte', async () => {
   const { zip } = buildExport(before, null);
   const restored = parseImport(zip);
 
-  const originalPhoto = before.data.media.find((m) => m.imageBlob);
-  const restoredPhoto = restored.data.media.find((m) => m.imageBlob);
+  const originalPhoto = before.data.media.find((m) => m.imageBytes);
+  const restoredPhoto = restored.data.media.find((m) => m.imageBytes);
   assert.ok(originalPhoto && restoredPhoto);
-  assert.deepEqual(Object.values(restoredPhoto.imageBlob), Object.values(originalPhoto.imageBlob));
+  assert.deepEqual(Object.values(restoredPhoto.imageBytes), Object.values(originalPhoto.imageBytes));
 
   // And the same bytes are in the zip as a real file, so they can be looked at.
   const files = readZip(zip);
   const photoName = Object.keys(files).find((name) => name.startsWith('photos/'));
   assert.ok(photoName, 'photos are written as files, not only as JSON');
-  assert.deepEqual([...files[photoName]], [...Object.values(originalPhoto.imageBlob)]);
+  assert.deepEqual([...files[photoName]], [...Object.values(originalPhoto.imageBytes)]);
 });
 
 test('a date range takes each session with its own sets', async () => {
@@ -235,4 +259,97 @@ test('the export carries CSVs a human can open', async () => {
   const rows = splitCsvRows(csv);
   assert.equal(rows.length - 1, 4, 'four sets, one header');
   assert.equal(rows[2].split(',').length >= 3, true);
+});
+
+/* ── the import defects, each with a test that would have caught it ──── */
+
+test('a corrupted archive is refused, not restored', () => {
+  const { zip } = buildExport(snapshotOf({ daily: [{ dateISO: '2026-08-20', bodyweight: 90.4 }] }), null);
+
+  // Flip a byte inside the stored data and the checksum no longer matches.
+  const damaged = zip.slice();
+  const marker = new TextEncoder().encode('90.4');
+  const at = damaged.findIndex((_, i) => marker.every((byte, j) => damaged[i + j] === byte));
+  assert.ok(at > 0, 'found the value to damage');
+  damaged[at] = '9'.charCodeAt(0);
+  damaged[at + 1] = '1'.charCodeAt(0);
+
+  assert.throws(() => readZip(damaged), /corrupted|checksum/i);
+});
+
+test('verification compares contents, not row counts', () => {
+  // v1 compared counts only, so a backup with the same number of sets but
+  // altered loads passed.
+  const snapshot = snapshotOf({
+    sets: [{ id: 1, sessionLogId: 1, load: 100, reps: 5, rpe: 8 }],
+    sessionLogs: [{ id: 1, dateISO: '2026-08-20' }],
+  });
+  const backup = JSON.parse(JSON.stringify(snapshot));
+
+  assert.equal(verifyAgainst(backup, snapshot).ok, true, 'identical data verifies');
+
+  const tampered = JSON.parse(JSON.stringify(backup));
+  tampered.data.sets[0].load = 105;
+
+  const report = verifyAgainst(tampered, snapshot);
+  assert.equal(report.ok, false, 'same count, different load — must fail');
+  assert.match(report.problems.join(' '), /differ in their contents/);
+});
+
+test('an archive is validated before anything is written', () => {
+  const good = snapshotOf({
+    sessionLogs: [{ id: 1, dateISO: '2026-08-20' }],
+    sets: [{ id: 1, sessionLogId: 1, load: 100, reps: 5, rpe: 8, logicalKey: '1:0:0' }],
+  });
+  assert.equal(validateImport(good).ok, true);
+
+  // A set with no session to belong to.
+  const orphaned = snapshotOf({ sessionLogs: [], sets: [{ id: 1, sessionLogId: 99, load: 100, reps: 5 }] });
+  const orphanReport = validateImport(orphaned);
+  assert.equal(orphanReport.ok, false);
+  assert.match(orphanReport.problems.join(' '), /refer to a session/);
+
+  // Values that would poison every average downstream.
+  const impossible = snapshotOf({
+    sessionLogs: [{ id: 1, dateISO: '2026-08-20' }],
+    sets: [{ id: 1, sessionLogId: 1, load: -50, reps: 5, rpe: 14 }],
+    daily: [{ dateISO: '2026-08-20', bodyweight: 900 }],
+  });
+  const report = validateImport(impossible);
+  assert.equal(report.ok, false);
+  assert.match(report.problems.join(' '), /impossible load/);
+  assert.match(report.problems.join(' '), /RPE outside/);
+  assert.match(report.problems.join(' '), /impossible bodyweight/);
+
+  // Two copies of one logical set would breach the unique index on apply.
+  const duplicated = snapshotOf({
+    sessionLogs: [{ id: 1, dateISO: '2026-08-20' }],
+    sets: [
+      { id: 1, sessionLogId: 1, logicalKey: '1:0:0', load: 100, reps: 5, rpe: 8 },
+      { id: 2, sessionLogId: 1, logicalKey: '1:0:0', load: 100, reps: 5, rpe: 8 },
+    ],
+  });
+  assert.match(validateImport(duplicated).problems.join(' '), /two copies/);
+});
+
+test('the preview says exactly what would be replaced', () => {
+  const archive = snapshotOf({
+    sessionLogs: [{ id: 1, dateISO: '2026-08-20' }],
+    daily: [{ dateISO: '2026-08-20', bodyweight: 91 }],
+  });
+
+  const report = validateImport(archive, { current: { daily: 12, sets: 300 } });
+  assert.equal(report.ok, true);
+
+  const daily = report.preview.find((row) => row.store === 'daily');
+  assert.equal(daily.incoming, 1);
+  assert.equal(daily.existing, 12);
+  assert.ok(report.replaces.includes('daily'), 'the user is told daily will be replaced');
+
+  // An archive carrying an EMPTY sets array would clear 300 stored sets under
+  // replace semantics. That is exactly what the preview has to say out loud.
+  const sets = report.preview.find((row) => row.store === 'sets');
+  assert.equal(sets.incoming, 0);
+  assert.equal(sets.existing, 300);
+  assert.ok(report.replaces.includes('sets'), 'the user is warned before losing them');
 });

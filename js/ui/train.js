@@ -90,6 +90,16 @@ const prescriptionFor = (state, slot) =>
 
 const isFailureSet = (slot, i) => !!slot.failLast && i >= slot.sets - slot.failLast;
 
+/** What the row is displaying, so a one-tap set stores it rather than null. */
+const defaultGrip = (state, slot, slotIndex) => {
+  const exercise = state.plan.exercises[slot.ex];
+  if (!exercise?.grips?.length) return null;
+  return state.grips[`${state.trainSessionId}-${slotIndex}`] || exercise.grips[0];
+};
+
+/** Every competition-bench set in this plan is paused; say so rather than guess later. */
+const defaultPause = (state, slot) => (tracksPause(slot.ex) ? 'paused' : null);
+
 /** What this exercise looked like last time, for the prefill and the hint. */
 function lastTime(state, exerciseId) {
   const previous = state.lastByExercise.get(exerciseId);
@@ -168,6 +178,8 @@ export function view(ctx) {
 
   ${state.calibration ? calibrationCard() : ''}
 
+  ${readinessBar(state)}
+
   <div class="shead">
     <div class="lbl">${label}</div>
     <div class="nm">${escape(session.id)} · ${escape(session.name)}</div>
@@ -179,6 +191,19 @@ export function view(ctx) {
       <span>Cycle ${state.cycle.sequence}/${state.plan.meta.rotations} · ${escape(state.block.name)}</span>
       <span>${state.cycleProgress.complete}/${state.plan.meta.rotationOrder.length} this rotation</span>
     </div>
+    ${
+      resolved.effortMode === 'high' || resolved.effortMode === 'standard'
+        ? `<p class="hint" style="margin-top:8px">Effort mode: <b>${escape(resolved.effortMode)} failure</b>${
+            resolved.accessoryMultiplier < 1
+              ? ` · accessories at ${Math.round(resolved.accessoryMultiplier * 100)}%`
+              : ''
+          }</p>`
+        : resolved.blockType === 'recovery' || resolved.blockType === 'taper' || resolved.blockType === 'test'
+          ? `<p class="hint" style="margin-top:8px"><b>${escape(resolved.blockName)}</b> — reduced volume, nothing to failure.</p>`
+          : ''
+    }
+    <div class="mini" style="margin-top:10px"><button data-act="open-cycle-control">Rotation ${state.cycle.sequence} ·
+      correct</button></div>
   </div>
 
   <div class="card flush">${slots.map((slot, si) => exerciseBlock(state, slot, si)).join('')}</div>
@@ -211,6 +236,37 @@ function estimateMinutes(state, slots) {
   }, 0);
   const minutes = Math.round(seconds / 60);
   return `${Math.round(minutes * 0.9 / 5) * 5}–${Math.round(minutes * 1.1 / 5) * 5}`;
+}
+
+/**
+ * Readiness is today's answer, not the plan's. It changes what is prescribed
+ * for this session only: yellow trims the last set and replaces the AMRAP,
+ * red removes the AMRAP, the holds and every grind.
+ */
+function readinessBar(state) {
+  const current = state.readiness || 'normal';
+  const options = [
+    ['normal', 'Normal'],
+    ['yellow', 'Yellow — poor sleep, slow warm-up'],
+    ['red', 'Red — pain or illness'],
+  ];
+  if (current === 'normal') {
+    return `<div class="picker" style="margin-bottom:4px">${options
+      .map(
+        ([id, label]) =>
+          `<button class="pill ${id === current ? 'on' : ''}" data-act="readiness" data-id="${id}">${escape(
+            id === 'normal' ? 'Normal' : label.split(' — ')[0]
+          )}</button>`
+      )
+      .join('')}</div>`;
+  }
+  return `<div class="flag f-warn" style="margin-bottom:10px"><i>!</i><span><b>${escape(
+    current === 'red' ? 'Red day' : 'Yellow day'
+  )}.</b> ${
+    current === 'red'
+      ? 'No AMRAP, no holds, no grinding. Bench converts to light triples and accessories run at about half volume.'
+      : 'The final work set is removed and the AMRAP is replaced by a triple at RPE 8.'
+  } <button data-act="readiness" data-id="normal" style="background:none;border:0;color:var(--s1);font:inherit;font-weight:650;padding:0;cursor:pointer">Back to normal</button></span></div>`;
 }
 
 const calibrationCard = () => `<div class="card" style="border-color:var(--s2);border-width:2px">
@@ -486,13 +542,27 @@ export const actions = {
       return;
     }
 
+    /*
+     * An AMRAP has no prescribed rep count — the number of reps IS the
+     * measurement. v1 showed the slot's nominal six and one tap logged it,
+     * fabricating the single most important data point in the plan.
+     */
+    if (slot.amrap || slot.isTest) {
+      actions['open-step'](ctx, { si: String(slotIndex), i: String(i), field: 'reps' });
+      return;
+    }
+
     const { load, reps, rpe, toFailure, prescribed } = rowValues(state, slot, slotIndex, i);
     await ctx.saveSet(slotIndex, i, {
       load,
-      reps: slot.amrap ? reps : reps,
+      reps,
       rpe,
       toFailure,
       isAmrap: !!slot.amrap,
+      // The screen shows a default grip and pause; v1 saved null for both on a
+      // one-tap set, so analytics silently mixed incomparable techniques.
+      gripWidth: defaultGrip(state, slot, slotIndex),
+      pauseStyle: defaultPause(state, slot),
       isMyoRep: !!slot.myoReps && i === slot.sets - 1,
       wasPrescribed: load != null && load === prescribed,
       prescribedLoad: prescribed,
@@ -668,7 +738,10 @@ export const actions = {
     const c = ctx.state.sheetCtx;
     ctx.state.exOpen.add(String(c.si));
     await ctx.saveSet(c.si, c.i, {
-      load: c.load || null,
+      // Zero is a real added load on a pull-up, chin-up or dip. v1's `|| null`
+      // turned an unweighted set into a blank that produced no e1RM and no
+      // tonnage.
+      load: Number.isFinite(c.load) ? c.load : null,
       reps: c.reps ?? null,
       rpe: c.rpe,
       toFailure: c.toFailure,

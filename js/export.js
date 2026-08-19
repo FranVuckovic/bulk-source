@@ -108,8 +108,14 @@ export function makeZip(files, { date = new Date() } = {}) {
   return out;
 }
 
-/** Read a stored zip back into { name → Uint8Array }. */
-export function readZip(bytes) {
+/**
+ * Read a stored zip back into { name → Uint8Array }, verifying each entry.
+ *
+ * The CRC in the local header is checked against the bytes actually read. A
+ * truncated or altered archive fails here rather than restoring silently
+ * corrupted training history.
+ */
+export function readZip(bytes, { verify = true } = {}) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const files = {};
   let cursor = 0;
@@ -124,7 +130,15 @@ export function readZip(bytes) {
     const dataStart = nameStart + nameLength + extraLength;
 
     if (method !== 0) throw new Error(`${name} is compressed; this reader only handles stored entries`);
-    files[name] = bytes.slice(dataStart, dataStart + size);
+    if (dataStart + size > bytes.length) throw new Error(`${name} runs past the end of the archive`);
+
+    const content = bytes.slice(dataStart, dataStart + size);
+    if (verify) {
+      const declared = view.getUint32(cursor + 14, true);
+      const actual = crc32(content);
+      if (declared !== actual) throw new Error(`${name} is corrupted — its checksum does not match`);
+    }
+    files[name] = content;
     cursor = dataStart + size;
   }
   return files;
@@ -213,10 +227,31 @@ export function buildExport(snapshot, plan, { from = null, to = null, include = 
     counts: Object.fromEntries(Object.entries(selected).map(([name, rows]) => [name, rows.length])),
   };
 
+  /*
+   * Photos are stored as bytes, never as a Blob: a Blob serialises to `{}` in
+   * JSON, so v1's export dropped every image silently while reporting success.
+   * The bytes become real files in the archive and data.json keeps only the
+   * filename, which also keeps the JSON readable.
+   */
+  const photoFiles = [];
+  const mediaForJson = (selected.media || []).map((item) => {
+    const bytes = item.imageBytes instanceof Uint8Array ? item.imageBytes : null;
+    const { imageBytes, imageBlob, ...rest } = item;
+    if (!bytes) return { ...rest, photoFile: item.photoFile ?? null };
+
+    const extension = (item.imageType || 'image/jpeg').includes('png') ? 'png' : 'jpg';
+    const name = `photos/${item.dateISO}-${item.id}.${extension}`;
+    photoFiles.push({ name, data: bytes });
+    return { ...rest, photoFile: name };
+  });
+
+  const payload = { ...meta, data: { ...selected, media: mediaForJson } };
+
   const files = [
     { name: 'meta.json', data: utf8(JSON.stringify(meta, null, 2)) },
     // The lossless copy. The CSVs are for reading; this is what a restore uses.
-    { name: 'data.json', data: utf8(JSON.stringify({ ...meta, data: selected }, null, 2)) },
+    { name: 'data.json', data: utf8(JSON.stringify(payload, null, 2)) },
+    ...photoFiles,
   ];
 
   if (want.plan && plan) files.push({ name: 'plan.json', data: utf8(JSON.stringify(plan, null, 2)) });
@@ -226,13 +261,7 @@ export function buildExport(snapshot, plan, { from = null, to = null, include = 
     files.push({ name: `${store}.csv`, data: utf8(toCsv(selected[store], columns)) });
   }
 
-  for (const item of selected.media) {
-    if (item.imageBlob instanceof Uint8Array) {
-      files.push({ name: `photos/${item.dateISO}-${item.id}.jpg`, data: item.imageBlob });
-    }
-  }
-
-  return { zip: makeZip(files), meta, files: files.map((f) => f.name) };
+  return { zip: makeZip(files), meta, files: files.map((f) => f.name), photos: photoFiles.length };
 }
 
 /** Pull the lossless payload back out of a zip. */
@@ -246,6 +275,15 @@ export function parseImport(bytes) {
   if (parsed.format > FORMAT_VERSION) {
     throw new Error(`This export came from a newer version of the app (format ${parsed.format}).`);
   }
+
+  // Put the photo bytes back on their records, so a restore is byte-for-byte.
+  parsed.data.media = (parsed.data.media || []).map((item) => {
+    if (!item.photoFile) return item;
+    const bytes = files[item.photoFile];
+    if (!bytes) throw new Error(`${item.photoFile} is referenced by the data but missing from the archive.`);
+    return { ...item, imageBytes: bytes };
+  });
+
   return parsed;
 }
 
@@ -264,4 +302,179 @@ export async function restore(db, parsed, { put, clearStore }) {
     restored[store] = rows.length;
   }
   return restored;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Staged restore
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/*
+ * v1 restored the moment a file was chosen: each store was cleared and
+ * repopulated one at a time, with no validation, no preview and no way back.
+ * Importing into a populated database silently replaced settings and any store
+ * the archive happened to contain, and a failure part-way through left some
+ * stores emptied and others untouched.
+ *
+ * Restoring is now four separate steps — parse, validate, preview, apply — and
+ * the apply step is one transaction across every store.
+ */
+
+/** Rows the app knows how to store, with the shape each one must have. */
+const REQUIRED_FIELDS = {
+  sessionLogs: ['dateISO'],
+  sets: ['sessionLogId'],
+  daily: ['dateISO'],
+  measurements: ['dateISO'],
+  niggles: ['dateISO'],
+  media: ['dateISO'],
+  maxes: ['exerciseId'],
+  settings: ['key'],
+  maxHistory: ['exerciseId'],
+  cycles: ['sequence'],
+  auditLog: [],
+};
+
+const isFiniteOrNull = (value) => value == null || (typeof value === 'number' && Number.isFinite(value));
+
+/**
+ * Check an archive before anything is written.
+ *
+ * Returns what would change and everything wrong with it. Nothing here touches
+ * the database.
+ */
+export function validateImport(parsed, { current = {} } = {}) {
+  const problems = [];
+  const warnings = [];
+
+  if (!parsed || typeof parsed !== 'object') return { ok: false, problems: ['That file is not a Bulk export.'] };
+  if (parsed.format > FORMAT_VERSION) {
+    problems.push(`Exported by a newer version of the app (format ${parsed.format} against ${FORMAT_VERSION}).`);
+  }
+
+  const data = parsed.data || {};
+  for (const store of Object.keys(data)) {
+    if (!ALL_STORES.includes(store)) {
+      warnings.push(`"${store}" is not a store this version knows about; it will be ignored.`);
+      continue;
+    }
+    const rows = data[store];
+    if (!Array.isArray(rows)) {
+      problems.push(`${store} is not a list of records.`);
+      continue;
+    }
+    for (const [index, row] of rows.entries()) {
+      if (!row || typeof row !== 'object') {
+        problems.push(`${store}[${index}] is not a record.`);
+        continue;
+      }
+      for (const field of REQUIRED_FIELDS[store] || []) {
+        if (row[field] == null) problems.push(`${store}[${index}] has no ${field}.`);
+      }
+    }
+  }
+
+  // Ranges, so a corrupt or hand-edited file cannot poison the maths.
+  for (const [index, set] of (data.sets || []).entries()) {
+    if (!isFiniteOrNull(set.load) || (set.load != null && set.load < 0)) problems.push(`sets[${index}] has an impossible load.`);
+    if (!isFiniteOrNull(set.reps) || (set.reps != null && (set.reps < 0 || set.reps > 200))) {
+      problems.push(`sets[${index}] has an impossible rep count.`);
+    }
+    if (set.rpe != null && (set.rpe < 1 || set.rpe > 10)) problems.push(`sets[${index}] has an RPE outside 1–10.`);
+  }
+  for (const [index, day] of (data.daily || []).entries()) {
+    if (day.bodyweight != null && (day.bodyweight <= 0 || day.bodyweight > 400)) {
+      problems.push(`daily[${index}] has an impossible bodyweight.`);
+    }
+    if (day.sleepHours != null && (day.sleepHours < 0 || day.sleepHours > 24)) {
+      problems.push(`daily[${index}] has impossible sleep hours.`);
+    }
+  }
+
+  // Referential integrity: a set must belong to a session in the same archive.
+  const logIds = new Set((data.sessionLogs || []).map((log) => log.id));
+  const orphans = (data.sets || []).filter((set) => !logIds.has(set.sessionLogId));
+  if (orphans.length) problems.push(`${orphans.length} sets refer to a session the archive does not contain.`);
+
+  // Duplicate logical sets would breach the unique index on apply.
+  const keys = new Set();
+  for (const set of data.sets || []) {
+    const key = set.logicalKey ?? `${set.sessionLogId}:${set.slotIndex}:${set.setIndex}`;
+    if (keys.has(key)) problems.push(`The archive contains two copies of set ${key}.`);
+    keys.add(key);
+  }
+
+  const preview = ALL_STORES.map((store) => ({
+    store,
+    incoming: Array.isArray(data[store]) ? data[store].length : null,
+    existing: current[store] ?? 0,
+  })).filter((row) => row.incoming != null || row.existing);
+
+  return {
+    ok: problems.length === 0,
+    problems,
+    warnings,
+    preview,
+    takenAtISO: parsed.takenAtISO ?? null,
+    format: parsed.format,
+    replaces: preview.filter((row) => row.incoming != null && row.existing).map((row) => row.store),
+  };
+}
+
+/**
+ * Apply a validated archive in one transaction across every affected store.
+ *
+ * Either the whole restore lands or the database is untouched. Photos come back
+ * as real bytes; settings are restored too, because a backup that silently
+ * dropped your unit and increment is not a backup.
+ */
+export function applyImport(db, parsed, { withTransaction, request, stores = ALL_STORES }) {
+  const data = parsed.data || {};
+  const affected = stores.filter((store) => Array.isArray(data[store]));
+  if (!affected.length) return Promise.resolve({});
+
+  return withTransaction(db, affected, 'readwrite', async (handles) => {
+    const list = [].concat(handles);
+    const restored = {};
+
+    for (const [index, store] of affected.entries()) {
+      const handle = list[index];
+      await request(handle.clear());
+      for (const row of data[store]) await request(handle.put(row));
+      restored[store] = data[store].length;
+    }
+    return restored;
+  });
+}
+
+/**
+ * Compare an archive against what is stored, by content rather than by count.
+ *
+ * v1 compared row counts only, so a backup with the same number of sets but
+ * altered loads, reps or dates passed verification. This hashes the canonical
+ * form of every record.
+ */
+export function verifyAgainst(parsed, snapshot) {
+  const problems = [];
+  const canonical = (row) =>
+    JSON.stringify(row, Object.keys(row).filter((k) => k !== 'imageBlob').sort());
+
+  for (const store of ALL_STORES) {
+    const backup = parsed.data?.[store];
+    const live = snapshot.data?.[store];
+    if (!backup) continue;
+    if (!live) {
+      problems.push(`${store} is in the backup but not in the database.`);
+      continue;
+    }
+    if (backup.length !== live.length) {
+      problems.push(`${store}: ${backup.length} records in the backup against ${live.length} stored.`);
+      continue;
+    }
+
+    const backupRows = new Set(backup.map(canonical));
+    const different = live.filter((row) => !backupRows.has(canonical(row)));
+    if (different.length) problems.push(`${store}: ${different.length} records differ in their contents.`);
+  }
+
+  return { ok: problems.length === 0, problems };
 }

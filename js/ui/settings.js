@@ -114,15 +114,54 @@ export function view(ctx) {
 
 /** File pickers, handled on change rather than click. */
 export const files = {
+  /**
+   * Choosing a file reads and checks it. Nothing is written until the preview
+   * below is confirmed.
+   */
   async import(ctx, file) {
-    const restored = await ctx.importZip(file);
-    openSheet(`<div class="ttl">Imported</div>
-      <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">Restored from ${escape(file.name)}.</p>
-      <p style="text-align:center;font-size:13px">${Object.entries(restored)
-        .filter(([, count]) => count)
-        .map(([store, count]) => `${count} ${store}`)
-        .join(' · ')}</p>
-      <button class="big mt" data-act="sheet-close">Done</button>`);
+    const report = await ctx.stageImport(file);
+
+    if (!report.ok) {
+      openSheet(`<div class="ttl">That backup cannot be restored</div>
+        <p style="text-align:center;margin:14px 0 8px;font-size:14px;color:var(--ink)">${escape(file.name)}</p>
+        <p style="font-size:13px">Nothing has been changed. The archive has these problems:</p>
+        <ul style="font-size:13px;color:var(--ink2);line-height:1.6">${report.problems
+          .slice(0, 8)
+          .map((problem) => `<li>${escape(problem)}</li>`)
+          .join('')}</ul>
+        <button class="big mt" data-act="sheet-close">Close</button>`);
+      return;
+    }
+
+    const rows = report.preview
+      .map(
+        (row) => `<tr><td>${escape(row.store)}</td><td>${row.existing}</td><td>${
+          row.incoming == null ? '<span style="color:var(--muted)">untouched</span>' : row.incoming
+        }</td></tr>`
+      )
+      .join('');
+
+    openSheet(`<div class="ttl">Restore this backup?</div>
+      <p style="text-align:center;font-size:13px;margin:10px 0 4px">${escape(file.name)}${
+        report.takenAtISO ? ` · taken ${escape(report.takenAtISO.slice(0, 10))}` : ''
+      }</p>
+      <table style="margin-top:10px"><thead><tr><th>Store</th><th>Now</th><th>After</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+      ${
+        report.replaces.length
+          ? `<div class="flag f-warn" style="margin-top:12px"><i>!</i><span>This <b>replaces</b> ${escape(
+              report.replaces.join(', ')
+            )}. Anything in those stores that is not in the backup is lost.</span></div>`
+          : ''
+      }
+      ${
+        report.warnings.length
+          ? `<p class="hint">${report.warnings.map(escape).join(' ')}</p>`
+          : ''
+      }
+      <p class="hint">A safety export of your current data downloads first, automatically.</p>
+      <button class="big danger mt" data-act="confirm-import">Replace my data</button>
+      <button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
   },
 
   async verify(ctx, file) {
@@ -143,6 +182,16 @@ export const files = {
 };
 
 export const actions = {
+  async 'confirm-import'(ctx) {
+    const restored = await ctx.applyStagedImport();
+    openSheet(`<div class="ttl">Restored</div>
+      <p style="text-align:center;font-size:13px;margin:14px 0">${Object.entries(restored)
+        .filter(([, count]) => count)
+        .map(([store, count]) => `${count} ${escape(store)}`)
+        .join(' · ')}</p>
+      <button class="big mt" data-act="sheet-close">Done</button>`);
+  },
+
   'open-export'(ctx) {
     const today = new Date().toISOString().slice(0, 10);
     const earliest = ctx.state.logs[0]?.dateISO?.slice(0, 10) || today;
