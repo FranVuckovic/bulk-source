@@ -236,13 +236,24 @@ export function buildExport(snapshot, plan, { from = null, to = null, include = 
   const photoFiles = [];
   const mediaForJson = (selected.media || []).map((item) => {
     const bytes = item.imageBytes instanceof Uint8Array ? item.imageBytes : null;
-    const { imageBytes, imageBlob, ...rest } = item;
-    if (!bytes) return { ...rest, photoFile: item.photoFile ?? null };
+    const thumb = item.thumbBytes instanceof Uint8Array ? item.thumbBytes : null;
+    const { imageBytes, imageBlob, thumbBytes, ...rest } = item;
 
+    // The thumbnail is a separate file for the same reason as the full image:
+    // a Uint8Array in JSON becomes {"0":255,"1":216,…}, which is roughly six
+    // times the size and is not a JPEG when it comes back.
     const extension = (item.imageType || 'image/jpeg').includes('png') ? 'png' : 'jpg';
+    let thumbFile = item.thumbFile ?? null;
+    if (thumb) {
+      thumbFile = `photos/${item.dateISO}-${item.id}-thumb.jpg`;
+      photoFiles.push({ name: thumbFile, data: thumb });
+    }
+
+    if (!bytes) return { ...rest, photoFile: item.photoFile ?? null, thumbFile };
+
     const name = `photos/${item.dateISO}-${item.id}.${extension}`;
     photoFiles.push({ name, data: bytes });
-    return { ...rest, photoFile: name };
+    return { ...rest, photoFile: name, thumbFile };
   });
 
   const payload = { ...meta, data: { ...selected, media: mediaForJson } };
@@ -278,10 +289,18 @@ export function parseImport(bytes) {
 
   // Put the photo bytes back on their records, so a restore is byte-for-byte.
   parsed.data.media = (parsed.data.media || []).map((item) => {
-    if (!item.photoFile) return item;
-    const bytes = files[item.photoFile];
-    if (!bytes) throw new Error(`${item.photoFile} is referenced by the data but missing from the archive.`);
-    return { ...item, imageBytes: bytes };
+    const restored = { ...item };
+    if (item.photoFile) {
+      const bytes = files[item.photoFile];
+      if (!bytes) throw new Error(`${item.photoFile} is referenced by the data but missing from the archive.`);
+      restored.imageBytes = bytes;
+    }
+    if (item.thumbFile) {
+      const bytes = files[item.thumbFile];
+      if (!bytes) throw new Error(`${item.thumbFile} is referenced by the data but missing from the archive.`);
+      restored.thumbBytes = bytes;
+    }
+    return restored;
   });
 
   return parsed;
@@ -455,8 +474,26 @@ export function applyImport(db, parsed, { withTransaction, request, stores = ALL
  */
 export function verifyAgainst(parsed, snapshot) {
   const problems = [];
-  const canonical = (row) =>
-    JSON.stringify(row, Object.keys(row).filter((k) => k !== 'imageBlob').sort());
+
+  /*
+   * Image bytes are compared by length and checksum, not by their JSON — a
+   * Uint8Array stringifies to {"0":255,"1":216,…}, which would make the
+   * comparison both enormous and, once the archive's own bookkeeping keys are
+   * added, always unequal. The bookkeeping keys are dropped for the same
+   * reason: photoFile exists only inside the zip.
+   */
+  const IGNORED = new Set(['imageBlob', 'photoFile', 'thumbFile']);
+  const digest = (bytes) => (bytes?.length ? `bytes:${bytes.length}:${crc32(bytes)}` : null);
+
+  const canonical = (row) => {
+    const flat = {};
+    for (const [key, value] of Object.entries(row)) {
+      if (IGNORED.has(key)) continue;
+      flat[key] =
+        value instanceof Uint8Array ? digest(value) : ArrayBuffer.isView(value) ? digest(new Uint8Array(value.buffer)) : value;
+    }
+    return JSON.stringify(flat, Object.keys(flat).sort());
+  };
 
   for (const store of ALL_STORES) {
     const backup = parsed.data?.[store];

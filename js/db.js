@@ -657,7 +657,11 @@ export function softDeleteSession(db, sessionLogId, { reason = null } = {}) {
     for (const set of attached) {
       if (!set.deletedAtISO) await request(sets.put({ ...set, deletedAtISO: atISO }));
     }
-    await request(logs.put({ ...log, deletedAtISO: atISO, status: 'deleted' }));
+    // The status before the delete is kept, so a restore puts back the record
+    // that was there rather than promoting a partial session to a complete one.
+    await request(
+      logs.put({ ...log, deletedAtISO: atISO, statusBeforeDelete: log.status ?? null, status: 'deleted' })
+    );
     await request(
       audit.put({ atISO, entity: 'sessionLog', entityId: sessionLogId, action: 'delete', reason, restorable: true })
     );
@@ -674,7 +678,12 @@ export function restoreSession(db, sessionLogId) {
 
     const attached = await request(sets.index('sessionLogId').getAll(sessionLogId));
     for (const set of attached) await request(sets.put({ ...set, deletedAtISO: null }));
-    const restored = { ...log, deletedAtISO: null, status: log.endedAt ? 'complete' : 'active' };
+    const restored = {
+      ...log,
+      deletedAtISO: null,
+      status: log.statusBeforeDelete ?? (log.endedAt ? 'complete' : 'active'),
+      statusBeforeDelete: null,
+    };
     await request(logs.put(restored));
     await request(
       audit.put({ atISO: new Date().toISOString(), entity: 'sessionLog', entityId: sessionLogId, action: 'restore' })
@@ -686,3 +695,124 @@ export function restoreSession(db, sessionLogId) {
 
 /** Live rows only — everything the app reads should come through here. */
 export const alive = (rows) => (rows || []).filter((row) => !row.deletedAtISO);
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Soft deletion for the plain stores
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/** Stores whose rows can be soft-deleted and brought back. */
+export const RECOVERABLE_STORES = Object.freeze(['daily', 'measurements', 'niggles', 'media']);
+
+/*
+ * Not every store is keyed by an autoincrementing id: a weigh-in is keyed by
+ * its date, because there is one per day and that is the fact worth enforcing.
+ * Anything that addresses a row generically has to ask which.
+ */
+export const KEY_PATHS = Object.freeze({
+  sessionLogs: 'id',
+  sets: 'id',
+  daily: 'dateISO',
+  measurements: 'dateISO',
+  niggles: 'id',
+  media: 'id',
+  cycles: 'id',
+});
+
+export const storeKeyOf = (storeName, row) => row?.[KEY_PATHS[storeName] ?? 'id'];
+
+/** A key that came back through the DOM as a string, restored to its own type. */
+export const parseStoreKey = (storeName, value) =>
+  (KEY_PATHS[storeName] ?? 'id') === 'id' && storeName !== 'cycles' ? Number(value) : String(value);
+
+/**
+ * Mark a row deleted rather than removing it, and say so in the audit log.
+ *
+ * A weigh-in deleted because it was typed as 9.2 instead of 92 is a mistake
+ * that is noticed a week later, by which time a hard delete has nothing left
+ * to notice with.
+ */
+export async function softDeleteRow(db, storeName, id, { reason = null } = {}) {
+  if (!RECOVERABLE_STORES.includes(storeName)) throw new Error(`${storeName} is not a recoverable store`);
+  return withTransaction(db, [storeName, 'auditLog'], 'readwrite', async ([store, audit]) => {
+    const row = await request(store.get(id));
+    if (!row) throw new Error('that entry no longer exists');
+    const atISO = new Date().toISOString();
+    await request(store.put({ ...row, deletedAtISO: atISO }));
+    await request(audit.put({ atISO, entity: storeName, entityId: id, action: 'delete', reason, restorable: true }));
+    return { row };
+  });
+}
+
+export async function restoreRow(db, storeName, id) {
+  if (!RECOVERABLE_STORES.includes(storeName)) throw new Error(`${storeName} is not a recoverable store`);
+  return withTransaction(db, [storeName, 'auditLog'], 'readwrite', async ([store, audit]) => {
+    const row = await request(store.get(id));
+    if (!row) throw new Error('that entry no longer exists');
+    await request(store.put({ ...row, deletedAtISO: null }));
+    await request(
+      audit.put({ atISO: new Date().toISOString(), entity: storeName, entityId: id, action: 'restore' })
+    );
+    return { row };
+  });
+}
+
+/** Everything currently in the bin, newest deletion first. */
+export async function deletedRecords(db) {
+  const out = [];
+  for (const store of ['sessionLogs', ...RECOVERABLE_STORES]) {
+    for (const row of await getAll(db, store)) {
+      if (row.deletedAtISO) {
+        out.push({ store, id: storeKeyOf(store, row), deletedAtISO: row.deletedAtISO, row });
+      }
+    }
+  }
+  return out.sort((a, b) => b.deletedAtISO.localeCompare(a.deletedAtISO));
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   One tab at a time
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Two tabs of the same app, both logging, are a data-loss shape rather than a
+ * conflict shape: each holds its own idea of the active session and its own
+ * in-memory draft, and the second one to write wins without either noticing.
+ *
+ * The database itself is already safe — `logicalKey` and `operationId` are
+ * unique, so nothing can be written twice. What this adds is the part the
+ * database cannot know: which tab the person is actually looking at. The
+ * newest tab takes the lock and the older ones go read-only, which is the
+ * right way round, because the newest one is the one in front of them.
+ *
+ * Best effort by design. If BroadcastChannel is missing the app still works —
+ * it just cannot warn about a second tab, and the unique indexes still hold.
+ */
+export function claimSingleTab({ onLost, channelName = 'bulk-tabs' } = {}) {
+  if (typeof BroadcastChannel !== 'function') return { ok: true, release() {}, id: null };
+
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const channel = new BroadcastChannel(channelName);
+
+  channel.onmessage = (event) => {
+    const message = event.data;
+    // A newer tab announcing itself takes over; an older one stays put.
+    if (message?.type === 'claim' && message.id !== id && message.at >= 0) onLost?.(message.id);
+    if (message?.type === 'who') channel.postMessage({ type: 'here', id });
+  };
+
+  channel.postMessage({ type: 'claim', id, at: Date.now() });
+
+  return {
+    ok: true,
+    id,
+    release() {
+      try {
+        channel.postMessage({ type: 'release', id });
+        channel.close();
+      } catch {
+        /* a closing tab cannot be helped */
+      }
+    },
+  };
+}

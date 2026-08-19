@@ -317,6 +317,12 @@ export function weeklyLoads(logs) {
 export const FLAG_RULES = Object.freeze({
   gainRateEarly: { lo: 0.4, hi: 0.5, throughWeek: 12 },
   gainRateLate: { lo: 0.2, hi: 0.25 },
+  // The plan names two different numbers and v1 used one of them for both
+  // jobs. The band is where the rate should sit; these are the rates at which
+  // the plan says to actually change what you eat. Between the two, the answer
+  // is to wait — a slope from three weeks of scale readings is mostly noise.
+  gainRateActLow: 0.1,
+  gainRateActHigh: 0.6,
   sleepFloor: 7,
   nigglesPerBlock: 2,
   topSetDropPct: 0.05,
@@ -334,23 +340,36 @@ export function decisionFlags({ bodyweight = [], e1rmWeekly = [], sleep = [], ni
   const target = calendarWeek <= FLAG_RULES.gainRateEarly.throughWeek ? FLAG_RULES.gainRateEarly : FLAG_RULES.gainRateLate;
 
   if (gainRate != null) {
-    if (gainRate < target.lo * 0.25) {
+    const band = `${target.lo}–${target.hi} kg/week band for week ${calendarWeek}`;
+    if (gainRate < FLAG_RULES.gainRateActLow) {
       flags.push({
         kind: 'warn',
         title: 'Gaining under target',
-        detail: `${gainRate.toFixed(2)} kg/week against a ${target.lo}–${target.hi} target. Add about 250 kcal — one extra meal-sized snack.`,
+        detail: `${gainRate.toFixed(2)} kg/week, below the ${band}. At this rate the plan says add about 250 kcal — one extra meal-sized snack.`,
       });
-    } else if (gainRate > target.hi * 1.4) {
+    } else if (gainRate > FLAG_RULES.gainRateActHigh) {
       flags.push({
         kind: 'warn',
         title: 'Gaining faster than target',
-        detail: `${gainRate.toFixed(2)} kg/week against a ${target.lo}–${target.hi} target. Cut about 300 kcal.`,
+        detail: `${gainRate.toFixed(2)} kg/week, above the ${band}. At this rate the plan says cut about 300 kcal.`,
+      });
+    } else if (gainRate < target.lo) {
+      flags.push({
+        kind: 'info',
+        title: 'Gain rate a little under the band',
+        detail: `${gainRate.toFixed(2)} kg/week against the ${band}. Not far enough off to change anything on — re-read in two weeks.`,
+      });
+    } else if (gainRate > target.hi) {
+      flags.push({
+        kind: 'info',
+        title: 'Gain rate a little over the band',
+        detail: `${gainRate.toFixed(2)} kg/week against the ${band}. Watch the waist trend rather than the scale, and re-read in two weeks.`,
       });
     } else {
       flags.push({
         kind: 'ok',
         title: 'Gain rate on target',
-        detail: `${gainRate.toFixed(2)} kg/week, inside the ${target.lo}–${target.hi} band for week ${calendarWeek}.`,
+        detail: `${gainRate.toFixed(2)} kg/week, inside the ${band}.`,
       });
     }
   }

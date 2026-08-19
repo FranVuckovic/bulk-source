@@ -101,7 +101,18 @@ export function view(ctx) {
   </div>
 
   <h3>Danger zone</h3>
-  <div class="card"><button class="big danger" data-act="erase">Erase all data</button>
+  <div class="card">
+    <button class="big ghost" data-act="empty-bin">Empty the bin${
+      state.deleted?.length ? ` · ${state.deleted.length}` : ''
+    }</button>
+    <p class="hint">${
+      state.deleted?.length
+        ? `Destroys the ${state.deleted.length} record${
+            state.deleted.length === 1 ? '' : 's'
+          } currently in the recovery list at the bottom of History. Everything else is untouched.`
+        : 'Nothing is waiting in the recovery list. Deleted entries land there first and can be put back until this is used.'
+    }</p>
+    <button class="big danger mt" data-act="erase">Erase all data</button>
     <p class="hint">Requires typing ERASE. Everything logged goes: sessions, sets, weigh-ins, measurements, photos and maxes. The plan file is untouched.</p></div>
 
   <h3>About</h3>
@@ -182,6 +193,38 @@ export const files = {
 };
 
 export const actions = {
+  /**
+   * The one action in the app that destroys data, and the only one described
+   * in those words. It offers the backup first, like every delete does.
+   */
+  'empty-bin'(ctx) {
+    const count = ctx.state.deleted?.length || 0;
+    if (!count) {
+      openSheet(`<div class="ttl">The bin is empty</div>
+        <p style="text-align:center;font-size:13px;margin:16px 0">Nothing has been deleted, so there is nothing to destroy.</p>
+        <button class="big mt" data-act="sheet-close">Close</button>`);
+      return;
+    }
+    openSheet(`<div class="ttl">Destroy ${count} deleted record${count === 1 ? '' : 's'}?</div>
+      <p style="text-align:center;font-size:13px;margin:14px 0">This is the point of no return: after it, those
+      records are not in the database, not in the recovery list, and not in any backup you take afterwards. Existing
+      backup files still hold them.</p>
+      <button class="big ghost mt" data-act="history-backup">Export a backup first</button>
+      <button class="big danger mt" data-act="empty-bin-confirm">Destroy them</button>
+      <button class="big ghost mt" data-act="sheet-close">Keep them</button>`);
+  },
+
+  async 'empty-bin-confirm'(ctx) {
+    const removed = await ctx.emptyBin();
+    closeSheet();
+    ctx.render();
+    openSheet(`<div class="ttl">Bin emptied</div>
+      <p style="text-align:center;font-size:13px;margin:16px 0">${removed} record${
+        removed === 1 ? '' : 's'
+      } destroyed. Nothing else was touched.</p>
+      <button class="big mt" data-act="sheet-close">Close</button>`);
+  },
+
   async 'confirm-import'(ctx) {
     const restored = await ctx.applyStagedImport();
     openSheet(`<div class="ttl">Restored</div>

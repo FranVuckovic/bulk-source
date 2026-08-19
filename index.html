@@ -3,6 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--
+  Nothing in this app talks to anything but itself: no analytics, no fonts, no
+  CDN, no remote images. The policy says so explicitly, so a mistake later — a
+  pasted script tag, an injected string that reaches innerHTML — fails instead
+  of quietly exfiltrating a training log.
+
+  'unsafe-inline' is needed for style only: the charts set colours and widths as
+  inline attributes. Script has no such allowance, which is the half that
+  matters. frame-ancestors and X-Frame-Options cannot be set from a meta tag;
+  they are served as headers where the host allows it.
+-->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; media-src 'self' blob:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#1a1a19">
 <title>Bulk</title>
 <link rel="stylesheet" href="./css/app.css">

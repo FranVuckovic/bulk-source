@@ -7,6 +7,7 @@
  */
 
 import { rollingAverage, weeklySlope } from '../progress.js';
+import { preparePhoto, imageUrl, releaseImageUrl, formatBytes } from '../photos.js';
 import { escape, fmtLoad, fmtNum, toDisplay, section, openSheet, closeSheet, parseNumber } from './components.js';
 
 export const MEASUREMENT_SITES = [
@@ -41,6 +42,48 @@ const field = (id, label, value, { step = '0.1', type = 'number', placeholder = 
   `<div><label for="b-${id}">${escape(label)}</label>
     <input id="b-${id}" type="${type}" inputmode="decimal" step="${step}" placeholder="${escape(placeholder)}"
       value="${value == null ? '' : escape(value)}" data-body-field="${id}"></div>`;
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Photos
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The gallery, newest first, drawn from stored thumbnails.
+ *
+ * In compare mode a tap selects rather than opens: two photos months apart,
+ * side by side, is the only view that shows what a bulk actually did.
+ */
+function gallery(state, photos) {
+  if (!photos.length) {
+    return '<p style="margin:0 0 10px">No check-ins yet. Front, side and back, same spot and same light each time.</p>';
+  }
+
+  const comparing = state.compare != null;
+  const chosen = new Set(state.compare || []);
+
+  const tiles = [...photos]
+    .sort((a, b) => b.dateISO.localeCompare(a.dateISO))
+    .slice(0, 24)
+    .map((photo) => {
+      const url = imageUrl(`m${photo.id}`, photo.thumbBytes || photo.imageBytes, photo.thumbType || photo.imageType);
+      const on = chosen.has(photo.id);
+      return `<div class="ph${on ? ' on' : ''}" data-act="${comparing ? 'pick-compare' : 'view-photo'}" data-id="${photo.id}"${
+        url ? ` style="background-image:url(${url})"` : ''
+      }><span>${escape(shortDate(photo.dateISO))}${on ? ' ✓' : ''}</span></div>`;
+    })
+    .join('');
+
+  const banner = comparing
+    ? `<p class="hint" style="margin:0 0 8px">${
+        chosen.size === 0 ? 'Pick the first photo.' : chosen.size === 1 ? 'Now pick the second.' : ''
+      }</p>`
+    : '';
+
+  return `${banner}<div class="gal">${tiles}</div>${
+    photos.length > 24 ? `<p class="hint" style="margin:8px 0 0">Showing the 24 most recent of ${photos.length}.</p>` : ''
+  }`;
+}
 
 export function view(ctx) {
   const { state } = ctx;
@@ -110,23 +153,24 @@ export function view(ctx) {
     'photos',
     'Physique check-ins',
     photos.length ? `${photos.length} photos` : '',
-    `<div class="card">${
-      photos.length
-        ? `<div class="gal">${photos
-            .slice(-9)
-            .reverse()
-            .map(
-              (p) =>
-                `<div class="ph" data-act="view-photo" data-id="${p.id}">${escape(p.dateISO.slice(5))}${
-                  p.note ? ` · ${escape(p.note)}` : ''
-                }</div>`
-            )
-            .join('')}</div>`
-        : '<p style="margin:0 0 10px">No check-ins yet. Front, side and back, same spot and same light each time.</p>'
-    }
-      <div class="mini"><button data-act="add-photo">+ Add photos</button></div>
+    `<div class="card">${gallery(state, photos)}
+      <div class="mini"><button data-act="add-photo">+ Add photos</button>${
+        photos.length >= 2
+          ? `<button data-act="compare-photos">${state.compare?.length ? 'Cancel compare' : 'Compare two'}</button>`
+          : ''
+      }</div>
       <input type="file" id="photo-input" accept="image/*" multiple hidden data-act-file="photo">
-      <p class="hint">Stored in the app, compressed to about 1080 px and 200 KB each. These go in the export, which is how they reach a screen bigger than your phone.</p></div>`,
+      <p class="hint">Stored in the app: rotated upright from the photo's own orientation flag, resized to 1280 px
+      on the long edge and re-encoded to about ${formatBytes(260 * 1024)} each, with a small thumbnail beside it so
+      a full gallery does not have to decode every full-size image. The originals are never kept — there is no point
+      holding eight megabytes of something you look at on a phone. They go in the export, which is how they reach a
+      bigger screen.${
+        photos.length
+          ? ` <b>${photos.length} check-in${photos.length === 1 ? '' : 's'}</b> using about ${formatBytes(
+              photos.reduce((total, p) => total + (p.bytes || p.imageBytes?.length || 0), 0)
+            )}.`
+          : ''
+      }</p></div>`,
     state.shut
   )}
 
@@ -260,6 +304,84 @@ export const actions = {
     document.getElementById('photo-input')?.click();
   },
 
+  /** Opens one check-in full size, with what it cost and how to remove it. */
+  'view-photo'(ctx, data) {
+    const photo = ctx.state.media.find((m) => String(m.id) === String(data.id));
+    if (!photo) return;
+    const url = imageUrl(`f${photo.id}`, photo.imageBytes, photo.imageType);
+
+    openSheet(`<div class="ttl">${escape(shortDate(photo.dateISO))}</div>
+      ${url ? `<img src="${url}" alt="Physique check-in from ${escape(photo.dateISO)}" style="width:100%;border-radius:12px;margin:12px 0 6px">` : '<p style="text-align:center;margin:16px 0">This entry has no image stored.</p>'}
+      <p class="hint" style="text-align:center;margin:0 0 4px">${escape(photo.dateISO)}${
+        photo.note ? ` · ${escape(photo.note)}` : ''
+      }${photo.width ? ` · ${photo.width}×${photo.height}` : ''}${
+        photo.bytes ? ` · ${escape(formatBytes(photo.bytes))}` : ''
+      }</p>
+      <button class="big ghost mt" data-act="sheet-close">Close</button>
+      <button class="big danger mt" data-act="delete-photo" data-id="${photo.id}">Delete this check-in</button>`);
+  },
+
+  /**
+   * Deleting a photo is the one deletion with nothing to recover from — the
+   * bytes are the record. So it asks, and it offers the export first.
+   */
+  'delete-photo'(ctx, data) {
+    const photo = ctx.state.media.find((m) => String(m.id) === String(data.id));
+    if (!photo) return;
+    openSheet(`<div class="ttl">Delete this check-in?</div>
+      <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">${escape(shortDate(photo.dateISO))}</p>
+      <p style="font-size:13px;text-align:center">The image is the record — there is no copy to restore from once it
+      is gone. Export first if you are not certain.</p>
+      <button class="big ghost mt" data-act="history-backup">Export everything first</button>
+      <button class="big danger mt" data-act="confirm-delete-photo" data-id="${photo.id}">Delete it</button>
+      <button class="big ghost mt" data-act="sheet-close">Keep it</button>`);
+  },
+
+  async 'confirm-delete-photo'(ctx, data) {
+    releaseImageUrl(`m${data.id}`);
+    releaseImageUrl(`f${data.id}`);
+    await ctx.deleteMedia(Number(data.id));
+    closeSheet();
+    ctx.render();
+  },
+
+  'compare-photos'(ctx) {
+    ctx.state.compare = ctx.state.compare ? null : [];
+    ctx.render();
+  },
+
+  'pick-compare'(ctx, data) {
+    const id = Number(data.id);
+    const chosen = ctx.state.compare || [];
+    const next = chosen.includes(id) ? chosen.filter((x) => x !== id) : [...chosen, id].slice(-2);
+    ctx.state.compare = next;
+
+    if (next.length === 2) {
+      const [a, b] = next
+        .map((pid) => ctx.state.media.find((m) => m.id === pid))
+        .filter(Boolean)
+        .sort((x, y) => x.dateISO.localeCompare(y.dateISO));
+      const days = Math.round((Date.parse(b.dateISO) - Date.parse(a.dateISO)) / 86400000);
+      const weightAt = (iso) => ctx.state.daily.find((d) => d.dateISO === iso)?.bodyweight ?? null;
+      const from = weightAt(a.dateISO);
+      const to = weightAt(b.dateISO);
+
+      openSheet(`<div class="ttl">${escape(shortDate(a.dateISO))} → ${escape(shortDate(b.dateISO))}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 6px">
+          <img src="${imageUrl(`f${a.id}`, a.imageBytes, a.imageType)}" alt="Check-in from ${escape(a.dateISO)}" style="width:100%;border-radius:10px">
+          <img src="${imageUrl(`f${b.id}`, b.imageBytes, b.imageType)}" alt="Check-in from ${escape(b.dateISO)}" style="width:100%;border-radius:10px">
+        </div>
+        <p class="hint" style="text-align:center;margin:0">${days} days apart${
+          from != null && to != null
+            ? ` · ${fmtNum(from, 1)} → ${fmtNum(to, 1)} kg, ${to - from >= 0 ? '+' : ''}${fmtNum(to - from, 1)} kg`
+            : ''
+        }. Same light and same spot is what makes two photos comparable; a different room is a different photo.</p>
+        <button class="big ghost mt" data-act="sheet-close">Close</button>`);
+      ctx.state.compare = [];
+    }
+    ctx.render();
+  },
+
   'add-formcheck'(ctx) {
     openSheet(`<div class="ttl">Reference a form check</div>
       <p style="font-size:12.5px;margin:12px 0 4px;color:var(--ink2)">The app stores the filename and what the set was, not the video. Tap it later and your gallery opens.</p>
@@ -301,3 +423,56 @@ function confirmBlanks(ctx, blanks, what, save) {
     <button class="big mt" data-act="confirm-body-save">Save anyway</button>
     <button class="big ghost mt" data-act="sheet-close">Go back</button>`);
 }
+
+/**
+ * The picked files, handled on change.
+ *
+ * Each photo is prepared and stored on its own: one unreadable HEIC among six
+ * should not lose the other five, so failures are collected and reported at
+ * the end rather than thrown at the first one.
+ */
+export const files = {
+  async photo(ctx, fileList) {
+    const chosen = [...(fileList || [])];
+    if (!chosen.length) return;
+
+    openSheet(`<div class="ttl">Adding ${chosen.length} photo${chosen.length === 1 ? '' : 's'}</div>
+      <p style="text-align:center;margin:18px 0;font-size:13px">Resizing and compressing…</p>`);
+
+    const failed = [];
+    let added = 0;
+    for (const file of chosen) {
+      try {
+        const prepared = await preparePhoto(file);
+        await ctx.saveMedia({
+          dateISO: ctx.state.bodyDraft.dateISO,
+          localDate: ctx.state.bodyDraft.dateISO,
+          kind: 'physique',
+          exerciseId: null,
+          load: null,
+          reps: null,
+          note: null,
+          fileRef: prepared.originalName,
+          ...prepared,
+        });
+        added += 1;
+      } catch (error) {
+        failed.push(error.message);
+      }
+    }
+
+    if (!failed.length) {
+      closeSheet();
+      ctx.render();
+      return;
+    }
+
+    openSheet(`<div class="ttl">${added} added, ${failed.length} could not be read</div>
+      <ul style="font-size:13px;color:var(--ink2);line-height:1.6;margin:14px 0">${failed
+        .slice(0, 6)
+        .map((message) => `<li>${escape(message)}</li>`)
+        .join('')}</ul>
+      <button class="big mt" data-act="sheet-close">Close</button>`);
+    ctx.render();
+  },
+};

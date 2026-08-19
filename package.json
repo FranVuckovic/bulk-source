@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.js",
-    "serve": "python3 -m http.server 8123",
+    "serve": "python3 dev/serve.py 8123",
     "publish": "sh dev/publish.sh"
   },
   "engines": {

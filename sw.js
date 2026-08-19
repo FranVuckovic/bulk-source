@@ -1,29 +1,41 @@
 /**
  * sw.js — the offline shell.
  *
- * Two rules this file exists to honour:
+ * Three rules this file exists to honour:
  *
  *   IndexedDB is never touched. Only the shell is cached, so an update can
  *   never take your training data with it.
  *
- *   The cache is versioned and old versions are deleted on activate. A
- *   cache-first shell with no version bump path is a shell that can never be
- *   updated again — the phone would hold the first build forever.
+ *   An update is atomic. Every shell file is served out of one versioned
+ *   cache, so the app is always running one complete build — never yesterday's
+ *   progress screen against today's analytics module. A new build is fetched
+ *   in the background, kept aside until every file has arrived, and only swaps
+ *   in when the app asks it to.
  *
- * Bump CACHE when anything in SHELL changes. The version is shown in Settings,
- * so it is obvious from inside the app whether an update actually landed.
+ *   An update never interrupts a session. The new worker waits; the app offers
+ *   it, and applying it is a tap. Losing a set to a reload mid-session is a
+ *   worse failure than running yesterday's build for another hour.
+ *
+ * Bump VERSION when anything in SHELL changes. It is shown in Settings, so it
+ * is obvious from inside the app whether an update actually landed.
  */
 
-const CACHE = 'bulk-v2';
+const VERSION = 'v2.1.0';
+const CACHE = `bulk-${VERSION}`;
 
 const SHELL = [
   './',
   './index.html',
+  './manifest.webmanifest',
   './css/app.css',
   './js/app.js',
+  './js/analytics.js',
   './js/calc.js',
+  './js/cycle.js',
+  './js/dates.js',
   './js/db.js',
   './js/export.js',
+  './js/plan.js',
   './js/progress.js',
   './js/volume.js',
   './js/ui/body.js',
@@ -34,15 +46,28 @@ const SHELL = [
   './js/ui/progress.js',
   './js/ui/settings.js',
   './js/ui/train.js',
-  './data/plan-bulk-v1.json',
-  './manifest.webmanifest',
+  './data/plan-fopip-v2.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
 ];
 
+const shellPaths = new Set(SHELL.map((path) => new URL(path, self.registration.scope).pathname));
+
+/**
+ * Install fails loudly if any one file cannot be fetched.
+ *
+ * That is the point: a cache holding nineteen of twenty files is a build that
+ * will half-work offline, which is harder to diagnose than one that plainly
+ * did not install.
+ */
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
+  event.waitUntil(
+    caches.open(CACHE).then((cache) =>
+      cache.addAll(SHELL.map((path) => new Request(path, { cache: 'reload' })))
+    )
+  );
+  // No skipWaiting. The new build waits until the app says it is safe.
 });
 
 self.addEventListener('activate', (event) => {
@@ -55,21 +80,44 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('message', (event) => {
-  if (event.data === 'version') {
-    event.source?.postMessage({ version: CACHE });
-  }
+  if (event.data === 'version') event.source?.postMessage({ version: VERSION });
+  // Sent only when the app has confirmed with the user that now is a safe
+  // moment — no active session, nothing half-logged.
+  if (event.data === 'apply-update') self.skipWaiting();
 });
 
 /**
- * Network first, falling back to the cache.
+ * Shell files come from this version's cache, always.
  *
- * The other way round would be faster, but it would also mean a new build only
- * appears after a second reload — and in a gym, on a bad connection, the
- * fallback fires immediately anyway. Correctness beats a few milliseconds.
+ * That is what makes an update atomic: while v2.1.0 is the active worker, every
+ * module the page imports is the v2.1.0 copy, even if the server has already
+ * moved on. Anything outside the shell goes to the network first and falls back
+ * to whatever was cached.
  */
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      caches.open(CACHE).then((cache) =>
+        cache.match('./index.html').then((hit) => hit || fetch(request))
+      )
+    );
+    return;
+  }
+
+  if (shellPaths.has(url.pathname)) {
+    event.respondWith(
+      caches.open(CACHE).then((cache) =>
+        cache.match(request, { ignoreSearch: true }).then((hit) => hit || fetch(request))
+      )
+    );
+    return;
+  }
 
   event.respondWith(
     fetch(request)
@@ -78,6 +126,6 @@ self.addEventListener('fetch', (event) => {
         caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => {});
         return response;
       })
-      .catch(() => caches.match(request).then((hit) => hit || caches.match('./index.html')))
+      .catch(() => caches.match(request))
   );
 });

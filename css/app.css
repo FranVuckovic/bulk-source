@@ -187,7 +187,15 @@ input,select,textarea{width:100%;padding:10px;font-size:16px;font-family:inherit
 .seg button{flex:1;padding:9px;border:0;border-radius:8px;background:none;font:inherit;font-size:13.5px;font-weight:650;color:var(--ink2);cursor:pointer}
 .seg button.on{background:var(--s1);color:#fff}
 .gal{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
-.ph{aspect-ratio:3/4;border-radius:10px;background:linear-gradient(150deg,var(--grid),var(--axis));display:flex;align-items:flex-end;padding:6px;font-size:9.5px;color:var(--ink2);font-weight:700}
+.ph{aspect-ratio:3/4;border-radius:10px;background:linear-gradient(150deg,var(--grid),var(--axis));
+  background-size:cover;background-position:center;display:flex;align-items:flex-end;padding:6px;
+  font-size:9.5px;font-weight:700;position:relative;overflow:hidden;cursor:pointer}
+/* The date sits on a gradient rather than on the photo: a caption over a light
+   shoulder is unreadable, and a hard chip covers what you came to look at. */
+.ph span{color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.85);position:relative;z-index:1}
+.ph::after{content:'';position:absolute;inset:auto 0 0 0;height:38%;z-index:0;
+  background:linear-gradient(to top,rgba(0,0,0,.55),transparent)}
+.ph.on{outline:2.5px solid var(--s1);outline-offset:-2.5px}
 svg.ch{display:block;width:100%;height:auto}
 table{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
 th,td{text-align:right;padding:6px 4px;border-bottom:1px solid var(--grid)}
@@ -199,5 +207,22 @@ svg.ch{overflow:visible}
 .chart-empty{padding:26px 14px;text-align:center;font-size:12.5px;color:var(--muted);background:var(--sunk);border-radius:10px;line-height:1.6}
 .chart-empty b{color:var(--ink2)}
 .card > svg.ch + .hint{margin-top:8px}
+/* A touch device has no hover, so every chart point is a tap target and the
+   answer appears in a caption strip that is always there — never a floating
+   tooltip that would sit under the finger that summoned it. */
+.ch-wrap{position:relative}
+.ch-tip{margin-top:6px;font-size:11.5px;color:var(--muted);min-height:17px;line-height:1.45;
+  font-variant-numeric:tabular-nums;transition:color .12s}
+.ch-tip.on{color:var(--ink);font-weight:650}
+svg.ch .hit{cursor:pointer}
+svg.ch [data-tip]{cursor:pointer}
+.ch-wrap svg.ch .pt.sel{r:6}
+.records{display:grid;gap:8px}
+.rec{display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--sunk);border-radius:10px}
+.rec .lb{flex:1;min-width:0}
+.rec .lb b{display:block;font-size:13px}
+.rec .lb span{font-size:11px;color:var(--muted)}
+.rec .vl{font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.rec .vl small{font-size:10.5px;font-weight:600;color:var(--muted)}
 .gal .ph{cursor:pointer}
 input[type=search]{width:100%;padding:10px;font-size:16px;font-family:inherit;background:var(--raised);color:var(--ink);border:1px solid var(--line);border-radius:10px}

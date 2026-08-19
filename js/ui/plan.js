@@ -6,7 +6,8 @@
  * which is why adding a second programme later is a file rather than a feature.
  */
 
-import { weeklyVolume, sessionVolume, rollUp, bandStatus, DIMINISHING_RETURNS_SETS } from '../volume.js';
+import { weeklyVolume, sessionVolume, rollUp, weeklyRollUp, bandStatus, DIMINISHING_RETURNS_SETS } from '../volume.js';
+import { resolveSession, toDisplaySession } from '../plan.js';
 import { escape } from './components.js';
 
 const VOLUME_SCALE = 24;
@@ -19,21 +20,41 @@ export function view(ctx) {
   return overview(state);
 }
 
+/**
+ * The six sessions of the rotation you are actually on.
+ *
+ * The static definitions in the plan file are the shape of a session; what you
+ * will really do depends on the block — its accessory multiplier, its bench
+ * variation, its failure wave. Reading volume off the static file would report
+ * the same stimulus in a recovery rotation as in an intensification one.
+ */
+function rotationSessions(state) {
+  return state.plan.meta.rotationOrder.map((sessionId) =>
+    toDisplaySession(resolveSession(state.plan, { rotation: state.cycle.sequence, sessionId }))
+  );
+}
+
 function overview(state) {
-  const { volume, frequency } = weeklyVolume(state.plan.sessions, state.plan.exercises);
+  const sessions = rotationSessions(state);
+  const { volume, frequency } = weeklyVolume(sessions, state.plan.exercises);
+  const wholeMuscle = weeklyRollUp(sessions, state.plan.exercises, state.plan.muscles);
   const done = state.blockProgress.blockDone;
   const target = state.blockProgress.sessionTarget;
   const pace = state.planProgress.pace;
   const week = state.planProgress.calendarWeek ?? 1;
-  const totalWeeks = state.plan.blocks.reduce((sum, b) => sum + b.weeks, 0);
+  // The plan is measured in rotations. Calendar weeks are a report, not a
+  // schedule — v1 summed a `weeks` field the v2 blocks do not have, and
+  // printed "week 14 of NaN".
+  const rotation = state.cycle.sequence;
+  const totalRotations = state.plan.meta.rotations;
   const nextSession = state.plan.sessions.find((s) => s.id === state.position.nextSessionId);
 
   return `
   <div class="shead"><div class="lbl">Active plan</div><div class="nm">${escape(state.plan.meta.name)}</div>
     <p class="why" style="margin-bottom:6px"><b>${escape(state.plan.meta.longName)}</b></p>
     <p class="why">${escape(state.plan.meta.sub)}</p>
-    <div class="bar"><i style="width:${Math.min(100, (week / totalWeeks) * 100)}%"></i></div>
-    <div class="meta"><span>Block ${escape(state.block.label)} · week ${week}</span><span>Rotation ${state.plan.meta.rotationOrder.join(
+    <div class="bar"><i style="width:${Math.min(100, (rotation / totalRotations) * 100)}%"></i></div>
+    <div class="meta"><span>Rotation ${rotation} of ${totalRotations} · ${escape(state.block.name)}</span><span>${state.plan.meta.rotationOrder.join(
       ' → '
     )}</span></div></div>
 
@@ -48,10 +69,13 @@ function overview(state) {
       <tr><td>Next in rotation</td><td><b>${escape(state.position.nextSessionId ?? '—')}</b>${
         nextSession ? ` — ${escape(nextSession.name)}` : ''
       }</td></tr>
-      <tr><td>Calendar week</td><td>${week} of ${totalWeeks}</td></tr>
+      <tr><td>Rotation</td><td>${rotation} of ${totalRotations}</td></tr>
+      <tr><td>Calendar week</td><td>${week}${
+        state.projection?.weeksTotal ? ` · on this pace the 33 rotations take about ${state.projection.weeksTotal} weeks` : ''
+      }</td></tr>
       <tr><td>Actual pace</td><td>${pace == null ? '—' : `${pace.toFixed(1)} sessions / week`}</td></tr>
     </tbody></table>
-    ${paceFlag(state, pace, totalWeeks)}
+    ${paceFlag(state, pace, totalRotations)}
     <p class="hint">Nothing advances silently. When you reach ${target} sessions the app opens a block review: your best lifts, the proposed working-max updates, and what changes next block. You confirm it.</p>
   </div>
 
@@ -63,9 +87,9 @@ function overview(state) {
     <div class="big-row" data-act="plan-section" data-id="tips"><div class="ic">3</div><div class="m"><b>General tips</b><span>How to execute, what matters most, and the mistakes that cost the most</span></div><div class="car">›</div></div>
   </div>
 
-  <h3>Weekly stimulus · all six sessions</h3>
+  <h3>Stimulus this rotation · all six sessions</h3>
   <div class="lg"><span><i style="background:var(--s3)"></i>in range</span><span><i style="background:var(--warn)"></i>below target</span><span><i style="background:var(--s2)"></i>above target</span><span><i style="background:var(--axis);opacity:.5"></i>target band</span></div>
-  ${volumeBars(state, volume, frequency)}
+  ${volumeBars(state, volume, frequency, wholeMuscle)}
   <p class="hint" style="margin:0 2px 14px">Fractional sets — a set where the muscle is the main mover counts 1.0, a meaningful supporting role counts 0.5, and anything under 0.3 is not counted at all. Speed bench counts <b>zero</b>: at RPE 5–6 it is motor-pattern practice, not a growth stimulus.</p>
 
   <h3>Blocks through March — what changes and when</h3>
@@ -100,31 +124,38 @@ function overview(state) {
   </div>`;
 }
 
-function paceFlag(state, pace, totalWeeks) {
+function paceFlag(state, pace, totalRotations) {
   if (pace == null) {
-    return `<div class="flag f-info" style="margin-top:11px"><i>i</i><span>Pace appears once a few sessions are logged. Blocks advance on <b>sessions completed</b>, never on dates.</span></div>`;
+    return `<div class="flag f-info" style="margin-top:11px"><i>i</i><span>Pace appears once a few sessions are logged. Rotations advance on <b>sessions completed</b>, never on dates.</span></div>`;
   }
   if (state.blockProgress.behind) {
-    const finishWeek = Math.round((totalWeeks * 6) / pace);
-    return `<div class="flag f-warn" style="margin-top:11px"><i>!</i><span><b>Running behind the calendar.</b> Blocks advance on <b>sessions completed</b>, not on dates — so nothing is lost and nothing gets skipped. But at ${pace.toFixed(
+    // Six sessions per rotation, so the finish date follows from the pace and
+    // the rotations left — not from a week count the plan does not have.
+    const weeksLeft = Math.round(((totalRotations - state.cycle.sequence + 1) * 6) / pace);
+    return `<div class="flag f-warn" style="margin-top:11px"><i>!</i><span><b>Running behind the calendar.</b> Rotations advance on <b>sessions completed</b>, not on dates — so nothing is lost and nothing gets skipped. But at ${pace.toFixed(
       1
-    )} sessions/week the plan finishes around <b>week ${finishWeek}</b> rather than ${totalWeeks}, which puts the March target at risk. Train more often, or accept a later date.</span></div>`;
+    )} sessions/week the ${totalRotations - state.cycle.sequence + 1} rotations left take about <b>${weeksLeft} more weeks</b>. Train more often, or accept a later date.</span></div>`;
   }
   return `<div class="flag f-ok" style="margin-top:11px"><i>✓</i><span><b>On pace.</b> ${pace.toFixed(
     1
   )} sessions per week. Blocks advance on sessions completed, so the calendar and your training are still in step.</span></div>`;
 }
 
-function volumeBars(state, volume, frequency) {
+function volumeBars(state, volume, frequency, wholeMuscle = null) {
   const groups = [...new Set(Object.values(state.plan.muscles).map((m) => m.grp))];
 
   return groups
     .map((group) => {
       const ids = Object.keys(state.plan.muscles).filter((id) => state.plan.muscles[id].grp === group);
-      const rolls = rollUp(
-        Object.fromEntries(ids.map((id) => [id, volume[id] || 0])),
-        state.plan.muscles
-      );
+      // The whole-muscle figure counts the largest head per set, not the sum of
+      // the heads. Summing them is how one incline fly became 1.3 sets of chest.
+      const rollNames = new Set(ids.map((id) => state.plan.muscles[id].roll).filter(Boolean));
+      const rolls = wholeMuscle
+        ? Object.fromEntries([...rollNames].map((name) => [name, wholeMuscle[name] || 0]))
+        : rollUp(
+            Object.fromEntries(ids.map((id) => [id, volume[id] || 0])),
+            state.plan.muscles
+          );
       const rollText = Object.entries(rolls)
         .map(
           ([name, value]) =>

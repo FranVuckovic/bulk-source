@@ -1,11 +1,15 @@
 /**
- * ui/history.js — every entry, newest first, and the only place anything can be
- * deleted.
+ * ui/history.js — every entry, newest first, the only place anything can be
+ * deleted, and the bin it goes to.
  *
- * Deletion is the one irreversible thing the app does, so it is deliberately
- * slow: open the entry, read what it actually contains, confirm, and take a
- * backup on the way past if you want one. A mis-tap on a list row must never be
- * able to remove a session.
+ * Deletion is deliberately slow: open the entry, read what it actually
+ * contains, confirm, and take a backup on the way past if you want one. A
+ * mis-tap on a list row must never be able to remove a session.
+ *
+ * Nothing here is destroyed. A delete marks the record and writes an audit
+ * entry; the recovery list below puts it back. The mistake worth designing for
+ * is not the one you notice immediately — it is the weigh-in typed as 9.2
+ * instead of 92 and spotted a week later.
  */
 
 import { e1rm, systemLoad } from '../calc.js';
@@ -157,8 +161,47 @@ export function view(ctx) {
       : '<div class="card"><p style="margin:0">Nothing stored under that filter yet.</p></div>'
   }
 
-  <p class="hint" style="margin:14px 2px">${all.length} entries in total. Deleting is permanent — the app offers
-  you a backup file first, every time.</p>`;
+  ${recoveryList(state)}
+
+  <p class="hint" style="margin:14px 2px">${all.length} entries in total. Deleting removes an entry from every
+  chart and average straight away, and keeps it in the recovery list until you empty the bin.</p>`;
+}
+
+/**
+ * The bin. Every soft-deleted record, newest deletion first, with one tap to
+ * put it back.
+ */
+function recoveryList(state) {
+  const deleted = state.deleted || [];
+  if (!deleted.length) return '';
+
+  const label = (entry) => {
+    const row = entry.row;
+    if (entry.store === 'sessionLogs') return `Session ${row.sessionId ?? '—'}${row.cycleSequence ? ` · rotation ${row.cycleSequence}` : ''}`;
+    if (entry.store === 'daily') return `Weigh-in${Number.isFinite(row.bodyweight) ? ` · ${fmtNum(row.bodyweight, 1)} kg` : ''}`;
+    if (entry.store === 'measurements') return 'Tape measurements';
+    if (entry.store === 'niggles') return `Niggle · ${row.site ?? ''}`;
+    return `${row.kind === 'physique' ? 'Physique photo' : 'Form check'}`;
+  };
+
+  return `<h3>Recently deleted</h3>
+  <div class="card flush">${deleted
+    .slice(0, 30)
+    .map(
+      (entry) => `<div class="big-row" style="cursor:default"><div class="ic">↺</div>
+        <div class="m"><b>${escape(label(entry))}</b><span>from ${escape(longDate(entry.row.dateISO || entry.row.localDate || ''))} · deleted ${escape(
+          entry.deletedAtISO.slice(0, 10)
+        )}</span></div>
+        <button class="setok" data-act="history-restore" data-store="${escape(entry.store)}" data-id="${escape(
+          String(entry.id)
+        )}">↺</button></div>`
+    )
+    .join('')}</div>
+  <p class="hint" style="margin:8px 2px 0">${deleted.length} deleted record${
+    deleted.length === 1 ? '' : 's'
+  }${deleted.length > 30 ? ', 30 shown' : ''}. They are excluded from every chart and average, and still travel in a
+  backup — so restoring an export restores the bin with it. Emptying the bin, in Settings, is the only thing in this
+  app that destroys data.</p>`;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -252,10 +295,11 @@ export const actions = {
         ? `<b>${escape(row.title)}</b> from ${escape(longDate(row.dateISO))}, and the <b>${row.sets.length} sets</b> logged in it`
         : `this <b>${escape(row.title.toLowerCase())}</b> entry from ${escape(longDate(row.dateISO))}`;
 
-    openSheet(`<div class="ttl">Delete for good?</div>
+    openSheet(`<div class="ttl">Delete this?</div>
       <p style="text-align:center;margin:14px 0 6px;font-size:14px;color:var(--ink)">This removes ${what}.</p>
-      <p style="text-align:center;font-size:13px">It cannot be undone, and it changes every chart and average that
-      entry feeds. Take a backup first if there is any doubt.</p>
+      <p style="text-align:center;font-size:13px">It comes out of every chart and average immediately. It is
+      <b>not</b> destroyed — it moves to the recovery list at the bottom of this screen, where you can put it back.
+      Take a backup too if there is any doubt.</p>
       <button class="big ghost mt" data-act="history-backup">Export a backup first</button>
       <button class="big danger mt" data-act="history-delete-confirm" data-key="${escape(row.key)}">Delete it</button>
       <button class="big ghost mt" data-act="sheet-close">Keep it</button>`);
@@ -263,6 +307,11 @@ export const actions = {
 
   async 'history-backup'(ctx) {
     await ctx.downloadBackup();
+  },
+
+  async 'history-restore'(ctx, data) {
+    await ctx.restoreEntry(data.store, data.id);
+    ctx.render();
   },
 
   async 'history-delete-confirm'(ctx, data) {

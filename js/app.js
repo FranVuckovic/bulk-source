@@ -23,7 +23,12 @@ import {
   softDeleteSession,
   restoreSession,
   logicalSetKey,
+  softDeleteRow,
+  restoreRow,
+  deletedRecords,
   deleteSessionCascade,
+  claimSingleTab,
+  parseStoreKey,
   snapshot,
   saveSession,
   confirmWorkingMax,
@@ -141,16 +146,22 @@ const todayISO = () => localDate();
 
 async function loadEverything() {
   state.todayISO = todayISO();
-  state.logs = sortLogsByDate(await getAll(state.db, 'sessionLogs'));
-  state.sets = await getAll(state.db, 'sets');
-  state.daily = (await getAll(state.db, 'daily')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-  state.measurements = (await getAll(state.db, 'measurements')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-  state.niggles = (await getAll(state.db, 'niggles')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-  state.media = (await getAll(state.db, 'media')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-  state.maxes = new Map((await getAll(state.db, 'maxes')).map((m) => [m.exerciseId, m]));
 
-  state.cycles = (await getAll(state.db, 'cycles')).filter((c) => !c.deletedAtISO).sort((a, b) => a.sequence - b.sequence);
-  const finished = alive(state.logs).filter((log) => log.endedAt);
+  // Deleted rows are filtered out here, once, so no screen has to remember to
+  // do it. They are kept in `state.deleted` for the recovery centre — a delete
+  // in this app takes a record out of the way, not out of existence.
+  const byDate = (a, b) => a.dateISO.localeCompare(b.dateISO);
+  state.logs = sortLogsByDate(alive(await getAll(state.db, 'sessionLogs')));
+  state.sets = alive(await getAll(state.db, 'sets'));
+  state.daily = alive(await getAll(state.db, 'daily')).sort(byDate);
+  state.measurements = alive(await getAll(state.db, 'measurements')).sort(byDate);
+  state.niggles = alive(await getAll(state.db, 'niggles')).sort(byDate);
+  state.media = alive(await getAll(state.db, 'media')).sort(byDate);
+  state.maxes = new Map((await getAll(state.db, 'maxes')).map((m) => [m.exerciseId, m]));
+  state.deleted = await deletedRecords(state.db);
+
+  state.cycles = alive(await getAll(state.db, 'cycles')).sort((a, b) => a.sequence - b.sequence);
+  const finished = state.logs.filter((log) => log.endedAt);
 
   // ── where the plan actually is ──
   const stored = await readSettings(state.db);
@@ -531,13 +542,47 @@ function screenFor(tab) {
   return settings.view(ctx);
 }
 
+/**
+ * The update banner.
+ *
+ * A new build is never applied under you: it sits in the wings until you say
+ * so, and it says plainly that an active session would be interrupted.
+ */
+/**
+ * The read-only banner, shown to a tab that has lost the lock.
+ *
+ * It does not lock the interface: a stale tab that refuses to do anything is
+ * worse than one that tells you it is stale, and reload is one tap away.
+ */
+function staleBanner() {
+  if (!state.readOnly) return '';
+  return `<div class="flag f-warn" style="margin:0 0 12px"><i>!</i><span>
+    <b>Bulk is open in another tab.</b> That one is now the live copy. Anything you log here may be overwritten by
+    it, and what you see was loaded before it started.
+    <button data-act="reload-app" style="display:block;margin-top:6px;background:none;border:0;color:var(--s1);font:inherit;font-weight:650;padding:0;cursor:pointer">Reload this tab</button>
+  </span></div>`;
+}
+
+function updateBanner() {
+  if (!state.updateReady) return '';
+  const mid = !!state.activeLog;
+  return `<div class="flag f-${mid ? 'warn' : 'info'}" style="margin:0 0 12px"><i>${mid ? '!' : 'i'}</i><span>
+    <b>A new version of Bulk is ready.</b> ${
+      mid
+        ? 'You are part-way through a session — finish it first. Applying an update reloads the app, and an unlogged set would be lost.'
+        : 'It is downloaded and waiting. Applying it reloads the app; your data is untouched.'
+    }
+    <button data-act="apply-update" style="display:block;margin-top:6px;background:none;border:0;color:var(--s1);font:inherit;font-weight:650;padding:0;cursor:pointer">Update now</button>
+  </span></div>`;
+}
+
 function render() {
   document.getElementById('ttl').textContent = TABS[state.tab];
   document.getElementById('chip').textContent =
     state.tab === 'train'
       ? `Session ${state.trainSessionId}`
-      : `Block ${state.block.label} · week ${Math.floor((state.blockProgress.daysElapsed ?? 0) / 7) + 1}`;
-  document.getElementById('view').innerHTML = screenFor(state.tab);
+      : `Rotation ${state.cycle.sequence}/${state.plan.meta.rotations}`;
+  document.getElementById('view').innerHTML = staleBanner() + updateBanner() + screenFor(state.tab);
 
   for (const key of ['train', 'body', 'prog', 'plan']) {
     document.getElementById(`n-${key === 'prog' ? 'prog' : key}`).classList.toggle('on', key === state.tab);
@@ -594,6 +639,11 @@ const ctx = {
     render();
   },
 
+  async deleteMedia(id) {
+    await remove(state.db, 'media', id);
+    state.media = (await getAll(state.db, 'media')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+  },
+
   async saveMedia(row) {
     await put(state.db, 'media', row);
     state.media = (await getAll(state.db, 'media')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
@@ -622,9 +672,16 @@ const ctx = {
    * Deleting is the only irreversible thing here, so it goes through one path
    * with one cascade rule: a session takes its sets with it.
    */
-  async deleteEntry(kind, id) {
+  /**
+   * Deleting takes a record out of the way, not out of existence.
+   *
+   * Everything here is a soft delete with an audit entry behind it, so a
+   * mis-tap — or a weigh-in typed as 9.2 instead of 92 and noticed a week
+   * later — is recoverable from Settings rather than gone.
+   */
+  async deleteEntry(kind, id, { reason = null } = {}) {
     if (kind === 'session') {
-      await deleteSessionCascade(state.db, id);
+      await softDeleteSession(state.db, id, { reason });
       if (state.activeLog?.id === id) {
         state.activeLog = null;
         state.loggedSets = new Map();
@@ -633,8 +690,39 @@ const ctx = {
     } else {
       const store = { daily: 'daily', measurement: 'measurements', niggle: 'niggles', media: 'media' }[kind];
       if (!store) throw new Error(`nothing knows how to delete a ${kind}`);
-      await remove(state.db, store, id);
+      await softDeleteRow(state.db, store, id, { reason });
     }
+    await loadEverything();
+    buildHistory();
+    resetBodyDraft();
+  },
+
+  /**
+   * Destroy everything in the bin. The only call in the app that removes rows
+   * rather than marking them, which is why it lives behind two confirmations.
+   */
+  async emptyBin() {
+    const doomed = state.deleted || [];
+    for (const entry of doomed) {
+      if (entry.store === 'sessionLogs') {
+        await deleteSessionCascade(state.db, entry.id);
+      } else {
+        await remove(state.db, entry.store, entry.id);
+      }
+    }
+    await loadEverything();
+    buildHistory();
+    return doomed.length;
+  },
+
+  /** Put one back, from the recovery centre. */
+  async restoreEntry(store, rawKey) {
+    // A key that came back through a data attribute is a string. A weigh-in is
+    // keyed by its date and a session by a number, so it has to be put back
+    // into its own type before IndexedDB will find it.
+    const key = parseStoreKey(store, rawKey);
+    if (store === 'sessionLogs') await restoreSession(state.db, key);
+    else await restoreRow(state.db, store, key);
     await loadEverything();
     buildHistory();
     resetBodyDraft();
@@ -812,6 +900,23 @@ const ctx = {
 };
 
 const globalActions = {
+  'reload-app'() {
+    location.reload();
+  },
+
+  /**
+   * Apply a waiting build. The worker swaps, `controllerchange` fires, and the
+   * page reloads once — so every module comes from the same new version rather
+   * than a mix of the two.
+   */
+  async 'apply-update'() {
+    if (state.activeLog && !confirm('You have a session open. Updating reloads the app and anything not yet logged is lost. Update anyway?')) {
+      return;
+    }
+    const registration = await navigator.serviceWorker?.getRegistration();
+    registration?.waiting?.postMessage('apply-update');
+  },
+
   async 'advance-cycle'(ctx) {
     const result = await ctx.advanceCycle();
     closeSheet();
@@ -965,6 +1070,20 @@ function wireEvents() {
     }
   });
 
+  // Chart points answer on tap. There is no hover on the only device this runs
+  // on, so an SVG <title> would be an invisible tooltip.
+  document.addEventListener('click', (event) => {
+    const point = event.target.closest('[data-tip]');
+    const wrap = (point || event.target).closest?.('.ch-wrap');
+    if (!wrap) return;
+    const slot = wrap.querySelector('[data-tip-slot]');
+    if (!slot) return;
+    if (!point) return;
+    if (!slot.dataset.rest) slot.dataset.rest = slot.textContent;
+    slot.textContent = point.dataset.tip;
+    slot.classList.add('on');
+  });
+
   document.addEventListener('input', (event) => {
     const el = event.target;
     if (el.dataset.bind) {
@@ -986,7 +1105,12 @@ function wireEvents() {
 
     const fileAction = event.target.dataset.actFile;
     if (fileAction && event.target.files?.length) {
-      Promise.resolve(settings.files[fileAction]?.(ctx, event.target.files[0])).catch(showFailure);
+      // A picker that takes one file gets one; a picker that takes many gets
+      // the list. Passing only files[0] to a multiple picker is how five of six
+      // chosen photos used to vanish without a word.
+      const handler = body.files[fileAction] || settings.files[fileAction];
+      const argument = event.target.multiple ? event.target.files : event.target.files[0];
+      Promise.resolve(handler?.(ctx, argument)).catch(showFailure);
       event.target.value = '';
     }
   });
@@ -1027,6 +1151,18 @@ async function boot() {
   buildHistory();
 
   state.integrity = await checkIntegrity(state.db);
+
+  // Another tab of the same app is a data-loss shape: two drafts, two ideas of
+  // the active session, and the second write silently wins. The newest tab
+  // keeps the pen; this one steps back and says so rather than fighting it.
+  state.tabLock = claimSingleTab({
+    onLost() {
+      state.readOnly = true;
+      render();
+    },
+  });
+  window.addEventListener('pagehide', () => state.tabLock?.release());
+
   wireEvents();
   render();
 
@@ -1044,10 +1180,33 @@ async function boot() {
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
 
+  // One reload, ever. Without the guard a controller change during startup can
+  // put the app in a reload loop, which on a phone looks exactly like a crash.
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading) return;
+    reloading = true;
+    location.reload();
+  });
+
   navigator.serviceWorker
     .register('./sw.js')
-    .then(() => navigator.serviceWorker.ready)
-    .then(() => {
+    .then((registration) => {
+      const offer = (worker) => {
+        // 'installed' with a controller already present means this is an
+        // update, not a first install. A first install has nothing to offer.
+        if (worker && worker.state === 'installed' && navigator.serviceWorker.controller) {
+          state.updateReady = true;
+          render();
+        }
+      };
+
+      offer(registration.waiting);
+      registration.addEventListener('updatefound', () => {
+        const worker = registration.installing;
+        worker?.addEventListener('statechange', () => offer(worker));
+      });
+
       navigator.serviceWorker.addEventListener('message', (event) => {
         if (event.data?.version) {
           state.buildVersion = event.data.version;
@@ -1055,6 +1214,10 @@ function registerServiceWorker() {
         }
       });
       navigator.serviceWorker.controller?.postMessage('version');
+
+      // Checked on every start rather than only when the browser feels like
+      // it, so an update lands the next time the app is opened.
+      registration.update().catch(() => {});
     })
     .catch((error) => console.warn('service worker not registered:', error.message));
 }
