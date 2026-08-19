@@ -721,16 +721,36 @@ function blockCard(state, m, unit) {
   }
 
   const blockName = (id) => state.plan.blocks.find((b) => b.id === id)?.name ?? `Block ${id}`;
-  const items = rows.map((r) => ({
-    label: `${blockName(r.blockId)} · ${r.name.split(' (')[0]}`,
-    value: toDisplay(r.change, unit),
-    display: `${r.change >= 0 ? '+' : ''}${fmtNum(toDisplay(r.change, unit), 1)}`,
-  }));
+
+  // One chart per block, so the row labels are lift names rather than a block
+  // name repeated down the left-hand side and cut off at the edge.
+  const byBlock = new Map();
+  for (const r of rows) {
+    if (!byBlock.has(r.blockId)) byBlock.set(r.blockId, []);
+    byBlock.get(r.blockId).push(r);
+  }
 
   const losses = rows.filter((r) => r.change < 0);
 
   return `<div class="card">
-    ${rowBars(items, { unit: `${unit} of estimated max, first to last in the block` })}
+    ${[...byBlock.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(
+        ([blockId, blockRows], index) => `<p class="hint" style="margin:${
+          index ? '14px' : '0'
+        } 0 4px"><b>${escape(blockName(blockId))}</b></p>
+        ${rowBars(
+          blockRows.map((r) => ({
+            label: r.name.split(' (')[0],
+            value: toDisplay(r.change, unit),
+            display: `${r.change >= 0 ? '+' : ''}${fmtNum(toDisplay(r.change, unit), 1)}`,
+          })),
+          // Only the last group carries the caption; the same sentence under
+          // each of three charts is noise.
+          { unit: `${unit} of estimated max`, caption: index === byBlock.size - 1 ? null : false }
+        )}`
+      )
+      .join('')}
     <p class="hint">First observation to last, <b>in date order</b> — so a block where you went backwards reads as a
     loss instead of being flipped into a gain. Every tracked lift gets its own bar.${
       losses.length

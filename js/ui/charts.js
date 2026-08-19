@@ -712,41 +712,72 @@ export function indexedByDate(rows, { names, colors, height = 200 } = {}) {
   );
 }
 
-/** Horizontal bars, for comparisons where the labels are words not dates. */
-export function rowBars(items, { unit = '', height = null, color = 'var(--s1)' } = {}) {
+/**
+ * Horizontal bars, for comparisons whose labels are words rather than dates.
+ *
+ * The label column is sized from the longest label and capped, and anything
+ * still too long is cut with an ellipsis — a label that runs off the left edge
+ * of the chart is worse than a shortened one, because you cannot tell it has
+ * been cut.
+ */
+export function rowBars(items, { unit = '', color = 'var(--s1)', caption = null } = {}) {
   if (!items?.length) return emptyChart('Nothing to compare yet.');
 
-  const rowHeight = 30;
+  const CHAR = 5.6;
+  const rowHeight = 28;
   const total = items.length * rowHeight + 16;
-  const left = 132;
+  const maxLabel = Math.max(...items.map((i) => i.label.length));
+  const left = Math.min(210, Math.max(70, maxLabel * CHAR + 12));
+  const fit = Math.floor((left - 12) / CHAR);
+  const clip = (text) => (text.length <= fit ? text : `${text.slice(0, Math.max(1, fit - 1))}…`);
+
+  const signed = items.some((i) => i.value < 0);
+  const room = W - left - 56;
   const magnitude = Math.max(...items.map((i) => Math.abs(i.value)), 0.1);
-  const zero = items.some((i) => i.value < 0) ? left + (W - left - 60) / 2 : left;
-  const scale = (W - left - 60) / (items.some((i) => i.value < 0) ? magnitude * 2 : magnitude);
+  const zero = signed ? left + room / 2 : left;
+  const scale = (signed ? room / 2 : room) / magnitude;
 
   const rows = items
     .map((item, i) => {
       const y = 8 + i * rowHeight;
       const width = Math.abs(item.value) * scale;
       const x = item.value < 0 ? zero - width : zero;
-      const fill = item.value < 0 ? 'var(--badtx)' : item.color || color;
-      return `<text x="${left - 8}" y="${(y + 15).toFixed(1)}" text-anchor="end" font-size="11" fill="var(--ink2)">${escape(
-        item.label
-      )}</text>
-      <rect x="${x.toFixed(1)}" y="${y + 4}" width="${Math.max(1, width).toFixed(1)}" height="16" rx="3" fill="${fill}" ${tip(
-        `${item.label} · ${item.display ?? num(item.value)} ${unit}`
-      )}/>
-      <text x="${(item.value < 0 ? x - 6 : x + width + 6).toFixed(1)}" y="${(y + 16).toFixed(1)}" text-anchor="${
-        item.value < 0 ? 'end' : 'start'
-      }" font-size="10.5" font-weight="700" fill="var(--ink)">${escape(item.display ?? num(item.value))}</text>`;
+      const fill = item.value < 0 ? 'var(--crit)' : item.color || color;
+      const label = `${item.label} · ${item.display ?? num(item.value)} ${unit}`;
+
+      // A value printed past the outer end of a long negative bar lands on top
+      // of the row's own name. Once the bar is wide enough to hold it, the
+      // number goes inside.
+      const inside = width > 44;
+      const valueX = inside
+        ? item.value < 0
+          ? x + 6
+          : x + width - 6
+        : item.value < 0
+          ? x - 6
+          : x + width + 6;
+      const anchor = inside ? (item.value < 0 ? 'start' : 'end') : item.value < 0 ? 'end' : 'start';
+
+      return `<text x="${left - 8}" y="${(y + 14).toFixed(1)}" text-anchor="end" font-size="11" fill="var(--ink2)" ${tip(
+        label
+      )}>${escape(clip(item.label))}</text>
+      <rect x="${x.toFixed(1)}" y="${y + 3}" width="${Math.max(1.5, width).toFixed(
+        1
+      )}" height="15" rx="3" fill="${fill}" ${tip(label)}/>
+      <text x="${valueX.toFixed(1)}" y="${(y + 15).toFixed(
+        1
+      )}" text-anchor="${anchor}" font-size="10.5" font-weight="700" fill="${
+        inside ? '#fff' : 'var(--ink)'
+      }">${escape(item.display ?? num(item.value))}</text>`;
     })
     .join('');
 
-  const axis = items.some((i) => i.value < 0)
-    ? `<line x1="${zero}" y1="4" x2="${zero}" y2="${total - 8}" stroke="var(--axis)"/>`
+  const axis = signed
+    ? `<line x1="${zero.toFixed(1)}" y1="4" x2="${zero.toFixed(1)}" y2="${total - 8}" stroke="var(--axis)"/>`
     : '';
 
-  return chartFrame(
-    `<svg class="ch" viewBox="0 0 ${W} ${height || total}" preserveAspectRatio="xMidYMid meet" role="img">${axis}${rows}</svg>`,
-    `${unit}. Tap a bar for the exact figure.`
-  );
+  const svgMarkup = `<svg class="ch" viewBox="0 0 ${W} ${total}" preserveAspectRatio="xMidYMid meet" role="img">${axis}${rows}</svg>`;
+  // Several of these can share one card, and one caption per bar group would be
+  // the same sentence three times over.
+  return caption === false ? svgMarkup : chartFrame(svgMarkup, caption ?? `${unit}. Tap a bar for the exact figure.`);
 }
