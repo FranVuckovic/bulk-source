@@ -2,7 +2,7 @@
 
 **Build:** `sw.js` VERSION `v2.1.0` · database v3 · plan format 3 · plan `fopip-v2`
 **Verified:** 19 August 2026
-**Method:** 206 automated tests, plus a manual pass in a 390 × 844 viewport in
+**Method:** 212 automated tests, plus a manual pass in a 390 × 844 viewport in
 both colour schemes against twelve rotations of generated history.
 
 v1 is archived at `archive/v1/` and tagged `v1.0`. It still runs and still
@@ -50,9 +50,10 @@ version bump. To exercise the update path itself, open `http://localhost:8123/?s
 | `performance.test.js` | 6 | 200 sessions and 6,000 sets against explicit budgets |
 | `recovery.test.js` | 5 | Soft delete, restore, the bin listing, and refusing stores it cannot recover |
 | `photos.test.js` | 4 | Orientation-independent fitting and size formatting |
+| `screens.test.js` | 6 | Every screen on an empty database, and at both ends of every block, with no arithmetic leaking into the page |
 | `shell.test.js` | 6 | The offline shell covers the module graph, and the app calls the safe paths rather than merely containing them |
 
-**206 passing, 0 failing**, about 0.6 s.
+**212 passing, 0 failing**, about 0.6 s.
 
 `shell.test.js` exists because two of the defects found during this pass were
 not wrong code but unused code. `js/photos.js` was imported by the Body screen
