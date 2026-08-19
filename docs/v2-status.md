@@ -63,8 +63,10 @@ app's dark surface.
 **Deloads are not scheduled.** The kit keeps a Recovery Rotation 15, which is
 implemented. The earlier trigger-only approach is retained alongside it.
 
-**Old plan data is still present.** `data/plan-bulk-v1.json` remains so a v1
-export can still be interpreted. Nothing loads it.
+**Old plan data is still present, but no longer published.** `data/plan-bulk-v1.json`
+remains in the source so a v1 export can still be interpreted. Nothing loads
+it, and the publish script no longer copies it — it was reaching the public
+repository titled after its owner, for no reason at all.
 
 **The offline shell is off on localhost.** Serving the whole shell from one
 versioned cache is what makes an update atomic, and it is also what makes an
