@@ -281,7 +281,7 @@ export function view(ctx) {
  * v1 carried hand-written minute ranges that went stale the moment the plan
  * changed. Roughly the rest between sets plus about 40 seconds of work each.
  */
-function estimateMinutes(state, slots) {
+export function estimateMinutes(state, slots) {
   const seconds = slots.reduce((total, slot) => {
     const rest = slot.restSec || state.plan.exercises[slot.ex]?.defaultRestSec || 90;
     return total + slot.sets * (rest + 40);

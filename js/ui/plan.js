@@ -8,16 +8,37 @@
 
 import { weeklyVolume, sessionVolume, rollUp, weeklyRollUp, bandStatus, DIMINISHING_RETURNS_SETS } from '../volume.js';
 import { resolveSession, toDisplaySession } from '../plan.js';
-import { escape } from './components.js';
+import { escape, subnav } from './components.js';
+import { estimateMinutes } from './train.js';
 
 const VOLUME_SCALE = 24;
 
+/**
+ * The Plan screen's parts, across the top.
+ *
+ * Exercises, Workouts and the tips used to be a list of three rows part-way
+ * down the overview: you had to scroll past the whole plan summary to discover
+ * that the exercise reference existed at all, and every trip between them went
+ * back through the overview. They are tabs now.
+ */
+const SECTIONS = (state) => [
+  ['overview', 'Overview'],
+  ['workouts', 'Workouts', String(state.plan.sessions.length)],
+  ['exercises', 'Exercises', String(Object.keys(state.plan.exercises).length)],
+  ['blocks', 'Blocks'],
+  ['tips', 'Tips'],
+];
+
 export function view(ctx) {
   const { state } = ctx;
-  if (state.planSection === 'exercises') return exercisesView(state);
-  if (state.planSection === 'workouts') return workoutsView(state);
-  if (state.planSection === 'tips') return tipsView(state);
-  return overview(state);
+  const current = state.planSection || 'overview';
+  const tabs = subnav(SECTIONS(state), current, 'plan-section');
+
+  if (current === 'exercises') return tabs + exercisesView(state);
+  if (current === 'workouts') return tabs + workoutsView(state);
+  if (current === 'tips') return tabs + tipsView(state);
+  if (current === 'blocks') return tabs + blocksView(state);
+  return tabs + overview(state);
 }
 
 /**
@@ -79,18 +100,41 @@ function overview(state) {
     <p class="hint">Nothing advances silently. When you reach ${target} sessions the app opens a block review: your best lifts, the proposed working-max updates, and what changes next block. You confirm it.</p>
   </div>
 
-  <div class="card flush">
-    <div class="big-row" data-act="plan-section" data-id="exercises"><div class="ic">1</div><div class="m"><b>Exercises</b><span>${
-      Object.keys(state.plan.exercises).length
-    } exercises · how to perform, muscles worked, why it is here, substitutes</span></div><div class="car">›</div></div>
-    <div class="big-row" data-act="plan-section" data-id="workouts"><div class="ic">2</div><div class="m"><b>Workouts</b><span>All six sessions · purpose, exercises, and the muscle stimulus each one delivers</span></div><div class="car">›</div></div>
-    <div class="big-row" data-act="plan-section" data-id="tips"><div class="ic">3</div><div class="m"><b>General tips</b><span>How to execute, what matters most, and the mistakes that cost the most</span></div><div class="car">›</div></div>
-  </div>
-
   <h3>Stimulus this rotation · all six sessions</h3>
   <div class="lg"><span><i style="background:var(--s3)"></i>in range</span><span><i style="background:var(--warn)"></i>below target</span><span><i style="background:var(--s2)"></i>above target</span><span><i style="background:var(--axis);opacity:.5"></i>target band</span></div>
   ${volumeBars(state, volume, frequency, wholeMuscle)}
   <p class="hint" style="margin:0 2px 14px">Fractional sets — a set where the muscle is the main mover counts 1.0, a meaningful supporting role counts 0.5, and anything under 0.3 is not counted at all. Speed bench counts <b>zero</b>: at RPE 5–6 it is motor-pattern practice, not a growth stimulus.</p>
+
+  <h3>If six sessions is not possible</h3>
+  <div class="card">
+    <p style="margin:0 0 8px"><strong>Four days</strong> — you lose the speed day and session F. Bench drops to three exposures, volume by about 20%. Sustainable indefinitely.</p>
+    ${state.plan.fallbacks.fourDay
+      .map((d) => `<div class="big-row" style="cursor:default"><div class="ic">${d.n}</div><div class="m"><b>${escape(d.contents)}</b></div></div>`)
+      .join('')}
+    <p style="margin:12px 0 8px"><strong>Three days</strong> — Christmas and travel. A maintenance dose: you will not gain much, and you will not lose anything either.</p>
+    ${state.plan.fallbacks.threeDay
+      .map((d) => `<div class="big-row" style="cursor:default"><div class="ic">${d.n}</div><div class="m"><b>${escape(d.contents)}</b></div></div>`)
+      .join('')}
+    <p class="hint">Only switch when you know in advance you will be limited for two weeks or more. A single missed day is not a decision — the rotation just slides.</p>
+  </div>`;
+}
+
+/**
+ * Periodisation — what changes and when.
+ *
+ * Reached from the tabs above and from the rotation chip in the header, which
+ * is exactly the question the chip raises: rotation 12 of 33, of what?
+ */
+function blocksView(state) {
+  return `
+  <div class="shead"><div class="lbl">Periodisation</div><div class="nm">Rotation ${state.cycle.sequence} of ${
+    state.plan.meta.rotations
+  }</div>
+    <p class="why">${escape(state.block.name)} — ${escape(state.block.theme)}</p>
+    <div class="bar"><i style="width:${Math.min(100, (state.cycle.sequence / state.plan.meta.rotations) * 100)}%"></i></div>
+    <div class="meta"><span>${state.blockProgress.blockDone} / ${
+    state.blockProgress.sessionTarget
+  } sessions this rotation</span></div></div>
 
   <h3 id="periodisation">Blocks through March — what changes and when</h3>
   <div class="card">${state.plan.blocks
@@ -108,20 +152,7 @@ function overview(state) {
       <ul>${block.changes.map((c) => `<li>${escape(c)}</li>`).join('')}</ul>
     </div></details>`
     )
-    .join('')}</div>
-
-  <h3>If six sessions is not possible</h3>
-  <div class="card">
-    <p style="margin:0 0 8px"><strong>Four days</strong> — you lose the speed day and session F. Bench drops to three exposures, volume by about 20%. Sustainable indefinitely.</p>
-    ${state.plan.fallbacks.fourDay
-      .map((d) => `<div class="big-row" style="cursor:default"><div class="ic">${d.n}</div><div class="m"><b>${escape(d.contents)}</b></div></div>`)
-      .join('')}
-    <p style="margin:12px 0 8px"><strong>Three days</strong> — Christmas and travel. A maintenance dose: you will not gain much, and you will not lose anything either.</p>
-    ${state.plan.fallbacks.threeDay
-      .map((d) => `<div class="big-row" style="cursor:default"><div class="ic">${d.n}</div><div class="m"><b>${escape(d.contents)}</b></div></div>`)
-      .join('')}
-    <p class="hint">Only switch when you know in advance you will be limited for two weeks or more. A single missed day is not a decision — the rotation just slides.</p>
-  </div>`;
+    .join('')}</div>`;
 }
 
 function paceFlag(state, pace, totalRotations) {
@@ -203,8 +234,7 @@ function exercisesView(state) {
     x.name.toLowerCase().includes(search.toLowerCase())
   );
 
-  return `<button class="back" data-act="plan-back">‹ ${escape(state.plan.meta.name)}</button>
-  <h3 style="margin-top:0">Exercises</h3>
+  return `<h3 style="margin-top:0">Exercises</h3>
   <p style="margin:0 2px 12px">How to perform it, what it trains, why it is in the plan, and what to use instead if the equipment is taken.</p>
   <div style="margin:0 0 11px"><input type="search" placeholder="Search ${
     Object.keys(state.plan.exercises).length
@@ -263,71 +293,107 @@ function exercisesView(state) {
   }</div>`;
 }
 
+/**
+ * Workouts.
+ *
+ * This was one continuous scroll: purpose, then the key idea, then a stimulus
+ * chart, then every exercise, then the next session's purpose, six times over.
+ * Finding session D meant travelling through A, B and C, and nothing about a
+ * session could be taken in at a glance.
+ *
+ * Each session is a card that opens. Shut, it is one line you can read the
+ * whole rotation from — letter, name, sets, minutes, what it is for. Open, it
+ * is what it always was. The session you are about to do is open to begin with,
+ * because that is the one you came here for.
+ */
 function workoutsView(state) {
-  return `<button class="back" data-act="plan-back">‹ ${escape(state.plan.meta.name)}</button>
-  <h3 style="margin-top:0">Workouts</h3>
+  const next = state.position.nextSessionId;
+  const open = state.planOpenSession ?? next;
+
+  return `<h3 style="margin-top:0">Workouts</h3>
   <p style="margin:0 2px 12px">Run in order: <b>${state.plan.meta.rotationOrder.join(
-    ' → '
-  )} → repeat</b>. Train when you can and always just do the next one — missing a day is not a decision, the rotation simply slides.</p>
+    ' \u2192 '
+  )} \u2192 repeat</b>. Train when you can and always just do the next one \u2014 missing a day is not a decision, the rotation simply slides.</p>
   ${state.plan.sessions
     .map((session) => {
-      const volume = sessionVolume(session, state.plan.exercises);
-      const total = session.slots.reduce((sum, slot) => sum + slot.sets, 0);
-      const top = Object.entries(volume)
-        .sort(([, a], [, b]) => b - a)
-        .slice(0, 6);
-
-      return `<div class="card"><div style="display:flex;align-items:baseline;gap:9px;margin-bottom:6px">
-        <span style="font-size:19px;font-weight:800;color:var(--s1)">${escape(session.id)}</span>
-        <b style="font-size:16px;font-weight:700;flex:1">${escape(session.name)}</b>
-        <span style="font-size:11.5px;color:var(--muted);white-space:nowrap">${total} sets · ~${escape(session.mins)} min</span></div>
-        <p style="font-size:13px">${escape(session.purpose)}</p>
-        <p style="font-size:12.5px;padding:9px 11px;background:var(--sunk);border-radius:9px;border-left:3px solid var(--s1);color:var(--ink2);margin-bottom:12px">${escape(
-          session.key
-        )}</p>
-
-        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:6px">What this session hits</div>
-        ${top
-          .map(
-            ([id, value]) =>
-              `<div class="vol" style="padding:6px 0;border:0"><div class="r1"><b style="font-size:12px">${escape(
-                state.plan.muscles[id].label
-              )}</b><em style="font-size:12px">${value.toFixed(1)}</em></div>
-          <div class="track" style="height:7px"><div class="fill" style="width:${Math.min(
-            100,
-            (value / 8) * 100
-          )}%;background:var(--s1)"></div></div></div>`
-          )
-          .join('')}
-
-        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin:14px 0 4px">Exercises</div>
-        ${session.slots
-          .map((slot) => {
-            const exercise = state.plan.exercises[slot.ex];
-            const movers = Object.entries(exercise.m)
-              .filter(([, w]) => w >= 0.9)
-              .map(([m]) => state.plan.muscles[m].label.split(' — ')[0]);
-            return `<div style="display:flex;gap:9px;padding:7px 0;border-bottom:1px solid var(--grid);font-size:13px">
-            <div style="flex:1"><b style="font-weight:600">${escape(exercise.name)}${
-              slot.label ? ` — ${escape(slot.label)}` : ''
-            }</b>
-            <div style="font-size:11.5px;color:var(--muted);margin-top:1px">${
-              movers.join(' · ') || 'skill / speed work'
-            }</div></div>
-            <div style="font-size:12px;color:var(--ink2);white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:600">${
-              slot.sets
-            }×${slot.amrap ? 'max' : slot.reps} @${slot.rpe}</div></div>`;
-          })
-          .join('')}
-      </div>`;
+      // Numbers come from the plan engine for the rotation you are actually on,
+      // never from the static definition. The static file is the shape of a
+      // session; the block decides its bench variation, its failure permission
+      // and its accessory volume, so reading set counts off the file would
+      // report a recovery rotation as a full one.
+      const resolved = toDisplaySession(
+        resolveSession(state.plan, { rotation: state.cycle.sequence, sessionId: session.id })
+      );
+      return sessionCard(state, session, resolved, session.id === open, session.id === next);
     })
     .join('')}`;
 }
 
+/** One session: a readable line when shut, everything about it when open. */
+function sessionCard(state, session, resolved, isOpen, isNext) {
+  const slots = resolved.slots || [];
+  const total = slots.reduce((sum, slot) => sum + slot.sets, 0);
+
+  const head = `<div class="wo-head" data-act="plan-session" data-id="${escape(session.id)}">
+    <span class="wo-id">${escape(session.id)}</span>
+    <div class="wo-nm"><b>${escape(session.name)}</b>
+      <span>${total} sets \u00b7 ~${escape(estimateMinutes(state, slots))} min${
+        isNext ? ' \u00b7 next up' : ''
+      }</span></div>
+    <div class="car">\u203a</div></div>`;
+
+  if (!isOpen) return `<div class="card wo${isNext ? ' next' : ''}">${head}</div>`;
+
+  const volume = sessionVolume(resolved, state.plan.exercises);
+  const top = Object.entries(volume)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 6);
+
+  return `<div class="card wo open${isNext ? ' next' : ''}">${head}
+    <p style="font-size:13px;margin-top:11px">${escape(session.purpose)}</p>
+    <p style="font-size:12.5px;padding:9px 11px;background:var(--sunk);border-radius:9px;border-left:3px solid var(--s1);color:var(--ink2);margin-bottom:12px">${escape(
+      session.key
+    )}</p>
+
+    <div class="wo-lbl">What this session hits</div>
+    ${top
+      .map(
+        ([id, value]) =>
+          `<div class="vol" style="padding:6px 0;border:0"><div class="r1"><b style="font-size:12px">${escape(
+            state.plan.muscles[id].label
+          )}</b><em style="font-size:12px">${value.toFixed(1)}</em></div>
+      <div class="track" style="height:7px"><div class="fill" style="width:${Math.min(
+        100,
+        (value / 8) * 100
+      )}%;background:var(--s1)"></div></div></div>`
+      )
+      .join('')}
+
+    <div class="wo-lbl" style="margin-top:14px">Exercises · as prescribed in rotation ${state.cycle.sequence}</div>
+    ${slots
+      .map((slot) => {
+        const exercise = state.plan.exercises[slot.ex];
+        const movers = Object.entries(exercise.m)
+          .filter(([, w]) => w >= 0.9)
+          .map(([m]) => state.plan.muscles[m].label.split(' \u2014 ')[0]);
+        return `<div style="display:flex;gap:9px;padding:7px 0;border-bottom:1px solid var(--grid);font-size:13px">
+        <div style="flex:1"><b style="font-weight:600">${escape(exercise.name)}${
+          slot.label ? ` \u2014 ${escape(slot.label)}` : ''
+        }</b>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:1px">${
+          movers.join(' \u00b7 ') || 'skill / speed work'
+        }</div></div>
+        <div style="font-size:12px;color:var(--ink2);white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:600">${
+          slot.sets
+        }\u00d7${slot.amrap ? 'max' : slot.reps} @${slot.rpe}</div></div>`;
+      })
+      .join('')}
+  </div>`;
+}
+
 function tipsView(state) {
   const sections = [...new Set(state.plan.knowledge.map((t) => t.s))];
-  return `<button class="back" data-act="plan-back">‹ ${escape(state.plan.meta.name)}</button>
-  <h3 style="margin-top:0">General tips</h3>
+  return `<h3 style="margin-top:0">General tips</h3>
   <p style="margin:0 2px 12px">Everything that decides whether this works, in the order it tends to matter.</p>
   ${sections
     .map(
@@ -340,16 +406,15 @@ function tipsView(state) {
 }
 
 export const actions = {
-  'plan-section'(ctx, data) {
-    ctx.state.planSection = data.id;
+  /** Open one session card, closing whichever was open. */
+  'plan-session'(ctx, data) {
+    ctx.state.planOpenSession = ctx.state.planOpenSession === data.id ? null : data.id;
     ctx.render();
-    window.scrollTo(0, 0);
   },
-  'plan-back'(ctx) {
-    ctx.state.planSection = null;
+
+  'plan-section'(ctx, data) {
     ctx.state.exerciseSearch = '';
-    ctx.render();
-    window.scrollTo(0, 0);
+    ctx.goTo({ tab: 'plan', planSection: data.id });
   },
 };
 

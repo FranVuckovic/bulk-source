@@ -68,6 +68,7 @@ import {
   deviceIsolationNote,
   openSheet,
   closeSheet,
+  sheetIsOpen,
   stopRest,
   fromDisplay,
   toDisplay,
@@ -82,7 +83,10 @@ import * as history from './ui/history.js';
 import { demoModeOn, setDemoMode, openDemoDatabase, seedDemoData, DEMO_ROTATIONS } from './demo.js';
 
 const PLAN_URL = './data/plan-fopip-v2.json';
-const TABS = { train: 'Bulk', body: 'Body', prog: 'Progress', plan: 'Plan', set: 'Settings' };
+const TABS = { train: 'Bulk', body: 'Body', prog: 'Progress', plan: 'Plan', log: 'Log', set: 'Settings' };
+
+/** The bottom sections, in order. Settings is reached from the gear. */
+const BOTTOM_TABS = ['train', 'body', 'prog', 'plan', 'log'];
 
 const state = {
   db: null,
@@ -572,8 +576,9 @@ function resetBodyDraft() {
 function screenFor(tab) {
   if (tab === 'train') return train.view(ctx);
   if (tab === 'body') return body.view(ctx);
-  if (tab === 'prog') return state.progressSection === 'history' ? history.view(ctx) : progress.view(ctx);
+  if (tab === 'prog') return progress.view(ctx);
   if (tab === 'plan') return plan.view(ctx);
+  if (tab === 'log') return history.view(ctx);
   return settings.view(ctx);
 }
 
@@ -660,8 +665,8 @@ function render() {
   document.getElementById('chip').textContent = `Rotation ${state.cycle.sequence}/${state.plan.meta.rotations}`;
   document.getElementById('view').innerHTML = staleBanner() + updateBanner() + screenFor(state.tab);
 
-  for (const key of ['train', 'body', 'prog', 'plan']) {
-    document.getElementById(`n-${key === 'prog' ? 'prog' : key}`).classList.toggle('on', key === state.tab);
+  for (const key of BOTTOM_TABS) {
+    document.getElementById(`n-${key}`).classList.toggle('on', key === state.tab);
   }
 }
 
@@ -672,6 +677,7 @@ function render() {
 const ctx = {
   state,
   render,
+  goTo,
   saveSet,
   removeSet,
   saveDeviations,
@@ -1017,6 +1023,79 @@ const ctx = {
   },
 };
 
+/* ═══════════════════════════════════════════════════════════════════════
+   Where you are, and how back works
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/*
+ * Android's back button is a system gesture, and an installed PWA that ignores
+ * it closes instead of going back — which, four levels into the Plan screen, is
+ * the difference between a step backwards and losing your place entirely.
+ *
+ * Every move between screens pushes a history entry describing where you are.
+ * Back pops it and the app re-renders from what popped, so the browser's own
+ * stack is the source of truth rather than a second one kept alongside it. An
+ * open sheet is a level too: back closes the sheet before it changes screen,
+ * because that is what the gesture means when something is covering the page.
+ */
+const VIEW_KEYS = ['tab', 'progressSection', 'planSection', 'logSection', 'bodySection', 'historyFilter'];
+
+const currentView = () => Object.fromEntries(VIEW_KEYS.map((key) => [key, state[key] ?? null]));
+
+function applyView(view) {
+  for (const key of VIEW_KEYS) state[key] = view?.[key] ?? null;
+  state.historyFilter = state.historyFilter || 'all';
+  state.tab = state.tab || 'train';
+}
+
+/** Move to a screen, recording it so back can return here. */
+function goTo(patch, { replace = false } = {}) {
+  const next = { ...currentView(), ...patch };
+
+  // Moving to a different bottom section starts that section at its own top.
+  if (patch.tab && patch.tab !== state.tab) {
+    next.progressSection = patch.progressSection ?? null;
+    next.planSection = patch.planSection ?? null;
+    next.logSection = patch.logSection ?? null;
+    next.bodySection = patch.bodySection ?? null;
+  }
+
+  applyView(next);
+  closeSheet();
+  try {
+    // `window.` is not decoration here: this module imports the History *screen*
+    // as `history`, which shadows the global. Without the prefix this reads as
+    // ui/history.js and throws "history.replaceState is not a function" during
+    // boot, which takes the whole app down.
+    if (replace) window.history.replaceState({ view: next }, '');
+    else window.history.pushState({ view: next }, '');
+  } catch {
+    // A browser that refuses the history entry still navigates; it just cannot
+    // offer back. Never a reason to fail the tap itself.
+  }
+  render();
+  window.scrollTo(0, 0);
+}
+
+function wireBackButton() {
+  window.history.replaceState({ view: currentView() }, '');
+  window.addEventListener('popstate', (event) => {
+    // A covering sheet is the top of the stack. Back closes it and stays put,
+    // which is what the gesture means while something is over the page.
+    if (sheetIsOpen()) {
+      closeSheet();
+      window.history.pushState({ view: currentView() }, '');
+      render();
+      return;
+    }
+    if (event.state?.view) {
+      applyView(event.state.view);
+      render();
+      window.scrollTo(0, 0);
+    }
+  });
+}
+
 const globalActions = {
   'reload-app'() {
     location.reload();
@@ -1201,16 +1280,10 @@ const globalActions = {
   },
 
   tab(_ctx, data) {
-    state.tab = data.tab;
-    if (data.tab !== 'prog') state.progressSection = null;
-    closeSheet();
-    render();
-    window.scrollTo(0, 0);
+    goTo({ tab: data.tab });
   },
   settings() {
-    state.tab = 'set';
-    render();
-    window.scrollTo(0, 0);
+    goTo({ tab: 'set' });
   },
   'sheet-close'() {
     closeSheet();
@@ -1449,6 +1522,7 @@ async function boot() {
   window.addEventListener('pagehide', () => state.tabLock?.release());
 
   wireEvents();
+  wireBackButton();
   render();
 
   // Asked for after the first render, so the prompt never delays the screen.

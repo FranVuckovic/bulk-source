@@ -109,6 +109,28 @@ export function section(id, title, count, body, shut) {
   }</h3>${isShut ? '' : body}`;
 }
 
+/**
+ * The tabs across the top of a section.
+ *
+ * Every screen in this app had grown into one long column: Progress ran to
+ * twenty headings, the Plan screen hid its exercises and workouts behind a list
+ * you had to scroll to, and the only way to know what a section contained was
+ * to travel through all of it. A section's parts belong at its top, where they
+ * can be seen without reading.
+ *
+ * It is sticky under the header, so moving between parts never requires
+ * scrolling back up first.
+ */
+export const subnav = (items, current, action) =>
+  `<div class="subnav">${items
+    .map(
+      ([id, label, count]) =>
+        `<button class="pill ${id === current ? 'on' : ''}" data-act="${escape(action)}" data-id="${escape(id)}">${escape(
+          label
+        )}${count ? `<span class="n">${escape(count)}</span>` : ''}</button>`
+    )
+    .join('')}</div>`;
+
 export const flag = (kind, icon, html) =>
   `<div class="flag f-${kind}"><i>${icon}</i><span>${html}</span></div>`;
 
