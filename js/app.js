@@ -1331,11 +1331,23 @@ function wireEvents() {
     slot.classList.add('on');
   });
 
+  /*
+   * Typing and changing a field write too, and until now only *clicking*
+   * reported a failure. `persistDraft` saves the session note and bodyweight on
+   * every keystroke, and `changeHandlers` writes the unit, the increment and
+   * the bodyweight — all three returned promises nobody was watching, so a
+   * write that failed produced an unhandled rejection in the console and
+   * nothing at all on screen.
+   *
+   * Silence is the one outcome this app is not allowed to have: it is how a
+   * session goes unrecorded without anyone noticing. Every path that can write
+   * now ends at `showFailure`, the same as a tap does.
+   */
   document.addEventListener('input', (event) => {
     const el = event.target;
     if (el.dataset.bind) {
       state.draft[el.dataset.bind] = el.value;
-      persistDraft();
+      Promise.resolve(persistDraft()).catch(showFailure);
       return;
     }
     if (el.dataset.bodyField) {
@@ -1343,12 +1355,14 @@ function wireEvents() {
       return;
     }
     const input = el.dataset.actInput;
-    if (input) (train.inputs[input] || plan.inputs[input])?.(ctx, el.value);
+    if (input) {
+      Promise.resolve((train.inputs[input] || plan.inputs[input])?.(ctx, el.value)).catch(showFailure);
+    }
   });
 
   document.addEventListener('change', (event) => {
     const name = event.target.dataset.actChange;
-    if (name) changeHandlers[name]?.(event.target.value);
+    if (name) Promise.resolve(changeHandlers[name]?.(event.target.value)).catch(showFailure);
 
     const fileAction = event.target.dataset.actFile;
     if (fileAction && event.target.files?.length) {
