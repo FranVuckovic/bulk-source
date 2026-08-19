@@ -112,6 +112,43 @@ export function rpeFor(ratio, reps) {
  * estimate stops being meaningful, and a number that looks precise and is not
  * is worse than no number.
  */
+/**
+ * How hard the set was, in kilograms.
+ *
+ * The same estimate, recomputed as though the set had been taken to RPE 10 —
+ * that is, the one-rep max this set would imply if it had been all you had.
+ * It rises with load and with reps, so it is a single number you can compare
+ * two sets by without holding their RPEs in your head: 100 x 5 @8 and
+ * 100 x 8 @8 are obviously different amounts of work, and this says by how
+ * much.
+ *
+ * It is not a max and must never be shown as one — a set at RPE 7 produces a
+ * difficulty well below your real max, which is the point. `e1rm` is the
+ * estimate of what you could lift; this is the size of what you did.
+ */
+export function setDifficulty(load, reps) {
+  return e1rm(load, reps, 10);
+}
+
+/**
+ * Why an estimate could not be made, in words, or null when one could.
+ *
+ * Returning nothing at all is defensible — an estimate that cannot be justified
+ * should not be shown — but a blank space where a number usually sits reads as
+ * a broken app rather than a deliberate silence. It cost a gym session's worth
+ * of doubt to find that out: fifteen of twenty-seven sets in a real log came
+ * back empty, and the obvious explanation was the wrong one.
+ */
+export function noEstimateReason(load, reps, rpe) {
+  if (!load) return 'no load recorded';
+  if (!reps) return 'no reps recorded';
+  if (reps > MAX_ESTIMABLE_REPS) {
+    return `over ${MAX_ESTIMABLE_REPS} reps — past there the estimate stops meaning anything`;
+  }
+  if (pct(reps, rpe) == null) return `RPE ${rpe} is off the table`;
+  return null;
+}
+
 export function e1rm(load, reps, rpe) {
   if (!load || !reps || reps > MAX_ESTIMABLE_REPS) return null;
   const percentage = pct(reps, rpe);

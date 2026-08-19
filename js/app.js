@@ -133,7 +133,7 @@ const state = {
   exOpen: new Set(['0']),
   cleared: new Set(),
   grips: {},
-  deviations: { swaps: {}, extras: [], addedSets: {} },
+  deviations: { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {} },
   draft: { note: '', bodyweight: '', sessionRpe: '' },
   sheetCtx: null,
 
@@ -269,7 +269,7 @@ async function restoreActiveSession() {
   // Restored from the log, not reset to normal. A session opened on a yellow
   // day used to un-trim itself the moment the app was reopened.
   state.readiness = active.readiness || 'normal';
-  state.deviations = active.deviations || { swaps: {}, extras: [], addedSets: {} };
+  state.deviations = active.deviations || { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {} };
   state.grips = active.grips || {};
   // Stored values are kilograms; the draft is labelled with the display unit.
   // v1 copied the raw kg straight into a field labelled lb, so a 90 kg session
@@ -514,7 +514,7 @@ async function finishSession() {
   state.loggedSets = new Map();
   state.cleared = new Set();
   state.grips = {};
-  state.deviations = { swaps: {}, extras: [], addedSets: {} };
+  state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {} };
   state.draft = { note: '', bodyweight: '', sessionRpe: '' };
   state.exOpen = new Set(['0']);
   stopRest();
@@ -1166,7 +1166,7 @@ const ctx = {
     await writeSetting(state.db, 'activeSessionLogId', null);
     state.activeLog = null;
     state.loggedSets = new Map();
-    state.deviations = { swaps: {}, extras: [], addedSets: {} };
+    state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {} };
     state.grips = {};
     state.draft = { note: '', bodyweight: '', sessionRpe: '' };
     await loadEverything();
@@ -1284,6 +1284,50 @@ function onSheetClose({ fromBack }) {
   } catch {
     ignoreNextPop = false;
   }
+}
+
+/*
+ * Two things the on-screen keyboard breaks, and neither can be fixed in CSS
+ * alone.
+ *
+ * The sheet is anchored to the bottom of the *layout* viewport, which the
+ * keyboard covers rather than shrinks — so "Log this set" ended up behind it
+ * and every single set needed a scroll before it could be saved. visualViewport
+ * reports how much is actually visible; the difference is the keyboard, and the
+ * sheet is lifted by exactly that. Browsers without visualViewport keep the old
+ * behaviour rather than getting a guess.
+ *
+ * And a number box that already holds 9 appends when you type 10, giving 910 or
+ * 109 depending on where the caret landed. Selecting the contents on focus
+ * makes the first keystroke replace them, which is what typing into a field
+ * showing a current value is universally taken to mean. Deferred a frame
+ * because Android Chrome moves the caret itself after focus.
+ */
+function wireKeyboardHandling() {
+  const viewport = window.visualViewport;
+  if (viewport) {
+    const fit = () => {
+      const covered = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+      // Ignore the few pixels a URL bar contributes; only a keyboard is worth moving for.
+      document.documentElement.style.setProperty('--kb', `${covered > 120 ? covered : 0}px`);
+    };
+    viewport.addEventListener('resize', fit);
+    viewport.addEventListener('scroll', fit);
+    fit();
+  }
+
+  document.addEventListener('focusin', (event) => {
+    const el = event.target;
+    if (!(el instanceof HTMLInputElement)) return;
+    if (el.dataset.pick === undefined) return;
+    requestAnimationFrame(() => {
+      try {
+        el.select();
+      } catch {
+        // Some browsers refuse select() on a number input. Not worth failing a tap over.
+      }
+    });
+  });
 }
 
 function wireBackButton() {
@@ -1746,6 +1790,7 @@ async function boot() {
 
   wireEvents();
   wireBackButton();
+  wireKeyboardHandling();
   render();
 
   // Asked for after the first render, so the prompt never delays the screen.

@@ -86,3 +86,51 @@ test('the thresholds are stated rather than buried', () => {
   assert.equal(MIN_REAL_REST_SECONDS, 20);
   assert.equal(LONG_GAP_SECONDS, 1200);
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Set difficulty, and why an estimate is sometimes withheld
+   ═══════════════════════════════════════════════════════════════════════ */
+
+import { setDifficulty, noEstimateReason, e1rm as estimate1RM, systemLoad, MAX_ESTIMABLE_REPS } from '../js/calc.js';
+
+test('difficulty is the same estimate taken at RPE 10, so it ignores how it felt', () => {
+  // The size of what you did, rather than an estimate of what you could do.
+  // Two sets of the same load and reps are the same amount of work whatever
+  // RPE was written against them.
+  assert.equal(setDifficulty(97.5, 3), estimate1RM(97.5, 3, 10));
+  assert.equal(setDifficulty(97.5, 3), setDifficulty(97.5, 3));
+});
+
+test('difficulty rises with load and with reps', () => {
+  assert.ok(setDifficulty(110, 5) > setDifficulty(100, 5), 'more load is harder');
+  assert.ok(setDifficulty(100, 8) > setDifficulty(100, 5), 'more reps is harder');
+});
+
+test('difficulty is below the estimate for any set short of failure', () => {
+  // A set at RPE 7 says you had three left, so what you did is smaller than
+  // what you could have done. If this ever inverted, difficulty would be being
+  // read as a max.
+  assert.ok(setDifficulty(100, 5) < estimate1RM(100, 5, 7));
+  assert.equal(setDifficulty(100, 5), estimate1RM(100, 5, 10), 'and equal at failure');
+});
+
+test('a 15-rep set says it is over the rep limit, not nothing at all', () => {
+  // From a real log: four pull-up sets, two of them 15 reps, both blank. The
+  // obvious explanation — zero added weight — was wrong, and the app said
+  // nothing either way. Fifteen of twenty-seven sets in that session were
+  // affected.
+  const total = systemLoad(0, 90);
+  assert.equal(estimate1RM(total, 15, 10), null);
+  assert.match(noEstimateReason(total, 15, 10), /over 12 reps/);
+});
+
+test('zero added weight on a bodyweight lift is not the reason for a blank', () => {
+  // The control that settles it: same zero, one rep fewer than the limit.
+  const total = systemLoad(0, 90);
+  assert.ok(estimate1RM(total, MAX_ESTIMABLE_REPS, 10) > 0, 'zero added, twelve reps, real estimate');
+  assert.equal(noEstimateReason(total, MAX_ESTIMABLE_REPS, 10), null, 'and nothing to explain');
+});
+
+test('a set that can be estimated has no reason to give', () => {
+  assert.equal(noEstimateReason(110, 6, 10), null);
+});
