@@ -1260,8 +1260,13 @@ function registerServiceWorker() {
           state.buildVersion = event.data.version;
           if (state.tab === 'set') render();
         }
+        if (event.data?.shell) state.shellReport = event.data.shell;
       });
       navigator.serviceWorker.controller?.postMessage('version');
+      // Ask the worker to top up anything missing from the offline shell. A
+      // cache emptied by the browser under storage pressure otherwise stays
+      // half-empty, and you find out in a gym with no signal.
+      navigator.serviceWorker.controller?.postMessage('verify-shell');
 
       // Checked on every start rather than only when the browser feels like
       // it, so an update lands the next time the app is opened.

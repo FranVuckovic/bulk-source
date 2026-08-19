@@ -1,8 +1,8 @@
 # Bulk v2 — verification
 
-**Build:** `sw.js` VERSION `v2.1.2` · database v3 · plan format 3 · plan `fopip-v2`
+**Build:** `sw.js` VERSION `v2.1.3` · database v3 · plan format 3 · plan `fopip-v2`
 **Verified:** 19 August 2026
-**Method:** 219 automated tests, plus a manual pass in a 390 × 844 viewport in
+**Method:** 221 automated tests, plus a manual pass in a 390 × 844 viewport in
 both colour schemes against twelve rotations of generated history.
 
 v1 is archived at `archive/v1/` and tagged `v1.0`. It still runs and still
@@ -50,11 +50,11 @@ version bump. To exercise the update path itself, open `http://localhost:8123/?s
 | `performance.test.js` | 6 | 200 sessions and 6,000 sets against explicit budgets |
 | `recovery.test.js` | 5 | Soft delete, restore, the bin listing, and refusing stores it cannot recover |
 | `photos.test.js` | 4 | Orientation-independent fitting and size formatting |
-| `service-worker.test.js` | 5 | The takeover rule, and that no branch can answer a module request with the shell |
+| `service-worker.test.js` | 7 | The takeover rule, and that no branch can answer a module request with the shell |
 | `screens.test.js` | 6 | Every screen on an empty database, and at both ends of every block, with no arithmetic leaking into the page |
 | `shell.test.js` | 6 | The offline shell covers the module graph, and the app calls the safe paths rather than merely containing them |
 
-**219 passing, 0 failing**, about 0.6 s.
+**221 passing, 0 failing**, about 0.6 s.
 
 `shell.test.js` exists because two of the defects found during this pass were
 not wrong code but unused code. `js/photos.js` was imported by the Body screen
@@ -168,6 +168,29 @@ colour schemes at 390 × 844.
   no way to say why: the module that reports errors was one of the ones that
   failed to load.
 - A second tab takes the pen and the older one says so rather than racing it.
+
+### What happens if the site goes away
+
+Tested by taking the origin down under a running install, because the app is
+served from a repository that may be made private again.
+
+- **The site returning 404 does not unregister the worker.** Forced an update
+  check against a missing `sw.js`: the check failed with a 404, and the
+  registration, the active worker and all 27 cached files survived intact.
+- **The origin disappearing entirely does not stop the app.** With the server
+  stopped, a full reload rendered the whole app from cache — plan, rotation
+  position, twelve rotations of history — and logging a set still wrote to
+  IndexedDB. Every shell file is served cache-first, so the network is a
+  fallback, never a requirement.
+- **An evicted cache repairs itself.** Emptied the shell cache under the
+  running worker: one reload put all 27 files back. Without the repair pass a
+  reload only restored the 21 files the page happens to import, leaving the
+  icons and the manifest missing — an app that is quietly no longer installable
+  or fully offline, and that only tells you in a gym with no signal.
+
+Nothing is ever sent anywhere. There is no account, no sync and no request to
+any host but the one the app was served from. Going private stops updates
+arriving; it does not touch what is already on the phone.
 
 ---
 

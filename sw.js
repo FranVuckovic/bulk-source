@@ -20,7 +20,7 @@
  * is obvious from inside the app whether an update actually landed.
  */
 
-const VERSION = 'v2.1.2';
+const VERSION = 'v2.1.3';
 const CACHE = `bulk-${VERSION}`;
 
 const SHELL = [
@@ -103,11 +103,42 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+/**
+ * Put back anything missing from the shell.
+ *
+ * Install runs once. If the cache is emptied afterwards — browser eviction
+ * under storage pressure, or site data cleared — nothing refills the parts the
+ * app does not happen to request, so the icons and the manifest stay missing
+ * and the app is quietly no longer installable or fully offline. Cheap enough
+ * to check on every start: one cache read, and a fetch only for what is gone.
+ */
+async function repairShell() {
+  const cache = await caches.open(CACHE);
+  const present = new Set((await cache.keys()).map((request) => new URL(request.url).pathname));
+  const missing = SHELL.filter((path) => !present.has(new URL(path, self.registration.scope).pathname));
+
+  if (missing.length) {
+    await cache.addAll(missing.map((path) => new Request(path, { cache: 'reload' })));
+  }
+  return { checked: SHELL.length, restored: missing.length };
+}
+
 self.addEventListener('message', (event) => {
   if (event.data === 'version') event.source?.postMessage({ version: VERSION });
+
   // Sent only when the app has confirmed with the user that now is a safe
   // moment — no active session, nothing half-logged.
   if (event.data === 'apply-update') self.skipWaiting();
+
+  if (event.data === 'verify-shell') {
+    event.waitUntil(
+      repairShell()
+        .then((report) => event.source?.postMessage({ shell: report }))
+        // Offline, there is nothing to repair with. The app still runs on what
+        // is cached; this is a top-up, not a precondition.
+        .catch(() => event.source?.postMessage({ shell: { checked: SHELL.length, restored: 0, offline: true } }))
+    );
+  }
 });
 
 /**
@@ -141,9 +172,19 @@ self.addEventListener('fetch', (event) => {
 
   if (shellPaths.has(url.pathname)) {
     event.respondWith(
-      caches.open(CACHE).then((cache) =>
-        cache.match(request, { ignoreSearch: true }).then((hit) => hit || fetch(request))
-      )
+      caches.open(CACHE).then(async (cache) => {
+        const hit = await cache.match(request, { ignoreSearch: true });
+        if (hit) return hit;
+
+        // A miss here means the cache was emptied under us — browser eviction
+        // under storage pressure, or the user clearing site data — while this
+        // worker stayed active. Install only runs once, so without this the app
+        // would quietly stop being offline-capable and only find out in a gym
+        // with no signal. Put it back on the way past.
+        const response = await fetch(request);
+        if (response.ok) cache.put(request, response.clone()).catch(() => {});
+        return response;
+      })
     );
     return;
   }

@@ -65,3 +65,28 @@ test('the worker never answers a module request with the shell', () => {
   const shellBranch = fetchHandler.slice(fetchHandler.indexOf('shellPaths.has('));
   assert.ok(!shellBranch.includes("index.html"), 'a module request can never be answered with the shell');
 });
+
+
+test('the worker repairs a shell the browser has evicted', () => {
+  // Install runs once. Without a repair pass, a cache emptied afterwards stays
+  // half-empty for everything the app does not happen to request — the icons
+  // and the manifest — so the app is quietly no longer installable or offline.
+  assert.match(source, /function repairShell\(/, 'sw.js defines a repair pass');
+  assert.match(source, /event\.data === 'verify-shell'/, 'and the app can ask for it');
+
+  const repair = source.slice(source.indexOf('async function repairShell('), source.indexOf("self.addEventListener('message'"));
+  assert.ok(repair.includes('SHELL.filter'), 'it works out what is missing rather than re-adding everything');
+  assert.ok(repair.includes("cache: 'reload'"), 'and refetches rather than trusting the HTTP cache');
+
+  // The app has to actually send it, or the pass never runs.
+  const app = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+  assert.match(app, /postMessage\('verify-shell'\)/, 'app.js asks the worker to verify the shell at startup');
+});
+
+test('a failed repair cannot stop the app', () => {
+  // Offline there is nothing to repair with, and that is not an error worth
+  // showing: the app runs on whatever is already cached.
+  const handler = source.slice(source.indexOf("event.data === 'verify-shell'"));
+  assert.ok(handler.includes('.catch('), 'the repair is caught');
+  assert.ok(handler.includes('offline: true'), 'and reports the offline case rather than throwing');
+});
