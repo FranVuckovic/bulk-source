@@ -258,6 +258,9 @@ async function restoreActiveSession() {
 
   state.activeLog = active;
   state.trainSessionId = active.sessionId;
+  // Restored from the log, not reset to normal. A session opened on a yellow
+  // day used to un-trim itself the moment the app was reopened.
+  state.readiness = active.readiness || 'normal';
   state.deviations = active.deviations || { swaps: {}, extras: [], addedSets: {} };
   state.grips = active.grips || {};
   // Stored values are kilograms; the draft is labelled with the display unit.
@@ -871,9 +874,51 @@ const ctx = {
     return { ok: true };
   },
 
-  /** Today's readiness. Applied to the resolved session, never stored as plan. */
-  setReadiness(value) {
+  /**
+   * Today's readiness. Applied to the resolved session, never stored as plan.
+   *
+   * Three things had to be true here and only the first one was.
+   *
+   * It is stored on the session log, and updated when it changes. The log used
+   * to stamp whatever readiness was showing when the *first set* was saved and
+   * never look again, so training a yellow day that you flagged after your
+   * first set was filed in history as a normal one.
+   *
+   * It survives a reload, restored from that log. It used to reset to normal
+   * while the session stayed open, which silently un-trimmed the session you
+   * were half way through.
+   *
+   * And it refuses a change that would reattribute work you have already
+   * logged. See `readinessWouldReindex`.
+   */
+  async setReadiness(value) {
+    const from = state.readiness || 'normal';
+    if (value === from) return;
+
+    if (state.loggedSets.size && train.readinessWouldReindex(state, value)) {
+      openSheet(`<div class="ttl">Not changed</div>
+        <p style="text-align:center;margin:14px 0 6px;font-size:14px;color:var(--ink)">You have <b>${
+          state.loggedSets.size
+        } set${state.loggedSets.size === 1 ? '' : 's'}</b> logged, and a <b>${escape(
+          value
+        )}</b> day removes an exercise from this session.</p>
+        <p style="text-align:center;font-size:13px">Sets are stored against their position in the session, so dropping
+        an exercise would shift every set after it onto the wrong lift. Nothing has been changed.</p>
+        <p style="text-align:center;font-size:13px">If today really is a ${escape(
+          value
+        )} day, finish this session and log the rest as a fresh one — or delete it from History and start again.</p>
+        <button class="big mt" data-act="sheet-close">Leave it on ${escape(from)}</button>`);
+      return;
+    }
+
     state.readiness = value;
+    if (state.activeLog) {
+      state.activeLog = { ...state.activeLog, readiness: value };
+      await put(state.db, 'sessionLogs', state.activeLog);
+      await put(state.db, 'auditLog', {
+        atISO: nowISO(), entity: 'sessionLog', action: 'readiness', id: state.activeLog.id, from, to: value,
+      });
+    }
     render();
   },
 
@@ -1152,7 +1197,7 @@ const globalActions = {
   },
 
   readiness(ctx, data) {
-    ctx.setReadiness(data.id);
+    return ctx.setReadiness(data.id);
   },
 
   tab(_ctx, data) {

@@ -46,8 +46,14 @@ const setKey = (slotIndex, setIndex) => `${slotIndex}:${setIndex}`;
 const PAUSE_STYLES = ['paused', 'touch-and-go'];
 const tracksPause = (exerciseId) => exerciseId.startsWith('bench');
 
-/** Slots for the displayed session: the plan's, with swaps and additions. */
-export function slotsFor(state) {
+/**
+ * Slots for the displayed session: the plan's, with swaps and additions.
+ *
+ * `readinessOverride` asks what the session *would* look like at a different
+ * readiness, without changing anything. It exists so a readiness change can be
+ * checked for safety before it is applied.
+ */
+export function slotsFor(state, readinessOverride) {
   // Everything block-specific comes from the plan engine: the bench work for
   // this block, the failure permission for this rotation's effort mode, the
   // accessory multiplier, the static hold if one is offered, and any readiness
@@ -56,20 +62,66 @@ export function slotsFor(state) {
     resolveSession(state.plan, {
       rotation: state.cycle.sequence,
       sessionId: state.trainSessionId,
-      readiness: state.readiness || 'normal',
+      readiness: readinessOverride ?? state.readiness ?? 'normal',
     })
   );
   const planned = (resolved.slots || []).map((slot, i) => {
     const swappedTo = state.deviations.swaps[i];
     const extraSets = state.deviations.addedSets[i] || 0;
+
+    /*
+     * A slot never shows fewer rows than have already been logged against it.
+     *
+     * Anything that reshapes a session mid-way — switching to yellow, which
+     * removes the last work set — otherwise leaves a logged set with nowhere to
+     * render. It stays in the database and in every export, but the Train
+     * screen stops drawing it, stops counting it, and gives you no way to
+     * un-tick it. Three sets logged, "2 / 20 sets" on the header, and the third
+     * one still real. A set that exists is always shown; whether the plan still
+     * asks for it is a different question, answered by `beyondPlan`.
+     */
+    const prescribed = slot.sets + extraSets;
+    const loggedHere = highestLoggedIndex(state, i);
+    const sets = Math.max(prescribed, loggedHere + 1);
+
     return {
       ...slot,
       ex: swappedTo || slot.ex,
-      sets: slot.sets + extraSets,
+      sets,
+      prescribedSets: prescribed,
+      beyondPlan: sets > prescribed,
       swappedFrom: swappedTo ? slot.ex : null,
     };
   });
   return [...planned, ...state.deviations.extras];
+}
+
+/** The highest setIndex already logged against a slot, or -1 for none. */
+function highestLoggedIndex(state, slotIndex) {
+  let highest = -1;
+  for (const key of state.loggedSets.keys()) {
+    const [si, i] = key.split(':').map(Number);
+    if (si === slotIndex && i > highest) highest = i;
+  }
+  return highest;
+}
+
+/**
+ * Would moving to this readiness leave already-logged sets attached to the
+ * wrong exercise?
+ *
+ * Logged sets are keyed by position — `slotIndex:setIndex` — and readiness can
+ * remove a slot outright. On rotation 11 session A the static hold sits at
+ * index 0, so a red day shifts every slot up by one: the bench sets you logged
+ * become the static hold, the incline becomes the bench, and editing any of
+ * them rewrites the exercise in the database. Shrinking a slot is now
+ * survivable (see above); reindexing is not, so it is refused instead.
+ */
+export function readinessWouldReindex(state, nextReadiness) {
+  const current = slotsFor(state);
+  const next = slotsFor(state, nextReadiness);
+  if (current.length !== next.length) return true;
+  return current.some((slot, i) => slot.ex !== next[i].ex);
 }
 
 const workingMaxFor = (state, exerciseId) =>
@@ -250,17 +302,23 @@ function readinessBar(state) {
     ['yellow', 'Yellow — poor sleep, slow warm-up'],
     ['red', 'Red — pain or illness'],
   ];
-  if (current === 'normal') {
-    return `<div class="picker" style="margin-bottom:4px">${options
-      .map(
-        ([id, label]) =>
-          `<button class="pill ${id === current ? 'on' : ''}" data-act="readiness" data-id="${id}">${escape(
-            id === 'normal' ? 'Normal' : label.split(' — ')[0]
-          )}</button>`
-      )
-      .join('')}</div>`;
-  }
-  return `<div class="flag f-warn" style="margin-bottom:10px"><i>!</i><span><b>${escape(
+  // The picker stays on screen whatever is selected. It used to be replaced by
+  // the warning once a day was flagged, which left "Back to normal" as the only
+  // move — you could not go from yellow to red without going through normal
+  // first, and on a day that is getting worse rather than better that is
+  // exactly the move you want.
+  const picker = `<div class="picker" style="margin-bottom:4px">${options
+    .map(
+      ([id, label]) =>
+        `<button class="pill ${id === current ? 'on' : ''}" data-act="readiness" data-id="${id}">${escape(
+          id === 'normal' ? 'Normal' : label.split(' — ')[0]
+        )}</button>`
+    )
+    .join('')}</div>`;
+
+  if (current === 'normal') return picker;
+
+  return `${picker}<div class="flag f-warn" style="margin-bottom:10px"><i>!</i><span><b>${escape(
     current === 'red' ? 'Red day' : 'Yellow day'
   )}.</b> ${
     current === 'red'
