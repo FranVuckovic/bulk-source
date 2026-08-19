@@ -100,55 +100,103 @@ export const sheetIsOpen = () => document.getElementById('sheet').classList.cont
  * They share the bar because two timers on screen at once would be two numbers
  * that disagree, and the answer to "how long has it been" has to be one number.
  */
-let restTimer = null;
-let restLeft = 0;
+/*
+ * WALL-CLOCK, ALWAYS. Never count ticks.
+ *
+ * The first version did `restLeft -= 1` on a one-second setInterval, which is
+ * only correct while the page is in the foreground on an unthrottled tab.
+ * Background a phone browser and setInterval is throttled to about once a
+ * minute, or suspended outright — so a three-minute rest with two minutes spent
+ * on another app came back reading barely a minute gone. The clock was not
+ * slow; it was measuring how often the browser felt like calling us.
+ *
+ * So nothing here accumulates. Every reading is derived from `Date.now()`
+ * against an absolute instant fixed when the timer started, and the interval
+ * exists only to repaint. Throttle it, suspend it, miss a thousand ticks: the
+ * number is still right, because the number was never in the ticks.
+ */
+let paintHandle = null;
 let mode = 'rest';
 let running = false;
+
+/** Rest: the instant it finishes. Stopwatch: unused. */
+let endsAtMs = null;
+/** Stopwatch: when the current run began, and time banked from earlier runs. */
+let startedAtMs = null;
+let accumulatedMs = 0;
+
+/**
+ * The reading, from state and an instant. Pure, so the case that matters — a
+ * long gap with no ticks delivered — can be tested by moving `nowMs`.
+ */
+export function timerReading(state, nowMs) {
+  if (state.mode === 'rest') {
+    const remainingMs = (state.endsAtMs ?? nowMs) - nowMs;
+    return { seconds: Math.max(0, remainingMs / 1000), done: remainingMs <= 0 };
+  }
+  const elapsedMs = state.accumulatedMs + (state.running ? nowMs - state.startedAtMs : 0);
+  return { seconds: Math.max(0, elapsedMs / 1000), done: false };
+}
+
+const snapshot = () => ({ mode, running, endsAtMs, startedAtMs, accumulatedMs });
 
 const clock = (total) => {
   const value = Math.max(0, Math.round(total));
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
 };
 
-const paintRest = () => {
-  document.getElementById('rt').textContent = clock(restLeft);
+function paintRest() {
+  const bar = document.getElementById('rest');
+  if (!bar) return;
+  const reading = timerReading(snapshot(), Date.now());
+
+  document.getElementById('rt').textContent = clock(reading.seconds);
   const label = document.getElementById('rl');
   if (label) label.textContent = mode === 'rest' ? 'Rest' : running ? 'Timer' : 'Timer — paused';
   const toggle = document.getElementById('rest-toggle');
   if (toggle) toggle.textContent = running ? 'Pause' : 'Start';
-  const bar = document.getElementById('rest');
   bar.classList.toggle('stop', mode === 'stopwatch');
-};
 
-function tick() {
-  restLeft += mode === 'rest' ? -1 : 1;
-  paintRest();
-  // A countdown ends by itself; a stopwatch runs until it is told not to.
-  if (mode === 'rest' && restLeft <= 0) stopRest();
+  // A countdown ends by itself — including when it ended while the phone was in
+  // a pocket and this is the first repaint since.
+  if (mode === 'rest' && reading.done) stopRest();
 }
 
-const run = () => {
-  clearInterval(restTimer);
-  restTimer = setInterval(tick, 1000);
-  running = true;
+const repaintEvery = (ms) => {
+  clearInterval(paintHandle);
+  paintHandle = setInterval(paintRest, ms);
 };
+
+/*
+ * Coming back to the app repaints immediately rather than waiting up to a
+ * second, so the first thing you see is the true number and not the stale one.
+ */
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) paintRest();
+  });
+  window.addEventListener('pageshow', paintRest);
+  window.addEventListener('focus', paintRest);
+}
 
 /** Rest comes from the exercise, not from a fixed three minutes. */
 export function startRest(seconds) {
   mode = 'rest';
-  restLeft = seconds;
+  running = true;
+  endsAtMs = Date.now() + seconds * 1000;
   document.getElementById('rest').classList.add('on');
-  run();
+  repaintEvery(250);
   paintRest();
 }
 
 /** The hand-driven one. Opening it does not start it. */
 export function openStopwatch() {
   mode = 'stopwatch';
-  restLeft = 0;
   running = false;
-  clearInterval(restTimer);
-  restTimer = null;
+  startedAtMs = null;
+  accumulatedMs = 0;
+  clearInterval(paintHandle);
+  paintHandle = null;
   document.getElementById('rest').classList.add('on');
   paintRest();
 }
@@ -160,27 +208,40 @@ export function toggleTimer() {
     return;
   }
   if (running) {
-    clearInterval(restTimer);
-    restTimer = null;
+    // Bank what this run was worth, so the total survives the pause.
+    accumulatedMs += Date.now() - startedAtMs;
+    startedAtMs = null;
     running = false;
+    clearInterval(paintHandle);
+    paintHandle = null;
   } else {
-    run();
+    startedAtMs = Date.now();
+    running = true;
+    repaintEvery(250);
   }
   paintRest();
 }
 
 export function resetTimer() {
-  restLeft = 0;
-  if (mode === 'stopwatch') paintRest();
-  else stopRest();
+  if (mode !== 'stopwatch') {
+    stopRest();
+    return;
+  }
+  accumulatedMs = 0;
+  startedAtMs = running ? Date.now() : null;
+  paintRest();
 }
 
 export function stopRest() {
-  clearInterval(restTimer);
-  restTimer = null;
+  clearInterval(paintHandle);
+  paintHandle = null;
   running = false;
   mode = 'rest';
-  document.getElementById('rest').classList.remove('on', 'stop');
+  endsAtMs = null;
+  startedAtMs = null;
+  accumulatedMs = 0;
+  const bar = document.getElementById('rest');
+  if (bar) bar.classList.remove('on', 'stop');
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
