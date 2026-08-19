@@ -20,7 +20,7 @@
  * is obvious from inside the app whether an update actually landed.
  */
 
-const VERSION = 'v2.1.0';
+const VERSION = 'v2.1.1';
 const CACHE = `bulk-${VERSION}`;
 
 const SHELL = [
@@ -56,6 +56,21 @@ const SHELL = [
 const shellPaths = new Set(SHELL.map((path) => new URL(path, self.registration.scope).pathname));
 
 /**
+ * Is the worker we are replacing from a build generation that predates this
+ * cache-naming scheme?
+ *
+ * v1 named its cache `bulk-v2`; every version since is `bulk-v<major>.<minor>.<patch>`.
+ * The distinction matters because v1's worker answered a failed fetch with
+ * `index.html` whatever had been asked for — including a JavaScript module,
+ * which Chrome then refuses to execute as `text/html`. On a device holding that
+ * worker the app cannot start at all, so it can never reach the point of
+ * offering an update, and waiting politely would mean waiting forever.
+ */
+function precedesVersionedCaches(cacheNames) {
+  return cacheNames.some((name) => name.startsWith('bulk-') && !/^bulk-v\d+\.\d+\.\d+$/.test(name));
+}
+
+/**
  * Install fails loudly if any one file cannot be fetched.
  *
  * That is the point: a cache holding nineteen of twenty files is a build that
@@ -64,11 +79,19 @@ const shellPaths = new Set(SHELL.map((path) => new URL(path, self.registration.s
  */
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) =>
-      cache.addAll(SHELL.map((path) => new Request(path, { cache: 'reload' })))
-    )
+    (async () => {
+      const cache = await caches.open(CACHE);
+      await cache.addAll(SHELL.map((path) => new Request(path, { cache: 'reload' })));
+
+      // Normally: no skipWaiting. The new build waits until the app says it is
+      // safe, because losing a set to a reload mid-session is worse than
+      // running yesterday's build for another hour.
+      //
+      // The exception is a device whose current worker cannot run the app at
+      // all. There is no safe moment to wait for on a blank screen.
+      if (precedesVersionedCaches(await caches.keys())) await self.skipWaiting();
+    })()
   );
-  // No skipWaiting. The new build waits until the app says it is safe.
 });
 
 self.addEventListener('activate', (event) => {
@@ -90,9 +113,9 @@ self.addEventListener('message', (event) => {
 /**
  * Shell files come from this version's cache, always.
  *
- * That is what makes an update atomic: while v2.1.0 is the active worker, every
- * module the page imports is the v2.1.0 copy, even if the server has already
- * moved on. Anything outside the shell goes to the network first and falls back
+ * That is what makes an update atomic: while one version is the active worker,
+ * every module the page imports is that version's copy, even if the server has
+ * already moved on. Anything outside the shell goes to the network first and falls back
  * to whatever was cached.
  */
 self.addEventListener('fetch', (event) => {
