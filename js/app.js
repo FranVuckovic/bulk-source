@@ -69,6 +69,7 @@ import {
   openSheet,
   closeSheet,
   sheetIsOpen,
+  setSheetHooks,
   stopRest,
   toggleTimer,
   resetTimer,
@@ -1247,14 +1248,57 @@ function goTo(patch, { replace = false } = {}) {
   window.scrollTo(0, 0);
 }
 
+/*
+ * A covering sheet is a level of its own.
+ *
+ * It gets a real history entry when it opens, because back with something over
+ * the page has to mean "close that", and it can only mean that if there is an
+ * entry to spend. Without one — on the first screen, before any navigation —
+ * the back gesture went straight past the app, which on an installed PWA means
+ * closing it with a set editor open.
+ *
+ * Closing a sheet by tapping spends the entry too, so the stack does not grow
+ * a stale level per sheet. `poppingBack` stops that from recursing: when the
+ * close was itself caused by a back press, the entry is already gone.
+ */
+let sheetEntry = false;
+let ignoreNextPop = false;
+
+function onSheetOpen() {
+  if (sheetEntry) return;
+  sheetEntry = true;
+  try {
+    window.history.pushState({ sheet: true, view: currentView() }, '');
+  } catch {
+    sheetEntry = false;
+  }
+}
+
+function onSheetClose({ fromBack }) {
+  if (!sheetEntry) return;
+  sheetEntry = false;
+  if (fromBack) return;
+  ignoreNextPop = true;
+  try {
+    window.history.back();
+  } catch {
+    ignoreNextPop = false;
+  }
+}
+
 function wireBackButton() {
+  setSheetHooks({ onOpen: onSheetOpen, onClose: onSheetClose });
   window.history.replaceState({ view: currentView() }, '');
+
   window.addEventListener('popstate', (event) => {
-    // A covering sheet is the top of the stack. Back closes it and stays put,
-    // which is what the gesture means while something is over the page.
+    // Our own doing: a sheet was closed by a tap and gave its entry back.
+    if (ignoreNextPop) {
+      ignoreNextPop = false;
+      return;
+    }
     if (sheetIsOpen()) {
-      closeSheet();
-      window.history.pushState({ view: currentView() }, '');
+      sheetEntry = false;
+      closeSheet({ fromBack: true });
       render();
       return;
     }

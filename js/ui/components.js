@@ -53,14 +53,34 @@ export const escape = (text) =>
    Bottom sheet
    ═══════════════════════════════════════════════════════════════════════ */
 
-export function openSheet(html) {
-  document.getElementById('pan').innerHTML = html;
-  document.getElementById('sheet').classList.add('on');
+/*
+ * Every sheet in the app opens and closes through these two functions, which
+ * makes them the one place that can tell the router a sheet appeared. The
+ * router uses that to put the sheet on the browser's history stack, so the
+ * Android back gesture closes it instead of leaving the app.
+ *
+ * The hooks are registered rather than imported so this module stays ignorant
+ * of routing — it draws a panel, and something else decides what back means.
+ */
+let hooks = {};
+
+export function setSheetHooks(next) {
+  hooks = next || {};
 }
 
-export function closeSheet() {
+export function openSheet(html) {
+  const wasOpen = sheetIsOpen();
+  document.getElementById('pan').innerHTML = html;
+  document.getElementById('sheet').classList.add('on');
+  // Replacing the contents of an open sheet is not a new level to go back to.
+  if (!wasOpen) hooks.onOpen?.();
+}
+
+export function closeSheet({ fromBack = false } = {}) {
+  const wasOpen = sheetIsOpen();
   document.getElementById('sheet').classList.remove('on');
   document.getElementById('pan').innerHTML = '';
+  if (wasOpen) hooks.onClose?.({ fromBack });
 }
 
 export const sheetIsOpen = () => document.getElementById('sheet').classList.contains('on');
