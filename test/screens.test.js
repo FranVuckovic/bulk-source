@@ -74,12 +74,43 @@ test('the Plan screen counts rotations, not a week field the blocks do not have'
   assert.doesNotMatch(html, /width:NaN/);
 });
 
+/*
+ * The sections behind the tabs are the part most likely to rot: they render
+ * only when their tab is selected, so nothing exercises them by accident. Each
+ * one gets the same empty-database treatment as its parent screen.
+ */
+const sections = [
+  ['Progress', progressScreen, 'progressSection', ['summary', 'strength', 'body', 'volume']],
+  ['Plan', planScreen, 'planSection', ['overview', 'workouts', 'exercises', 'blocks', 'tips']],
+  ['Log', historyScreen, 'logSection', ['entries', 'backups', 'bin']],
+];
+
+for (const [name, screen, key, ids] of sections) {
+  for (const id of ids) {
+    test(`${name} → ${id} renders on an empty database`, () => {
+      const html = screen.view({ state: { ...emptyState(), [key]: id }, render() {} });
+      assert.ok(html.length > 200, 'it rendered something');
+      assert.doesNotMatch(html, /NaN/, 'a number that could not be computed reached the page');
+      assert.doesNotMatch(html, /undefined/, 'a missing value reached the page');
+      assert.doesNotMatch(html, /\[object Object\]/, 'an object was interpolated as text');
+      assert.doesNotMatch(html, /Infinity/, 'a division by nothing reached the page');
+    });
+  }
+}
+
 test('every screen survives a rotation at each block boundary', () => {
   for (const block of PLAN.blocks) {
     for (const sequence of [block.from, block.to]) {
       for (const [name, screen] of screens) {
         const html = screen.view({ state: emptyState({ sequence }), render() {} });
         assert.doesNotMatch(html, /NaN|undefined|\[object Object\]/, `${name} at rotation ${sequence}`);
+      }
+      // And every section of every screen, at every boundary.
+      for (const [name, screen, key, ids] of sections) {
+        for (const id of ids) {
+          const html = screen.view({ state: { ...emptyState({ sequence }), [key]: id }, render() {} });
+          assert.doesNotMatch(html, /NaN|undefined|\[object Object\]/, `${name} → ${id} at rotation ${sequence}`);
+        }
       }
     }
   }

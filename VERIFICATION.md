@@ -2,7 +2,7 @@
 
 **Build:** `sw.js` VERSION `v2.2.0` · database v3 · plan format 3 · plan `fopip-v2`
 **Verified:** 19 August 2026
-**Method:** 230 automated tests, plus a driven pass in a real Chromium at
+**Method:** 249 automated tests, plus a driven pass in a real Chromium at
 390 × 844 against twelve rotations of generated history.
 
 v2.2.0 adds demo mode, the five-section navigation, the repair tools and the
@@ -58,11 +58,12 @@ version bump. To exercise the update path itself, open `http://localhost:8123/?s
 | `service-worker.test.js` | 7 | The takeover rule, and that no branch can answer a module request with the shell |
 | `performance.test.js` | 6 | 200 sessions and 6,000 sets against explicit budgets |
 | `recovery.test.js` | 6 | Soft delete, restore, the bin listing, that a cascade-deleted set is not listed apart from its session, and refusing stores it cannot recover |
-| `screens.test.js` | 6 | Every screen on an empty database, and at both ends of every block, with no arithmetic leaking into the page |
+| `screens.test.js` | 18 | Every screen *and every section behind a tab* on an empty database, and at both ends of every block, with no arithmetic leaking into the page |
+| `timing.test.js` | 7 | Rest and duration from the stored tick times, and every case where they must not be reported |
 | `readiness.test.js` | 4 | The four defects reachable by flagging a day part-way through a session |
 | `photos.test.js` | 4 | Orientation-independent fitting and size formatting |
 
-**230 passing, 0 failing**, about 1 s.
+**249 passing, 0 failing**, about 1 s.
 
 `shell.test.js` exists because two of the defects found during this pass were
 not wrong code but unused code. `js/photos.js` was imported by the Body screen
