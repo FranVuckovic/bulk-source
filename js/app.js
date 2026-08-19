@@ -30,7 +30,6 @@ import {
   claimSingleTab,
   parseStoreKey,
   snapshot,
-  saveSession,
   confirmWorkingMax,
   requestPersistentStorage,
   storageEstimate,
@@ -275,41 +274,66 @@ async function restoreActiveSession() {
    Writes
    ═══════════════════════════════════════════════════════════════════════ */
 
-/** The session log is created by the first thing you actually do, not by looking. */
+/*
+ * Two ticks in quick succession both find `state.activeLog` empty, because
+ * neither has finished writing yet. Holding the in-flight promise means the
+ * second one waits for the first rather than starting a second session.
+ */
+let startingSession = null;
+
+/**
+ * The session log is created by the first thing you actually do, not by looking.
+ *
+ * Through `startSessionAtomic`, which checks the active pointer and the
+ * operation id inside the same transaction as the write. v1 wrote the log and
+ * the pointer separately, so a fast run of taps could open four sessions for
+ * the same slot — the guarantee existed and was tested, and the app was not
+ * calling it.
+ */
 async function ensureActiveLog() {
   if (state.activeLog) return state.activeLog;
+  if (startingSession) return startingSession;
 
-  const { sessionLogId } = await saveSession(
-    state.db,
-    {
-      dateISO: todayISO(),
-      localDate: todayISO(),
-      timeZone: timeZone(),
-      startedAt: nowISO(),
-      endedAt: null,
-      sessionId: state.trainSessionId,
-      rotationPosition: state.trainSessionId,
-      cycleId: state.cycle.id,
-      cycleSequence: state.cycle.sequence,
-      blockId: state.block.idx,
-      effortMode: state.effortMode,
-      readiness: state.readiness || 'normal',
-      status: 'active',
-      rotationIndex: state.plan.meta.rotationOrder.indexOf(state.trainSessionId),
-      bodyweight: null,
-      sessionRpe: null,
-      note: null,
-      isPartial: false,
-      deviations: state.deviations,
-      grips: state.grips,
-    },
-    []
-  );
+  // Stable for this position on this day, so a retry cannot open a second one.
+  const operationId = `start:${state.cycle.id}:${state.trainSessionId}:${todayISO()}`;
 
-  await writeSetting(state.db, 'activeSessionLogId', sessionLogId);
-  state.logs = sortLogsByDate(await getAll(state.db, 'sessionLogs'));
-  state.activeLog = state.logs.find((log) => log.id === sessionLogId);
-  return state.activeLog;
+  startingSession = (async () => {
+    const { log } = await startSessionAtomic(
+      state.db,
+      {
+        dateISO: todayISO(),
+        localDate: todayISO(),
+        timeZone: timeZone(),
+        startedAt: nowISO(),
+        endedAt: null,
+        sessionId: state.trainSessionId,
+        rotationPosition: state.trainSessionId,
+        cycleId: state.cycle.id,
+        cycleSequence: state.cycle.sequence,
+        blockId: state.block.idx,
+        effortMode: state.effortMode,
+        readiness: state.readiness || 'normal',
+        rotationIndex: state.plan.meta.rotationOrder.indexOf(state.trainSessionId),
+        bodyweight: null,
+        sessionRpe: null,
+        note: null,
+        isPartial: false,
+        deviations: state.deviations,
+        grips: state.grips,
+      },
+      { operationId }
+    );
+
+    state.logs = sortLogsByDate(alive(await getAll(state.db, 'sessionLogs')));
+    state.activeLog = state.logs.find((row) => row.id === log.id) || log;
+    return state.activeLog;
+  })();
+
+  try {
+    return await startingSession;
+  } finally {
+    startingSession = null;
+  }
 }
 
 async function saveSet(slotIndex, setIndex, values) {
@@ -639,9 +663,9 @@ const ctx = {
     render();
   },
 
-  async deleteMedia(id) {
-    await remove(state.db, 'media', id);
-    state.media = (await getAll(state.db, 'media')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+  async deleteMedia(id, { reason = null } = {}) {
+    await softDeleteRow(state.db, 'media', id, { reason });
+    await loadEverything();
   },
 
   async saveMedia(row) {
@@ -945,8 +969,20 @@ const globalActions = {
         <input id="cycle-to" type="number" min="1" max="${state.plan.meta.rotations}" value="${state.cycle.sequence}"></div>
       <div class="mt"><label for="cycle-why">Why</label>
         <input id="cycle-why" type="text" placeholder="Trained away from the app, imported twice…"></div>
+      ${
+        state.cycleProgress.finished
+          ? `<div class="flag f-ok" style="margin-top:10px"><i>✓</i><span><b>Rotation ${
+              state.cycle.sequence
+            } is finished.</b>${
+              state.boundary.atBoundary
+                ? ` It also ends <b>${escape(state.boundary.fromName)}</b> — review your working maxes before moving on.`
+                : ''
+            }</span></div>
+          <button class="big mt" data-act="advance-cycle">Start rotation ${state.cycle.sequence + 1}</button>`
+          : ''
+      }
       <p class="hint">Corrections are recorded with their reason. Nothing about the plan position changes silently.</p>
-      <button class="big mt" data-act="correct-cycle">Correct it</button>
+      <button class="big${state.cycleProgress.finished ? ' ghost' : ''} mt" data-act="correct-cycle">Correct it</button>
       <button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
   },
 

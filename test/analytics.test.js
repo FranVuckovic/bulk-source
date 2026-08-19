@@ -266,3 +266,21 @@ test('the whole pipeline runs off real records', () => {
   assert.equal(byCycle.length, 6);
   assert.equal(trend(series.points).ok, true);
 });
+
+
+test('the rolling mean is a window of days, and several readings on one date do not break it', () => {
+  const points = [
+    { dateISO: '2026-08-01', value: 90 },
+    { dateISO: '2026-08-01', value: 92 },
+    { dateISO: '2026-08-02', value: 94 },
+    { dateISO: '2026-08-20', value: 100 },
+  ];
+
+  const mean = rollingMean(points, 7);
+  assert.equal(mean.length, 4);
+  assert.equal(mean[0].value, 90);
+  assert.equal(mean[1].value, 91, 'two readings on the same day both count');
+  assert.equal(mean[2].value, 92, '(90 + 92 + 94) / 3');
+  assert.equal(mean[3].value, 100, 'a reading 18 days later stands alone');
+  assert.deepEqual(mean.map((m) => m.samples), [1, 2, 3, 1]);
+});

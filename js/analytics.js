@@ -180,22 +180,34 @@ export function trend(points, { minSamples = 3, minDays = 14, label = 'trend' } 
   };
 }
 
-/** Trailing average over a window of days, not of samples. */
+/**
+ * Trailing average over a window of days, not of samples.
+ *
+ * A sliding window rather than a backward scan per point. The scan is fine for
+ * one weigh-in a day, where it stops after seven — and quadratic the moment
+ * several readings share a date, which is exactly what a set-level series
+ * looks like. Day numbers are computed once, because the cost here is parsing
+ * dates, not adding numbers.
+ */
 export function rollingMean(points, windowDays = 7) {
   const clean = (points || [])
     .filter((p) => Number.isFinite(p.value))
     .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
 
-  return clean.map((point, i) => {
-    let sum = 0;
-    let count = 0;
-    for (let j = i; j >= 0; j--) {
-      if (daysBetween(clean[j].dateISO, point.dateISO) >= windowDays) break;
-      sum += clean[j].value;
-      count += 1;
+  const days = clean.map((p) => Math.round(Date.parse(`${p.dateISO.slice(0, 10)}T00:00:00Z`) / 86400000));
+
+  const out = [];
+  let start = 0;
+  let sum = 0;
+  for (let i = 0; i < clean.length; i++) {
+    sum += clean[i].value;
+    while (days[i] - days[start] >= windowDays) {
+      sum -= clean[start].value;
+      start += 1;
     }
-    return { dateISO: point.dateISO, value: sum / count, samples: count };
-  });
+    out.push({ dateISO: clean[i].dateISO, value: sum / (i - start + 1), samples: i - start + 1 });
+  }
+  return out;
 }
 
 /**

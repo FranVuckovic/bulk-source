@@ -2,7 +2,7 @@
 
 **Build:** `sw.js` VERSION `v2.1.0` · database v3 · plan format 3 · plan `fopip-v2`
 **Verified:** 19 August 2026
-**Method:** 199 automated tests, plus a manual pass in a 390 × 844 viewport in
+**Method:** 206 automated tests, plus a manual pass in a 390 × 844 viewport in
 both colour schemes against twelve rotations of generated history.
 
 v1 is archived at `archive/v1/` and tagged `v1.0`. It still runs and still
@@ -50,8 +50,17 @@ version bump. To exercise the update path itself, open `http://localhost:8123/?s
 | `performance.test.js` | 6 | 200 sessions and 6,000 sets against explicit budgets |
 | `recovery.test.js` | 5 | Soft delete, restore, the bin listing, and refusing stores it cannot recover |
 | `photos.test.js` | 4 | Orientation-independent fitting and size formatting |
+| `shell.test.js` | 6 | The offline shell covers the module graph, and the app calls the safe paths rather than merely containing them |
 
-**199 passing, 0 failing**, about 0.6 s.
+**206 passing, 0 failing**, about 0.6 s.
+
+`shell.test.js` exists because two of the defects found during this pass were
+not wrong code but unused code. `js/photos.js` was imported by the Body screen
+and absent from the precache list, so the app would have worked everywhere
+except offline. `startSessionAtomic` was written and tested and then not
+called: `ensureActiveLog` wrote the log and the active pointer separately, so
+five taps in one turn of the event loop opened five sessions for the same slot.
+A test that only exercises a function cannot catch either.
 
 The performance suite is the one that will catch a regression silently: it
 builds 200 sessions and 6,000 sets and asserts that block comparison across
@@ -111,6 +120,21 @@ colour schemes at 390 × 844.
   *partial* session, not promoted to complete.
 - **The bin is the only thing that destroys.** Settings → Empty the bin, behind
   two confirmations and an offered backup.
+
+### Sessions and rotations
+
+- **A session opens once, however fast you tap.** Five ticks fired in the same
+  turn of the event loop produce one session log and five sets. Before the fix
+  they produced four session logs.
+- **Finishing writes a real end state.** 14 of 27 sets → `status: complete`,
+  `completionRatio: 0.52`, `prescribedSets: 27`, `loggedSets: 14`, active
+  pointer cleared, and the next position reported: *"Next in the rotation: F ·
+  1 still to do in rotation 12."*
+- **A finished rotation can be advanced from the cycle card, not only from the
+  save dialog.** Completing all six offers *Start rotation 13*; taking it closes
+  rotation 12 as `complete` with an end date, creates rotation 13 with the right
+  block and effort mode, and moves the next session to A. Dismissing the save
+  dialog no longer strands the offer.
 
 ### Training rules
 

@@ -322,22 +322,24 @@ export const actions = {
   },
 
   /**
-   * Deleting a photo is the one deletion with nothing to recover from — the
-   * bytes are the record. So it asks, and it offers the export first.
+   * A photo goes to the bin like everything else. The bytes are the record and
+   * there is no second copy, so it still asks and still offers the export —
+   * but the answer to a mis-tap is one tap in History, not an apology.
    */
   'delete-photo'(ctx, data) {
     const photo = ctx.state.media.find((m) => String(m.id) === String(data.id));
     if (!photo) return;
     openSheet(`<div class="ttl">Delete this check-in?</div>
       <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">${escape(shortDate(photo.dateISO))}</p>
-      <p style="font-size:13px;text-align:center">The image is the record — there is no copy to restore from once it
-      is gone. Export first if you are not certain.</p>
+      <p style="font-size:13px;text-align:center">It moves to <b>Recently deleted</b> at the foot of History, where
+      you can put it back. It is only destroyed when you empty the bin in Settings.</p>
       <button class="big ghost mt" data-act="history-backup">Export everything first</button>
       <button class="big danger mt" data-act="confirm-delete-photo" data-id="${photo.id}">Delete it</button>
       <button class="big ghost mt" data-act="sheet-close">Keep it</button>`);
   },
 
   async 'confirm-delete-photo'(ctx, data) {
+    // The blob URLs go now; a restore mints new ones from the same bytes.
     releaseImageUrl(`m${data.id}`);
     releaseImageUrl(`f${data.id}`);
     await ctx.deleteMedia(Number(data.id));
