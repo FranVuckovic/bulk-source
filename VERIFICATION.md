@@ -1,8 +1,8 @@
 # Bulk v2 — verification
 
-**Build:** `sw.js` VERSION `v2.1.1` · database v3 · plan format 3 · plan `fopip-v2`
+**Build:** `sw.js` VERSION `v2.1.2` · database v3 · plan format 3 · plan `fopip-v2`
 **Verified:** 19 August 2026
-**Method:** 217 automated tests, plus a manual pass in a 390 × 844 viewport in
+**Method:** 219 automated tests, plus a manual pass in a 390 × 844 viewport in
 both colour schemes against twelve rotations of generated history.
 
 v1 is archived at `archive/v1/` and tagged `v1.0`. It still runs and still
@@ -54,7 +54,7 @@ version bump. To exercise the update path itself, open `http://localhost:8123/?s
 | `screens.test.js` | 6 | Every screen on an empty database, and at both ends of every block, with no arithmetic leaking into the page |
 | `shell.test.js` | 6 | The offline shell covers the module graph, and the app calls the safe paths rather than merely containing them |
 
-**217 passing, 0 failing**, about 0.6 s.
+**219 passing, 0 failing**, about 0.6 s.
 
 `shell.test.js` exists because two of the defects found during this pass were
 not wrong code but unused code. `js/photos.js` was imported by the Body screen
@@ -177,6 +177,12 @@ colour schemes at 390 × 844.
 prescriptions with a fixed growth rate and no bad days, so the trend lines are
 tidier than a real log will ever be. It is there to exercise the code, not to
 demonstrate a result.
+
+**The launcher icon is not the app's to change.** Android bakes it into the
+installed app, so an icon change reaches the home screen only when the app is
+reinstalled, or whenever Chrome next decides to regenerate it. The filenames
+carry a version so the browser has something to notice; nothing in the page can
+force it.
 
 **Photo decoding depends on the browser.** An iPhone HEIC that Chrome cannot
 decode is reported as a readable error rather than silently skipped, but it is
