@@ -586,3 +586,25 @@ test('plate maths uses the plates actually in the gym', () => {
   assert.deepEqual(platesFor(20).perSide, [], 'just the bar');
   assert.equal(platesFor(15).achieved, 20, 'nothing lighter than the bar exists');
 });
+
+test('a bodyweight lift is never prescribed a negative added load', () => {
+  // Ten reps at RPE 8 off a 122 kg pull-up max works out below 90 kg of
+  // bodyweight. v1 prescribed "-2.5 kg", which cannot be loaded and which
+  // travelled into the export as a value the import validator refused.
+  const slot = { reps: 10, rpe: 8 };
+  const added = prescribedLoad(slot, 122, 2.5, { bodyweight: 90 });
+  assert.equal(added, 0, 'bodyweight only, not a negative plate');
+
+  // The clamp applies to the AMRAP and back-off paths too.
+  assert.equal(prescribedLoad({ amrap: true }, 100, 2.5, { bodyweight: 90 }), 0);
+  assert.equal(prescribedLoad({ pctTop: 0.7, reps: 5, rpe: 8 }, 105, 2.5, { bodyweight: 90 }), 0);
+
+  // And only to bodyweight lifts: a barbell lift has no floor to stand on.
+  assert.ok(prescribedLoad({ reps: 10, rpe: 8 }, 122, 2.5, { bodyweight: 0 }) > 0);
+});
+
+test('a bodyweight lift still gets a real added load when the max supports one', () => {
+  const added = prescribedLoad({ reps: 3, rpe: 9 }, 140, 2.5, { bodyweight: 90 });
+  assert.ok(added > 0, `expected a positive added load, got ${added}`);
+  assert.equal(added % 2.5, 0, 'and it lands on a plate');
+});

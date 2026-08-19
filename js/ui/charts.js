@@ -526,9 +526,16 @@ export function timeChart(points, {
         `${toX(lastDay).toFixed(1)},${toY(corridorAt(lastDay).lo).toFixed(1)}`,
         `${toX(corridorStart).toFixed(1)},${toY(corridorAt(corridorStart).lo).toFixed(1)}`,
       ].join(' ')}" fill="var(--s3)" opacity="0.14"/>
-      <text x="${(toX(corridorStart) + 4).toFixed(1)}" y="${(toY(corridorAt(corridorStart).hi) - 5).toFixed(
-        1
-      )}" font-size="10" fill="var(--muted)">target ${corridor.lo}–${corridor.hi}/wk</text>`
+      ${
+        // Only labelled when there is room for it. A young corridor is a sliver
+        // at the right-hand edge, where the label would land on top of the
+        // latest value — and the caption says the same thing in words anyway.
+        (lastDay - corridorStart) / span > 0.3
+          ? `<text x="${(toX(corridorStart) + 4).toFixed(1)}" y="${(toY(corridorAt(corridorStart).hi) - 5).toFixed(
+              1
+            )}" font-size="10" fill="var(--muted)">target ${corridor.lo}–${corridor.hi}/wk</text>`
+          : ''
+      }`
     : '';
 
   const goalLine =

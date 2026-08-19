@@ -301,9 +301,11 @@ function exerciseBlock(state, slot, slotIndex) {
         slot.optional ? '<span class="badge opt">OPTIONAL</span>' : ''
       }</b>
         <span class="sc">${slot.sets} × ${slot.amrap ? 'max' : slot.reps} @ RPE ${slot.rpe}${
-          prescribed != null
-            ? ` · ${workingMaxFor(state, slot.ex) && bodyweightFor(state, slot.ex) ? '+' : ''}${fmtLoad(prescribed, unit)} ${unit}`
-            : ''
+          prescribed == null
+            ? ''
+            : bodyweightFor(state, slot.ex) && prescribed === 0
+              ? ' · bodyweight'
+              : ` · ${workingMaxFor(state, slot.ex) && bodyweightFor(state, slot.ex) ? '+' : ''}${fmtLoad(prescribed, unit)} ${unit}`
         }</span></div>
       <div class="car">›</div></div>
     <div class="exbody">${rows}
@@ -377,9 +379,17 @@ function prescriptionHint(state, slot, prescribed, workingMax) {
   const detail = effectiveRpeDetail(prescribed, workingMax, slot.reps, { bodyweight });
   if (!detail) return '';
 
-  const parts = [`Prescribed <b>${bodyweight ? '+' : ''}${fmtLoad(prescribed, unit)} ${unit}</b>`];
+  // You cannot add less than nothing to a pull-up. When the percentage works
+  // out below bodyweight the honest instruction is the rep target, not a load.
+  const bodyweightOnly = bodyweight > 0 && prescribed === 0;
 
-  if (bodyweight) {
+  const parts = [
+    bodyweightOnly
+      ? `<b>Bodyweight only</b> — the target percentage lands below your ${fmtLoad(bodyweight, unit)} ${unit}, so the rep range is what makes this hard`
+      : `Prescribed <b>${bodyweight ? '+' : ''}${fmtLoad(prescribed, unit)} ${unit}</b>`,
+  ];
+
+  if (bodyweight && !bodyweightOnly) {
     parts.push(`${fmtLoad(detail.systemLoad, unit)} ${unit} total with bodyweight`);
   }
   if (slot.pctTop) {

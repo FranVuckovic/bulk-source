@@ -222,7 +222,17 @@ export const addedLoad = (system, bodyweight = 0) =>
 export function prescribedLoad(slot, workingMax, increment = DEFAULT_INCREMENT, { bodyweight = 0 } = {}) {
   if (!slot || !workingMax) return null;
 
-  const roundAdded = (system) => roundToIncrement(system - bodyweight, increment);
+  /*
+   * On a pull-up, chin-up or dip the stored load is what is ADDED to your
+   * bodyweight, and there is no way to add less than nothing. Ten reps at a
+   * percentage that works out below bodyweight is a real situation — it just
+   * means the rep target, not the load, is what makes the set hard that day.
+   *
+   * v1 subtracted anyway and prescribed "-2.5 kg", which is not a thing you
+   * can load, and which then travelled into the export as an impossible value
+   * that the import validator refused.
+   */
+  const roundAdded = (system) => Math.max(bodyweight > 0 ? 0 : -Infinity, roundToIncrement(system - bodyweight, increment));
 
   if (slot.amrap) return roundAdded(workingMax * AMRAP_FRACTION);
 

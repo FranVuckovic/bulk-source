@@ -98,6 +98,41 @@ function scheduleFor(count) {
   return days.map((offset) => addDays(today, offset - span));
 }
 
+
+/**
+ * A stand-in photo. Obviously synthetic — nobody should mistake one of these
+ * for a real check-in — but a genuine JPEG of a realistic size, so storage,
+ * the gallery and the export all behave the way they will with real ones.
+ */
+async function drawnPhoto(dateISO, width, height) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const c = canvas.getContext('2d');
+
+  const gradient = c.createLinearGradient(0, 0, width, height);
+  const seed = wobble(Date.parse(dateISO) / 86400000);
+  gradient.addColorStop(0, `hsl(${Math.round(seed * 360)} 30% 26%)`);
+  gradient.addColorStop(1, `hsl(${Math.round(seed * 360 + 40)} 24% 12%)`);
+  c.fillStyle = gradient;
+  c.fillRect(0, 0, width, height);
+
+  c.fillStyle = 'rgba(255,255,255,.16)';
+  c.beginPath();
+  c.ellipse(width / 2, height * 0.55, width * 0.22, height * 0.3, 0, 0, Math.PI * 2);
+  c.fill();
+
+  c.fillStyle = 'rgba(255,255,255,.75)';
+  c.font = `700 ${Math.round(width / 14)}px system-ui, sans-serif`;
+  c.textAlign = 'center';
+  c.fillText('SAMPLE', width / 2, height * 0.16);
+  c.font = `500 ${Math.round(width / 22)}px system-ui, sans-serif`;
+  c.fillText(dateISO, width / 2, height * 0.16 + width / 12);
+
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.7));
+  return { bytes: new Uint8Array(await blob.arrayBuffer()) };
+}
+
 async function loadSample() {
   const plan = await (await fetch('../data/plan-fopip-v2.json')).json();
   const bodyweight = plan.meta.referenceBodyweightKg ?? 90;
@@ -303,6 +338,10 @@ async function loadSample() {
       });
     }
     if (day % 28 === 0) {
+      // Real bytes, not nulls: a placeholder photo exercises the gallery, the
+      // viewer, the compare sheet and the export the same way a real one does.
+      const image = await drawnPhoto(dateISO, 1280, 1707);
+      const thumb = await drawnPhoto(dateISO, 320, 427);
       await put(db, 'media', {
         dateISO,
         localDate: dateISO,
@@ -311,9 +350,14 @@ async function loadSample() {
         load: null,
         reps: null,
         note: 'Front relaxed',
-        fileRef: null,
-        imageBytes: null,
-        imageType: null,
+        fileRef: `sample-${dateISO}.jpg`,
+        imageBytes: image.bytes,
+        imageType: 'image/jpeg',
+        thumbBytes: thumb.bytes,
+        thumbType: 'image/jpeg',
+        width: 1280,
+        height: 1707,
+        bytes: image.bytes.length,
       });
     }
   }

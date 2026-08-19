@@ -101,11 +101,16 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
+  // Only the app's own entry point falls back to the cached shell. A blanket
+  // navigation fallback would answer every page on the origin with index.html,
+  // which is how the sample-data tool started rendering the app instead.
   if (request.mode === 'navigate') {
+    const appRoot = new URL('./', self.registration.scope).pathname;
+    const isAppEntry = url.pathname === appRoot || url.pathname === `${appRoot}index.html`;
     event.respondWith(
-      caches.open(CACHE).then((cache) =>
-        cache.match('./index.html').then((hit) => hit || fetch(request))
-      )
+      isAppEntry
+        ? caches.open(CACHE).then((cache) => cache.match('./index.html').then((hit) => hit || fetch(request)))
+        : fetch(request).catch(() => caches.match(request))
     );
     return;
   }

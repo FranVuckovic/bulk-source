@@ -1177,8 +1177,20 @@ async function boot() {
  * never stop the app starting — the app works without it, it just needs a
  * connection.
  */
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+
+  // Not on localhost, unless asked for with ?sw=1.
+  //
+  // The worker serves the whole shell out of one versioned cache, which is what
+  // makes an update atomic — and which, while developing, means every edit is
+  // invisible until the version is bumped. That is correct in production and
+  // pure friction here, so the development host opts out and the flag exists
+  // for the times the update path itself is what needs testing.
+  const forced = new URLSearchParams(location.search).get('sw') === '1';
+  if (LOCAL_HOSTS.has(location.hostname) && !forced) return;
 
   // One reload, ever. Without the guard a controller change during startup can
   // put the app in a reload loop, which on a phone looks exactly like a crash.

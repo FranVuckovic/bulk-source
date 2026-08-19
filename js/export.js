@@ -492,6 +492,13 @@ export function verifyAgainst(parsed, snapshot) {
       flat[key] =
         value instanceof Uint8Array ? digest(value) : ArrayBuffer.isView(value) ? digest(new Uint8Array(value.buffer)) : value;
     }
+    // Both byte fields are always present, whether or not the record has them.
+    // A stored `imageBytes: null` against a backup that simply omits the key is
+    // the same record, and reporting it as a difference would train you to
+    // ignore the one time the verification is right.
+    for (const key of ['imageBytes', 'thumbBytes']) {
+      if (flat[key] == null) flat[key] = null;
+    }
     return JSON.stringify(flat, Object.keys(flat).sort());
   };
 

@@ -152,7 +152,7 @@ export function view(ctx) {
   ${section(
     'photos',
     'Physique check-ins',
-    photos.length ? `${photos.length} photos` : '',
+    photos.length ? `${photos.length} photo${photos.length === 1 ? '' : 's'}` : '',
     `<div class="card">${gallery(state, photos)}
       <div class="mini"><button data-act="add-photo">+ Add photos</button>${
         photos.length >= 2
@@ -177,7 +177,7 @@ export function view(ctx) {
   ${section(
     'forms',
     'Form checks',
-    videos.length ? `${videos.length} videos` : '',
+    videos.length ? `${videos.length} video${videos.length === 1 ? '' : 's'}` : '',
     `<div class="card">${
       videos.length
         ? videos

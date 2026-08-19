@@ -119,8 +119,10 @@ export function view(ctx) {
   <div class="card"><p style="margin:0">Bulk · build <b>${escape(state.buildVersion || 'not cached')}</b> ·
     plan format ${state.plan.format} · database v${state.integrity?.formatVersion ?? '—'} ·
     ${escape(state.plan.meta.id)}</p>
-    <p class="hint">The build number comes from the service worker's cache version. If you update the app and this
-    does not change, the update has not reached this device — close every tab and reopen.</p></div>`;
+    <p class="hint">The build number comes from the service worker's version. If you update the app and this does not
+    change, the update has not reached this device — close every tab and reopen. It reads <b>not cached</b> when the
+    app is being served from a development machine, where the offline shell is deliberately switched off so edits
+    are visible immediately.</p></div>`;
 }
 
 /** File pickers, handled on change rather than click. */

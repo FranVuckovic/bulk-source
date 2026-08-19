@@ -21,6 +21,9 @@
 <link rel="stylesheet" href="./css/app.css">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
+<!-- Declared so the browser stops asking for /favicon.ico, which does not exist
+     and which the service worker would otherwise be asked about on every load. -->
+<link rel="icon" href="./icons/icon-192.png" type="image/png">
 </head>
 <body>
 <div class="top"><div class="row">

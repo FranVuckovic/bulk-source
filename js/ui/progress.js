@@ -354,11 +354,11 @@ function tiles(state, m, unit) {
   const change = m.change.ok ? m.change.change : null;
 
   return `<div class="tiles">
-    <div class="tile"><div class="k">${escape(state.plan.exercises[m.focus].name.split(' (')[0])} e1RM</div><div class="v">${
+    <div class="tile"><div class="k">Estimated 1RM</div><div class="v">${
       m.best == null ? '—' : fmtLoad(m.best, unit)
-    }<small> ${unit}</small></div><div class="d${m.best != null ? ' up' : ''}">${
-      m.best == null ? 'no index sets yet' : `best of ${m.series.sampleCount} index sets`
-    }</div></div>
+    }<small> ${unit}</small></div><div class="d${m.best != null ? ' up' : ''}">${escape(
+      state.plan.exercises[m.focus].name.split(' (')[0].toLowerCase()
+    )}${m.best == null ? ' · no index sets yet' : ` · best of ${m.series.sampleCount}`}</div></div>
     <div class="tile"><div class="k">4-week change</div><div class="v">${
       change == null ? '—' : `${change >= 0 ? '+' : ''}${fmtLoad(change, unit)}`
     }<small> ${unit}</small></div><div class="d">${
@@ -671,13 +671,23 @@ function recordsCard(state, m, unit) {
     `<div class="rec"><div class="lb"><b>${escape(label)}</b><span>${escape(sub)}</span></div>
       <div class="vl">${escape(value)}<small> ${escape(small)}</small></div></div>`;
 
+  // On a dip or a pull-up the stored load is what was added, but the estimate
+  // is of the whole system. Printing "5.0 kg × 10 → 139.7" without saying so
+  // reads like an error.
+  const setLine = (r) => {
+    const exercise = state.plan.exercises[r.exerciseId];
+    if (!exercise?.bodyweightLoaded) return `${fmtLoad(r.load, unit)} ${unit} × ${r.reps}`;
+    const bodyweight = state.settings.bodyweight;
+    return `+${fmtLoad(r.load, unit)} × ${r.reps}, ${fmtLoad(systemLoad(r.load, bodyweight), unit)} ${unit} with bodyweight`;
+  };
+
   return `<div class="card">
     ${estimated.length ? '<p class="hint" style="margin:0 0 8px">Best estimated max</p>' : ''}
     <div class="records">${estimated
       .map((r) =>
         row(
           state.plan.exercises[r.exerciseId].name.split(' (')[0],
-          `${fmtLoad(r.load, unit)} ${unit} × ${r.reps} on ${r.dateISO}`,
+          `${setLine(r)} on ${r.dateISO}`,
           fmtLoad(r.value, unit),
           unit
         )
@@ -688,7 +698,9 @@ function recordsCard(state, m, unit) {
       .map((r) =>
         row(
           state.plan.exercises[r.exerciseId].name.split(' (')[0],
-          `for ${r.reps} rep${r.reps === 1 ? '' : 's'} on ${r.dateISO}`,
+          `${state.plan.exercises[r.exerciseId].bodyweightLoaded ? 'added, ' : ''}for ${r.reps} rep${
+            r.reps === 1 ? '' : 's'
+          } on ${r.dateISO}`,
           fmtLoad(r.load, unit),
           unit
         )
