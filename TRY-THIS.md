@@ -98,8 +98,12 @@ it is yours to run, not mine. When you do:
    wrong.
 3. `npm run publish -- https://github.com/FranVuckovic/bulk.git`
 
-The published set is 29 files: the 28 in `SHELL` plus `sw.js` itself. `docs/`,
-`test/`, `dev/` and this file stay here.
+The published set is **28 files**: the 27 real paths in `SHELL` — the `'./'`
+entry is a route, not a file — plus `sw.js`, which is never in its own shell
+because it does not precache itself. `docs/`, `test/`, `dev/`, `archive/` and
+this file stay here. I dry-ran that selection: 28 present, 0 missing, nothing
+from those directories, no occurrence of your name in any published file, and
+the retired v1 plan still excluded.
 
 **Your phone will not lose anything.** The update replaces code only; it never
 opens IndexedDB. It will show `v2.1.3 → v2.2.0` — though on that first update
