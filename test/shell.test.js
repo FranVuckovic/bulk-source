@@ -128,3 +128,34 @@ test('the page and the manifest agree about which icon files exist', () => {
     assert.doesNotThrow(() => readFileSync(join(root, match[1])), `${match[1]} is linked from index.html but missing`);
   }
 });
+
+test('the publish script derives its file list from the shell, not from directories', () => {
+  // Copying whole directories was close enough to be believable and wrong:
+  // data/ carried a retired plan file that nothing loads and that had a name
+  // in it, published to a public repository for no reason.
+  const publish = read('dev/publish.sh');
+
+  assert.ok(publish.includes("readFileSync('sw.js'"), 'publish.sh reads the shell list from sw.js');
+  assert.ok(!/cp -R \$APP_FILES/.test(publish), 'and no longer copies directories wholesale');
+
+  // Anything in data/ that the shell does not name must stay unpublished.
+  const shell = new Set(shellPaths());
+  const retired = readdirSync(join(root, 'data'))
+    .map((name) => `data/${name}`)
+    .filter((path) => !shell.has(path));
+
+  for (const path of retired) {
+    assert.ok(!shell.has(path), `${path} is not in the shell, so publish must not copy it`);
+  }
+});
+
+test('nothing the app publishes carries a personal identifier', () => {
+  // The published build goes to a public repository under a real name. The
+  // plan the app loads is training content and belongs there; a retired plan
+  // titled after its owner does not.
+  for (const path of shellPaths()) {
+    if (!/\.(json|js|html|css|webmanifest|md)$/.test(path)) continue;
+    const text = readFileSync(join(root, path), 'utf8');
+    assert.doesNotMatch(text, /Fran|Vuckovic|fran-bulk/i, `${path} is published and names its owner`);
+  }
+});

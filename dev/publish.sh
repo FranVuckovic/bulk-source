@@ -22,16 +22,31 @@ fi
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-# Everything in the service worker's shell list, and nothing else.
-APP_FILES="index.html manifest.webmanifest sw.js css js data icons"
+# Exactly the service worker's shell list, and nothing else.
+#
+# This used to copy whole directories — close enough to be believable, and
+# wrong: data/ carried a retired plan file that nothing loads, named "Fran's
+# Bulk Plan v1", published to the internet for no reason at all. The shell list
+# is already the authoritative statement of what the app needs, and a test
+# checks it against the module graph, so read it rather than restating it.
+APP_FILES=$(node -e "
+  const source = require('fs').readFileSync('sw.js', 'utf8');
+  const start = source.indexOf('const SHELL = [');
+  const block = source.slice(start, source.indexOf('];', start));
+  const paths = [...block.matchAll(/'([^']+)'/g)]
+    .map((m) => m[1].replace(/^\.\//, ''))
+    .filter((p) => p && !p.endsWith('/'));
+  console.log([...new Set(paths)].join('\n'));
+")
 
-for path in $APP_FILES; do
-  [ -e "$path" ] || { echo "missing: $path" >&2; exit 1; }
-done
+[ -n "$APP_FILES" ] || { echo "could not read SHELL from sw.js" >&2; exit 1; }
 
 rm -rf dist
-mkdir -p dist
-cp -R $APP_FILES dist/
+for path in $APP_FILES; do
+  [ -f "$path" ] || { echo "missing: $path" >&2; exit 1; }
+  mkdir -p "dist/$(dirname "$path")"
+  cp "$path" "dist/$path"
+done
 
 cat > dist/README.md <<'EOF'
 # Bulk
