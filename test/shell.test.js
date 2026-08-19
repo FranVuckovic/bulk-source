@@ -102,3 +102,29 @@ test('deletion in the app is recoverable, not a raw remove', () => {
   assert.ok(deleter.includes('softDeleteRow('), 'so is everything else');
   assert.ok(!deleter.includes('deleteSessionCascade('), 'the cascade belongs to emptying the bin only');
 });
+
+test('every icon the manifest names is precached and present', () => {
+  // An icon whose bytes change but whose filename does not is an icon the
+  // installed app will never notice. The filenames carry the version, so the
+  // manifest has to keep up with them and so does the shell.
+  const manifest = JSON.parse(read('manifest.webmanifest'));
+  const shell = new Set(shellPaths());
+
+  for (const icon of manifest.icons) {
+    const path = icon.src.replace(/^\.\//, '');
+    assert.ok(shell.has(path), `${path} is in the manifest but not precached`);
+    assert.doesNotThrow(() => readFileSync(join(root, path)), `${path} is named but missing`);
+  }
+
+  assert.ok(
+    manifest.icons.some((icon) => icon.purpose === 'maskable'),
+    'Android crops a non-maskable icon into whatever shape the launcher uses'
+  );
+});
+
+test('the page and the manifest agree about which icon files exist', () => {
+  const html = read('index.html');
+  for (const match of html.matchAll(/href="\.\/(icons\/[^"]+)"/g)) {
+    assert.doesNotThrow(() => readFileSync(join(root, match[1])), `${match[1]} is linked from index.html but missing`);
+  }
+});

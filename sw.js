@@ -20,7 +20,7 @@
  * is obvious from inside the app whether an update actually landed.
  */
 
-const VERSION = 'v2.1.1';
+const VERSION = 'v2.1.2';
 const CACHE = `bulk-${VERSION}`;
 
 const SHELL = [
@@ -48,9 +48,9 @@ const SHELL = [
   './js/ui/settings.js',
   './js/ui/train.js',
   './data/plan-fopip-v2.json',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/icon-maskable-512.png',
+  './icons/icon-192-v2.png',
+  './icons/icon-512-v2.png',
+  './icons/icon-maskable-512-v2.png',
 ];
 
 const shellPaths = new Set(SHELL.map((path) => new URL(path, self.registration.scope).pathname));
