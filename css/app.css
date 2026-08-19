@@ -200,6 +200,22 @@ nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.9;st
 .sheet .bg{position:absolute;inset:0;background:rgba(0,0,0,.5)}
 .sheet .pan{position:absolute;left:0;right:0;bottom:var(--kb,0px);background:var(--surface);border-radius:20px 20px 0 0;padding:18px 16px max(20px,env(safe-area-inset-bottom));max-width:520px;margin:0 auto;max-height:calc(88vh - var(--kb,0px));overflow:auto;transition:bottom .12s ease-out}
 .sheet .ttl{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-weight:700;text-align:center}
+/* one set, on the session screen */
+.setline{display:grid;grid-template-columns:20px 1fr auto;gap:4px 8px;padding:6px 0;border-bottom:1px solid var(--grid);
+  font-size:12.5px;font-variant-numeric:tabular-nums;align-items:baseline}
+.setline:last-child{border-bottom:0}
+.setline .n{color:var(--muted);font-size:11px}
+.setline .w{color:var(--ink);font-weight:650;white-space:nowrap}
+.setline .e{text-align:right;color:var(--ink2);white-space:nowrap;font-size:11.5px}
+.setline .e small{color:var(--muted);font-size:9.5px;font-weight:600}
+.setline .m{grid-column:2/4;color:var(--muted);font-size:11px;font-variant-numeric:normal;line-height:1.4}
+.setline .nt{grid-column:2/4;color:var(--ink2);font-size:12px;font-variant-numeric:normal;
+  padding-left:8px;border-left:2px solid var(--s1)}
+
+/* the session progress card */
+.card.sess .tstat b{font-size:19px}
+.card.sess .tstat b small{font-size:10.5px;font-weight:600;color:var(--muted)}
+
 /* a note about the exercise, not about one set of it */
 .exnote{margin:0 13px 9px;padding:8px 11px;background:var(--sunk);border-left:3px solid var(--s3);border-radius:0 8px 8px 0;
   font-size:12.5px;color:var(--ink2);cursor:pointer;line-height:1.45}

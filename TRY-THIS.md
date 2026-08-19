@@ -1,4 +1,4 @@
-# v2.2.0 — how to try it, and how to undo any of it
+# v2.3.0 — how to try it, and how to undo any of it
 
 Everything is on the branch `claude/project-onboarding-verify-lz3ob6`.
 **Nothing has been published.** The public `bulk` repo is untouched, and
@@ -10,7 +10,7 @@ Everything is on the branch `claude/project-onboarding-verify-lz3ob6`.
 
 ```bash
 git checkout claude/project-onboarding-verify-lz3ob6
-npm test          # expect 249 passing, 0 failing
+npm test          # expect 267 passing, 0 failing
 npm run serve     # then open http://localhost:8123
 ```
 
@@ -24,6 +24,12 @@ Worth looking at specifically:
 
 | Where | What is new |
 |---|---|
+| Train | **Session progress card** — elapsed, plan done, plan left, warm-ups counted. |
+| Train | Tap a set: **load, reps and RPE together**, and typing replaces instead of appending. |
+| Train | **Note** button per exercise — the machine, the seat height, the pin. |
+| Train | Every set shows **difficulty** beside e1RM, and says why when there is no estimate. |
+| Train | **Timer** button: a stopwatch you drive. Both timers are now wall-clock correct. |
+| Log → tap a session | **A whole screen**: load moved, rest chart, timeline, every set, comparison. |
 | Anywhere | The version next to the title. Tap it. |
 | Anywhere | The rotation chip is tappable → block progression. |
 | Bottom bar | **Log** is a section now — the record, backups, and the bin. |
@@ -35,7 +41,7 @@ Worth looking at specifically:
 | Body | Which scale the weigh-in was on; when the tape was read. |
 | Android | The back button now moves inside the app instead of closing it. |
 
-To test the update path itself — the thing that shows `v2.1.3 → v2.2.0` — open
+To test the update path itself — the thing that shows `v2.1.3 → v2.3.0` — open
 `http://localhost:8123/?sw=1`. The offline shell is deliberately off on
 localhost otherwise, or every edit would be invisible until the version is
 bumped.
@@ -91,8 +97,8 @@ Nothing on this branch has touched `main`, the public repo, or your database.
 `dev/publish.sh` force-pushes over the public repo and replaces its history, so
 it is yours to run, not mine. When you do:
 
-1. `npm test` — 249, 0 failing.
-2. Check `sw.js` VERSION reads `v2.2.0`. The publish set is derived from the
+1. `npm test` — 267, 0 failing.
+2. Check `sw.js` VERSION reads `v2.3.0`. The publish set is derived from the
    `SHELL` array in that file, and `js/demo.js` was added to it — a test
    enforces that the shell covers the module graph, so this cannot silently go
    wrong.
@@ -106,7 +112,7 @@ from those directories, no occurrence of your name in any published file, and
 the retired v1 plan still excluded.
 
 **Your phone will not lose anything.** The update replaces code only; it never
-opens IndexedDB. It will show `v2.1.3 → v2.2.0` — though on that first update
+opens IndexedDB. It will show `v2.1.3 → v2.3.0` — though on that first update
 the *old* banner appears, because the page showing it is still the old build.
 Every update after this one shows both versions.
 

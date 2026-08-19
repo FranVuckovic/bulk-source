@@ -12,10 +12,11 @@
  * instead of 92 and spotted a week later.
  */
 
-import { e1rm, systemLoad } from '../calc.js';
-import { sessionTiming } from '../analytics.js';
+import { e1rm, systemLoad, setDifficulty, noEstimateReason } from '../calc.js';
+import { sessionTiming, sessionAnalysis } from '../analytics.js';
 import { escape, fmtLoad, fmtNum, subnav, flag, openSheet, closeSheet } from './components.js';
 import { measurementTimeLabel, scaleLabel } from './body.js';
+import { rowBars, barChart } from './charts.js';
 
 const KINDS = [
   ['all', 'All'],
@@ -147,6 +148,9 @@ export function view(ctx) {
   const section = state.logSection || 'entries';
   const tabs = subnav(SECTIONS(state), section, 'log-section');
 
+  // The session screen replaces the tabs rather than sitting under them: it is
+  // one thing looked at closely, not a fourth tab you switch between.
+  if (section === 'session') return sessionScreen(ctx);
   if (section === 'backups') return tabs + backupsView(state);
   if (section === 'bin') return tabs + binView(state);
   return tabs + entriesView(state);
@@ -428,6 +432,8 @@ function repairSheet(ctx, log) {
       session moved without them would sit on one day while its work sat on another.</p></div>
     <button class="big mt" data-act="repair-date" data-id="${log.id}">Move it to that date</button>
 
+    ${startRepair(ctx, log)}
+
     ${
       log.endedAt
         ? `<h3>Finished too early?</h3>
@@ -456,6 +462,25 @@ function repairSheet(ctx, log) {
       .join('')}</div>
 
     <button class="big ghost mt" data-act="sheet-close">Close</button>`;
+}
+
+/** Offer to move a start time that plainly predates the training. */
+function startRepair(ctx, log) {
+  const sets = ctx.state.sets.filter((set) => set.sessionLogId === log.id);
+  const t = sessionTiming(log, sets);
+  if (!t.startLooksWrong) return '';
+
+  return `<h3>Started too early?</h3>
+    ${flag(
+      'warn',
+      '!',
+      `This session says it began <b>${Math.round(t.startedBeforeFirstSetSeconds / 60)} minutes</b> before its first
+       set, which makes every duration it reports wrong. Moving the start to the first set makes it
+       <b>${escape(clock(t.workingSpanSeconds))}</b>.`
+    )}
+    <button class="big ghost" data-act="repair-start" data-id="${log.id}">Move the start to the first set</button>
+    <p class="hint">Only the start instant changes. No set is touched, and the correction is recorded like every
+    other.</p>`;
 }
 
 /** One set, editable. */
@@ -498,13 +523,214 @@ function repairSetSheet(ctx, set) {
     <p class="hint">Every correction is recorded with the field, the old value and the new one.</p>`;
 }
 
-const clock = (seconds) =>
-  seconds == null ? '—' : seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`;
+/** A duration a person would say out loud: 45s, 7m 28s, 2h 44m. */
+const clock = (seconds) => {
+  if (seconds == null) return '\u2014';
+  const value = Math.round(seconds);
+  if (value < 60) return `${value}s`;
+  const hours = Math.floor(value / 3600);
+  const minutes = Math.floor((value % 3600) / 60);
+  if (hours) return `${hours}h ${String(minutes).padStart(2, '0')}m`;
+  return `${minutes}m ${String(value % 60).padStart(2, '0')}s`;
+};
 
 const timeOfDay = (iso) => {
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
+
+/* ═══════════════════════════════════════════════════════════════════════
+   One session, looked at closely
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The whole of one workout: what it cost, where the work went, what the rests
+ * looked like, every set with its own numbers, and what changed since the last
+ * time you did this session.
+ *
+ * Everything here is derived from rows the app already stored. Nothing new had
+ * to be recorded to answer any of it — it was simply never asked.
+ */
+function sessionScreen(ctx) {
+  const { state } = ctx;
+  const log = state.logs.find((row) => row.id === state.logSessionId);
+  if (!log) {
+    return `<button class="back" data-act="log-section" data-id="entries">\u2039 The log</button>
+      <div class="card"><p style="margin:0">That session is no longer here. It may have been deleted \u2014 the Bin
+      will have it.</p></div>`;
+  }
+
+  const unit = state.settings.unit;
+  const sets = state.sets.filter((set) => set.sessionLogId === log.id);
+  const session = state.plan.sessions.find((s) => s.id === log.sessionId);
+  const a = sessionAnalysis(log, sets, {
+    exercises: state.plan.exercises,
+    logs: state.logs,
+    allSets: state.sets,
+  });
+  const t = sessionTiming(log, sets);
+  // A start instant that predates the training makes the raw span nonsense, so
+  // the header shows what the work actually occupied and the Timing card
+  // explains the difference. See `startLooksWrong`.
+  const durationSeconds = t.startLooksWrong ? t.workingSpanSeconds : t.totalSeconds;
+  const minutes = durationSeconds != null ? Math.round(durationSeconds / 60) : minutesBetween(log.startedAt, log.endedAt);
+  const notes = log.deviations?.exerciseNotes || {};
+
+  const tile = (value, label) => `<div class="tstat"><b>${escape(String(value))}</b><span>${escape(label)}</span></div>`;
+
+  return `
+  <button class="back" data-act="log-section" data-id="entries">\u2039 The log</button>
+
+  <div class="shead">
+    <div class="lbl">${escape(longDate(log.dateISO))}${
+      log.readiness && log.readiness !== 'normal' ? ` \u00b7 ${escape(log.readiness)} day` : ''
+    }</div>
+    <div class="nm">${escape(log.sessionId)} \u00b7 ${escape(session ? session.name : 'Session')}</div>
+    <div class="meta">
+      <span>rotation ${log.cycleSequence ?? '\u2014'}</span>
+      ${minutes ? `<span>${minutes} min${t.startLooksWrong ? ' of work' : ''}</span>` : ''}
+      ${log.sessionRpe ? `<span>sRPE ${log.sessionRpe}</span>` : ''}
+      ${log.bodyweight ? `<span>${fmtLoad(log.bodyweight, unit)} ${escape(unit)}</span>` : ''}
+      ${log.endedAt ? '' : '<span style="color:var(--warn)">never finished</span>'}
+    </div>
+  </div>
+
+  ${log.note ? `<div class="cue" style="margin-bottom:11px">${escape(log.note)}</div>` : ''}
+
+  <div class="card"><div class="g2">
+    ${tile(`${Math.round(a.tonnage).toLocaleString('en-GB')} ${unit}`, 'total load moved')}
+    ${tile(a.reps, 'reps')}
+  </div><div class="g2 mt">
+    ${tile(`${a.workingSets}${log.prescribedSets ? ` / ${log.prescribedSets}` : ''}`, 'sets logged')}
+    ${tile(a.failureSets, 'to failure')}
+  </div>
+  <p class="hint" style="margin:9px 0 0">Load moved counts bodyweight on pull-ups and dips, because your muscles
+  did. It is exact arithmetic on what you logged, not an estimate.</p></div>
+
+  <h3>Where the work went</h3>
+  <div class="card">${rowBars(
+    a.exercises.map((e) => ({
+      label: e.name.split(' (')[0].split(' \u2014 ')[0],
+      value: Math.round(e.tonnage),
+      display: `${Math.round(e.tonnage).toLocaleString('en-GB')}`,
+    })),
+    { unit, caption: `Load moved per exercise, in ${unit} \u2014 sets \u00d7 reps \u00d7 weight.` }
+  )}</div>
+
+  ${restSection(t)}
+
+  ${timingSection(ctx, log, sets)}
+
+  <h3>Every set</h3>
+  ${a.exercises
+    .map((entry) => {
+      const slotIndex = entry.sets[0]?.slotIndex;
+      const note = notes[String(slotIndex)];
+      return `<div class="card">
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px">
+          <b style="font-size:14.5px;flex:1">${escape(entry.name)}</b>
+          <span style="font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums">${Math.round(
+            entry.tonnage
+          )} ${escape(unit)}</span></div>
+        ${note ? `<div class="exnote" style="margin:6px 0 8px">${escape(note)}</div>` : ''}
+        ${setLines(state, entry, unit)}
+        ${
+          entry.bestEstimate
+            ? `<p class="hint" style="margin:8px 0 0">Best estimate this session <b>${fmtLoad(
+                entry.bestEstimate,
+                unit
+              )} ${escape(unit)}</b>${
+                entry.bestDifficulty
+                  ? ` \u00b7 hardest set worth <b>${fmtLoad(entry.bestDifficulty, unit)} ${escape(unit)}</b>`
+                  : ''
+              }</p>`
+            : ''
+        }
+      </div>`;
+    })
+    .join('')}
+
+  ${comparisonSection(a.previous, unit)}
+
+  <button class="big ghost mt" data-act="repair-session" data-id="${log.id}">Fix something about this session</button>
+  <button class="big danger mt" data-act="history-delete" data-key="session:${log.id}">Delete this session</button>`;
+}
+
+/** Every set of one exercise, with what each was worth. */
+function setLines(state, entry, unit) {
+  return entry.sets
+    .slice()
+    .sort((a, b) => (a.setIndex ?? 0) - (b.setIndex ?? 0))
+    .map((set) => {
+      const total = systemLoad(set.load, set.bodyweightUsed || 0);
+      const estimate = set.reps ? e1rm(total, set.reps, Math.min(10, set.rpe ?? 8)) : null;
+      const hard = set.reps ? setDifficulty(total, set.reps) : null;
+      const why = estimate == null ? noEstimateReason(total, set.reps, Math.min(10, set.rpe ?? 8), { short: true }) : null;
+
+      const marks = [
+        set.isAmrap ? 'AMRAP' : null,
+        set.isIndexSet ? 'index' : null,
+        set.isMyoRep ? 'myo' : null,
+        set.toFailure ? 'to failure' : null,
+        set.pauseStyle || null,
+        set.gripWidth || null,
+      ].filter(Boolean);
+
+      return `<div class="setline">
+        <span class="n">${(set.setIndex ?? 0) + 1}</span>
+        <span class="w">${set.bodyweightUsed ? '+' : ''}${fmtLoad(set.load, unit)} \u00d7 ${set.reps ?? '\u2014'} @ ${
+          set.rpe ?? '\u2014'
+        }</span>
+        <span class="e">${
+          estimate
+            ? `${fmtLoad(estimate, unit)}<small> e1RM</small> \u00b7 ${fmtLoad(hard, unit)}<small> diff</small>`
+            : `<small style="color:var(--muted)">no estimate \u00b7 ${escape(why || '')}</small>`
+        }</span>
+        ${marks.length ? `<span class="m">${escape(marks.join(' \u00b7 '))}</span>` : ''}
+        ${set.note ? `<span class="nt">${escape(set.note)}</span>` : ''}
+      </div>`;
+    })
+    .join('');
+}
+
+/** How long the rests actually were, when the clock can be believed. */
+function restSection(t) {
+  if (!t.reliable || t.countedRests < 2) return '';
+  const gaps = t.entries.filter((entry) => !entry.isFirst && !entry.isLongGap && entry.gapSeconds != null);
+  return `<h3>Rest between sets</h3>
+  <div class="card">${barChart(
+    gaps.map((entry, i) => ({ label: String(i + 1), value: Math.round(entry.gapSeconds / 6) / 10 })),
+    { unit: ' min', average: true }
+  )}
+  <p class="hint">Every gap between one set and the next, in minutes, in the order they happened. The dashed line is
+  the average. Gaps over twenty minutes are left out — those are interruptions, not rest intervals.</p></div>`;
+}
+
+/** What changed since the last time this session was trained. */
+function comparisonSection(previous, unit) {
+  if (!previous || !previous.rows.length) {
+    return `<h3>Compared with last time</h3>
+      <div class="card"><p style="margin:0">No earlier session with this letter to compare against yet. From the
+      next one, this is where the change on every lift appears.</p></div>`;
+  }
+  return `<h3>Compared with last time</h3>
+  <div class="card">
+    <p style="margin:0 0 10px">Against <b>${escape(longDate(previous.dateISO))}</b>, ${previous.daysBefore} day${
+      previous.daysBefore === 1 ? '' : 's'
+    } earlier. Change in the heaviest set of each lift.</p>
+    ${rowBars(
+      previous.rows.map((row) => {
+        const change = Math.round(row.topLoadChange * 10) / 10;
+        return {
+          label: row.name.split(' (')[0].split(' \u2014 ')[0],
+          value: change,
+          display: `${change > 0 ? '+' : ''}${change}`,
+        };
+      }),
+      { unit }
+    )}
+  </div>`;
+}
 
 /**
  * What the session actually looked like in time.
@@ -532,9 +758,27 @@ function timingSection(ctx, log, sets) {
     })
     .join('');
 
+  /*
+   * A start instant that plainly predates the training. The log opens on the
+   * first thing you do, and un-ticking a set deletes the set but not the log —
+   * so a tap that was undone can stamp the start hours early and make every
+   * duration derived from it wrong. Reported rather than quietly corrected:
+   * which instant is right is the owner's to say.
+   */
+  const startWarning = t.startLooksWrong
+    ? flag(
+        'warn',
+        '!',
+        `<b>Opened ${Math.round(t.startedBeforeFirstSetSeconds / 60)} minutes before its first set.</b>
+         The work itself spanned <b>${escape(clock(t.workingSpanSeconds))}</b>, first set to last, and that is the
+         figure shown. <b>Fix something about this session</b> below can move the start to the first set.`
+      )
+    : '';
+
   if (!t.reliable) {
     return `<h3>Timing</h3>
       <div class="card">
+        ${startWarning}
         ${flag(
           'warn',
           '!',
@@ -552,8 +796,11 @@ function timingSection(ctx, log, sets) {
 
   return `<h3>Timing</h3>
     <div class="card">
+      ${startWarning}
       <div class="g3">
-        <div class="tstat"><b>${escape(clock(t.totalSeconds))}</b><span>total</span></div>
+        <div class="tstat"><b>${escape(clock(t.startLooksWrong ? t.workingSpanSeconds : t.totalSeconds))}</b><span>${
+          t.startLooksWrong ? 'first to last' : 'total'
+        }</span></div>
         <div class="tstat"><b>${escape(clock(t.medianRestSeconds))}</b><span>typical rest</span></div>
         <div class="tstat"><b>${escape(clock(t.longestRestSeconds))}</b><span>longest rest</span></div>
       </div>
@@ -589,10 +836,22 @@ function plainDetail(row) {
 }
 
 export const actions = {
+  /*
+   * A session gets a screen, not a sheet. There is too much worth seeing about
+   * one — where the work went, what the rests looked like, how it compares with
+   * the last time — to fit in a panel you have to scroll inside a page you are
+   * already scrolling. Everything else is still a sheet, because everything
+   * else really is a handful of fields.
+   */
   'history-open'(ctx, data) {
     const row = entries(ctx.state).find((entry) => entry.key === data.key);
     if (!row) return;
-    openSheet(row.kind === 'session' ? sessionDetail(ctx, row) : plainDetail(row));
+    if (row.kind !== 'session') {
+      openSheet(plainDetail(row));
+      return;
+    }
+    ctx.state.logSessionId = row.id;
+    ctx.goTo({ tab: 'log', logSection: 'session' });
   },
 
   'history-filter'(ctx, data) {
@@ -651,6 +910,21 @@ export const actions = {
               longDate(result.to)
             )}.`
           : 'That is the date it was already on.'
+      }</p>
+      <button class="big mt" data-act="sheet-close">Close</button>`);
+  },
+
+  async 'repair-start'(ctx, data) {
+    const result = await ctx.repairSessionStart(Number(data.id));
+    closeSheet();
+    ctx.render();
+    openSheet(`<div class="ttl">${result.moved ? 'Start corrected' : 'Not changed'}</div>
+      <p style="text-align:center;font-size:13.5px;margin:14px 0">${
+        result.moved
+          ? `The session now starts at its first set. It reports ${escape(clock(result.spanSeconds))} instead of ${escape(
+              clock(result.wasSeconds)
+            )}.`
+          : 'There was nothing to move it to.'
       }</p>
       <button class="big mt" data-act="sheet-close">Close</button>`);
   },

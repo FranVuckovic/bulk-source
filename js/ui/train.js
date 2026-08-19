@@ -16,6 +16,9 @@ import {
   e1rm,
   setDifficulty,
   noEstimateReason,
+  sessionDuration,
+  SET_SETUP_SECONDS,
+  SECONDS_PER_REP,
   prescribedLoad,
   effectiveRpeDetail,
   roundToIncrement,
@@ -241,7 +244,7 @@ export function view(ctx) {
     <div class="bar"><i style="width:${prescribedSets ? (doneSets / prescribedSets) * 100 : 0}%"></i></div>
     <div class="meta">
       <span>${doneSets} / ${prescribedSets} sets</span>
-      <span>~${estimateMinutes(state, slots)} min</span>
+      <span>~${Math.round(sessionClock(state, slots).totalSeconds / 60)} min incl. warm-ups</span>
       <span>Cycle ${state.cycle.sequence}/${state.plan.meta.rotations} · ${escape(state.block.name)}</span>
       <span>${state.cycleProgress.complete}/${state.plan.meta.rotationOrder.length} this rotation</span>
     </div>
@@ -259,6 +262,8 @@ export function view(ctx) {
     <div class="mini" style="margin-top:10px"><button data-act="open-cycle-control">Rotation ${state.cycle.sequence} ·
       correct</button></div>
   </div>
+
+  ${sessionProgressCard(state, slots)}
 
   <div class="card flush">${slots.map((slot, si) => exerciseBlock(state, slot, si)).join('')}</div>
 
@@ -316,6 +321,76 @@ function timingRow(state) {
       }</span>
     </div>
     <button data-act="toggle-timing">${reliable ? 'Not really' : 'It is real'}</button>
+  </div>`;
+}
+
+/**
+ * The session's cost in seconds, warm-ups included, and how much of it is done.
+ *
+ * The prescribed loads have to be gathered first because the warm-up ramp is
+ * computed from the top load of each exercise — there is no ramp without a
+ * number to ramp to.
+ */
+export function sessionClock(state, slots) {
+  const prescribedLoads = {};
+  slots.forEach((slot, i) => {
+    const load = prescriptionFor(state, slot);
+    if (load != null) prescribedLoads[i] = load;
+  });
+
+  const completed = new Set();
+  slots.forEach((slot, i) => {
+    for (let j = 0; j < slot.sets; j++) if (state.loggedSets.has(setKey(i, j))) completed.add(`${i}:${j}`);
+  });
+
+  return sessionDuration(slots, {
+    exercises: state.plan.exercises,
+    bar: state.settings.barKg,
+    increment: state.settings.increment,
+    prescribedLoads,
+    completed,
+  });
+}
+
+const asClock = (seconds) => {
+  const value = Math.max(0, Math.round(seconds));
+  const h = Math.floor(value / 3600);
+  const m = Math.floor((value % 3600) / 60);
+  const sec = value % 60;
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+};
+
+/**
+ * Where you are in the session, in minutes rather than in sets.
+ *
+ * Three different numbers, and they answer three different questions. Elapsed
+ * is wall-clock since you started and is the only one that is measured — it
+ * ticks from `data-since` against Date.now(), never from counted intervals, for
+ * the reason the rest timer had to be rewritten. Done and left are the *plan*
+ * spent and owed: warm-up ramps plus every set plus the rest between them.
+ *
+ * They will not agree, and that is the useful part. Elapsed well past done
+ * means the rests are running long.
+ */
+function sessionProgressCard(state, slots) {
+  const clock = sessionClock(state, slots);
+  const started = state.activeLog?.startedAt || null;
+  const pct = clock.totalSeconds ? Math.min(100, (clock.doneSeconds / clock.totalSeconds) * 100) : 0;
+
+  return `<div class="card sess">
+    <div class="g3">
+      <div class="tstat"><b id="sess-elapsed" data-since="${escape(started || '')}">${
+        started ? asClock((Date.now() - Date.parse(started)) / 1000) : '—'
+      }</b><span>${started ? 'elapsed' : 'not started'}</span></div>
+      <div class="tstat"><b>${Math.round(clock.doneSeconds / 60)}<small> min</small></b><span>of plan done</span></div>
+      <div class="tstat"><b>${Math.round(clock.remainingSeconds / 60)}<small> min</small></b><span>left</span></div>
+    </div>
+    <div class="bar mt"><i style="width:${pct}%"></i></div>
+    <p class="hint" style="margin:8px 0 0">About <b>${Math.round(clock.totalSeconds / 60)} min</b> in total —
+    ${Math.round(clock.warmupSeconds / 60)} of warm-up ramps and ${Math.round(clock.workingSeconds / 60)} of work
+    and rest. Estimates, at ${SET_SETUP_SECONDS} s to get set and ${SECONDS_PER_REP} s a rep.${
+      started ? '' : ' <b>Start session</b> below begins the clock.'
+    }</p>
   </div>`;
 }
 

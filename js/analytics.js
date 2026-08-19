@@ -15,7 +15,7 @@
  * Pure: records in, metrics out.
  */
 
-import { estimateForSet, isHighConfidence } from './calc.js';
+import { estimateForSet, isHighConfidence, systemLoad, e1rm, setDifficulty } from './calc.js';
 import { daysBetween, weekStart } from './dates.js';
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -371,6 +371,148 @@ export function blockComparison(sets, { exercises, logs, lifts }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   One session, in full
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Everything about a single session that can be derived from what it stored.
+ *
+ * The Log could show you a session's sets and nothing else — not what it
+ * actually hit, not how it compared with the last time you did it, not where
+ * the work went. All of that is computable from rows already in the database.
+ *
+ * Nothing here estimates anything it cannot justify: tonnage is exact
+ * arithmetic on stored numbers, e1RM and difficulty come back null past the
+ * rep limit rather than guessing, and the comparison is omitted entirely when
+ * there is no earlier session of the same letter to compare with.
+ */
+export function sessionAnalysis(log, sets, { exercises = {}, logs = [], allSets = [] } = {}) {
+  const live = (sets || []).filter((set) => !set.deletedAtISO);
+
+  const byExercise = new Map();
+  let tonnage = 0;
+  let reps = 0;
+  let workingSets = 0;
+  let failureSets = 0;
+
+  for (const set of live) {
+    const exercise = exercises[set.exerciseId];
+    const bodyweight = set.bodyweightUsed || 0;
+    // Tonnage is what the muscles moved, so bodyweight counts on a pull-up.
+    const total = systemLoad(set.load ?? 0, bodyweight);
+    const setTonnage = total * (set.reps || 0);
+
+    tonnage += setTonnage;
+    reps += set.reps || 0;
+    workingSets += 1;
+    if (set.toFailure || set.isAmrap) failureSets += 1;
+
+    const entry = byExercise.get(set.exerciseId) || {
+      exerciseId: set.exerciseId,
+      name: exercise?.name || set.exerciseId,
+      sets: [],
+      tonnage: 0,
+      reps: 0,
+      topLoad: null,
+      bestEstimate: null,
+      bestDifficulty: null,
+    };
+    entry.sets.push(set);
+    entry.tonnage += setTonnage;
+    entry.reps += set.reps || 0;
+    if (entry.topLoad == null || total > entry.topLoad) entry.topLoad = total;
+
+    const estimate = e1rm(total, set.reps, Math.min(10, set.rpe ?? 8));
+    if (estimate != null && (entry.bestEstimate == null || estimate > entry.bestEstimate)) {
+      entry.bestEstimate = estimate;
+    }
+    const hard = setDifficulty(total, set.reps);
+    if (hard != null && (entry.bestDifficulty == null || hard > entry.bestDifficulty)) {
+      entry.bestDifficulty = hard;
+    }
+    byExercise.set(set.exerciseId, entry);
+  }
+
+  return {
+    tonnage,
+    reps,
+    workingSets,
+    failureSets,
+    exercises: [...byExercise.values()].sort((a, b) => b.tonnage - a.tonnage),
+    previous: previousSameSession(log, { logs, allSets, exercises }),
+  };
+}
+
+/**
+ * The last time this same session letter was trained, and what changed.
+ *
+ * Compared per exercise rather than in total, because a session's tonnage moves
+ * with the reps you happened to get as much as with the load — and per
+ * exercise, "same lift, more weight" is a fact rather than an impression.
+ * Returns null when there is nothing to compare against, which is the honest
+ * answer for a first session and the one v1 would have filled with a zero.
+ */
+function previousSameSession(log, { logs, allSets, exercises }) {
+  if (!log?.sessionId) return null;
+
+  const earlier = (logs || [])
+    .filter(
+      (row) =>
+        !row.deletedAtISO &&
+        row.id !== log.id &&
+        row.sessionId === log.sessionId &&
+        (row.dateISO || '') < (log.dateISO || '')
+    )
+    .sort((a, b) => (b.dateISO || '').localeCompare(a.dateISO || ''));
+
+  const previous = earlier[0];
+  if (!previous) return null;
+
+  const previousSets = (allSets || []).filter((set) => set.sessionLogId === previous.id && !set.deletedAtISO);
+  if (!previousSets.length) return null;
+
+  const summarise = (rows) => {
+    const map = new Map();
+    for (const set of rows) {
+      const total = systemLoad(set.load ?? 0, set.bodyweightUsed || 0);
+      const entry = map.get(set.exerciseId) || { tonnage: 0, topLoad: null, sets: 0 };
+      entry.tonnage += total * (set.reps || 0);
+      entry.sets += 1;
+      if (entry.topLoad == null || total > entry.topLoad) entry.topLoad = total;
+      map.set(set.exerciseId, entry);
+    }
+    return map;
+  };
+
+  const now = summarise((allSets || []).filter((set) => set.sessionLogId === log.id && !set.deletedAtISO));
+  const then = summarise(previousSets);
+
+  const rows = [];
+  for (const [exerciseId, current] of now) {
+    const before = then.get(exerciseId);
+    if (!before) continue;
+    rows.push({
+      exerciseId,
+      name: exercises[exerciseId]?.name || exerciseId,
+      topLoadChange: current.topLoad - before.topLoad,
+      tonnageChange: current.tonnage - before.tonnage,
+      topLoadNow: current.topLoad,
+      topLoadThen: before.topLoad,
+    });
+  }
+
+  return {
+    dateISO: (previous.dateISO || '').slice(0, 10),
+    daysBefore: Math.round(
+      (Date.parse(`${(log.dateISO || '').slice(0, 10)}T00:00:00Z`) -
+        Date.parse(`${(previous.dateISO || '').slice(0, 10)}T00:00:00Z`)) /
+        86400000
+    ),
+    rows: rows.sort((a, b) => b.topLoadChange - a.topLoadChange),
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    Session timing
    ═══════════════════════════════════════════════════════════════════════ */
 
@@ -388,6 +530,18 @@ export const MIN_REAL_REST_SECONDS = 20;
  * reported, because it is real; just not counted into the typical rest.
  */
 export const LONG_GAP_SECONDS = 20 * 60;
+
+/**
+ * A session start this much earlier than its first set did not begin then.
+ *
+ * From a real log: `startedAt` 11:14, first set 16:30, and the session reported
+ * as eight hours. The log is created by the first thing you do, and un-ticking
+ * a set deletes the set but leaves the log — so a tap in the morning that was
+ * undone still stamped the session five hours before the training happened.
+ * Reported rather than quietly corrected, with the working span offered beside
+ * it, because which of the two is right is a question only the owner can answer.
+ */
+export const IMPLAUSIBLE_START_SECONDS = 45 * 60;
 
 /**
  * What actually happened, minute by minute, from the timestamps already stored.
@@ -442,6 +596,17 @@ export function sessionTiming(log, sets, { now = null } = {}) {
   const totalSeconds =
     startedAt && endedAt ? Math.max(0, Math.round((Date.parse(endedAt) - Date.parse(startedAt)) / 1000)) : null;
 
+  // First set to last: the span the work actually occupied, whatever the log
+  // says about when it opened.
+  const firstSetAt = ordered[0]?.timestampISO || null;
+  const lastSetAt = ordered[ordered.length - 1]?.timestampISO || null;
+  const workingSpanSeconds =
+    firstSetAt && lastSetAt ? Math.max(0, Math.round((Date.parse(lastSetAt) - Date.parse(firstSetAt)) / 1000)) : null;
+  const startedBeforeFirstSetSeconds =
+    startedAt && firstSetAt ? Math.round((Date.parse(firstSetAt) - Date.parse(startedAt)) / 1000) : null;
+  const startLooksWrong =
+    startedBeforeFirstSetSeconds != null && startedBeforeFirstSetSeconds > IMPLAUSIBLE_START_SECONDS;
+
   const sorted = [...restGaps].sort((a, b) => a - b);
   const reliable = stated === false ? false : !looksBulkEntered;
 
@@ -474,6 +639,11 @@ export function sessionTiming(log, sets, { now = null } = {}) {
     looksBulkEntered,
     startedAt,
     endedAt,
+    firstSetAt,
+    lastSetAt,
+    workingSpanSeconds,
+    startedBeforeFirstSetSeconds,
+    startLooksWrong,
     setCount: entries.length,
     // The timeline itself is always returned: when each row was written is a
     // fact either way, and it is what shows you *why* the timing is not real.

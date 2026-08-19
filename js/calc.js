@@ -139,11 +139,15 @@ export function setDifficulty(load, reps) {
  * of doubt to find that out: fifteen of twenty-seven sets in a real log came
  * back empty, and the obvious explanation was the wrong one.
  */
-export function noEstimateReason(load, reps, rpe) {
+export function noEstimateReason(load, reps, rpe, { short = false } = {}) {
   if (!load) return 'no load recorded';
   if (!reps) return 'no reps recorded';
   if (reps > MAX_ESTIMABLE_REPS) {
-    return `over ${MAX_ESTIMABLE_REPS} reps — past there the estimate stops meaning anything`;
+    // Repeated against every high-rep set in a session list, the full sentence
+    // is noise; said once beside the set you are logging, it is the answer.
+    return short
+      ? `over ${MAX_ESTIMABLE_REPS} reps`
+      : `over ${MAX_ESTIMABLE_REPS} reps — past there the estimate stops meaning anything`;
   }
   if (pct(reps, rpe) == null) return `RPE ${rpe} is off the table`;
   return null;
@@ -524,6 +528,87 @@ export function proposeWorkingMax(currentMax, observations, { atBlockBoundary = 
  *
  * Returns [{ load, reps, restSec }] with the working set last.
  */
+/* ═══════════════════════════════════════════════════════════════════════
+   How long a session takes
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/*
+ * Rough but honest. A rep under control with a pause is about three seconds;
+ * getting into position, unracking and settling is about twenty. These are
+ * estimates and are labelled as such wherever they are shown — the point is not
+ * to predict the minute you finish, it is to answer "how much is left" with
+ * something better than a set count.
+ */
+export const SECONDS_PER_REP = 3;
+export const SET_SETUP_SECONDS = 20;
+const FALLBACK_REST_SECONDS = 120;
+
+/** Seconds a single set costs: getting set, doing the reps, then resting. */
+const setSeconds = (reps, restSec) =>
+  SET_SETUP_SECONDS + (reps || 8) * SECONDS_PER_REP + (restSec ?? FALLBACK_REST_SECONDS);
+
+/**
+ * What the session costs in seconds, warm-ups included.
+ *
+ * The estimate on the Train screen counted work sets only, which is why it read
+ * short: warming up to a heavy single is six ramp sets and the better part of
+ * ten minutes, and none of it was in the number.
+ *
+ * A ramp is charged once per exercise rather than once per slot — the bench
+ * top single and its back-offs are one warm-up between them, not two — and
+ * never for a bodyweight lift, which has no bar to build up.
+ *
+ * `completed` is a set of `slotIndex:setIndex` keys. Anything in it is counted
+ * towards `doneSeconds`, so the remainder is what is genuinely still owed. The
+ * first work set of an exercise carries its warm-up, because that is when the
+ * warm-up actually happens.
+ */
+export function sessionDuration(slots, { exercises = {}, bar = 20, increment = DEFAULT_INCREMENT, prescribedLoads = {}, completed = new Set() } = {}) {
+  const warmedUp = new Set();
+  let total = 0;
+  let done = 0;
+  let warmup = 0;
+  let working = 0;
+
+  (slots || []).forEach((slot, slotIndex) => {
+    const exercise = exercises[slot.ex] || {};
+    const rest = slot.restSec ?? exercise.defaultRestSec ?? FALLBACK_REST_SECONDS;
+    const reps = slot.repsHigh ?? slot.reps ?? 8;
+
+    let rampSeconds = 0;
+    const top = prescribedLoads[slotIndex];
+    if (!exercise.bodyweightLoaded && top != null && !warmedUp.has(slot.ex)) {
+      warmedUp.add(slot.ex);
+      for (const step of warmupRamp(top, { bar, increment })) {
+        if (!step.isWarmup) continue;
+        rampSeconds += SET_SETUP_SECONDS + (step.reps || 0) * SECONDS_PER_REP + (step.restSec || 0);
+      }
+    }
+
+    total += rampSeconds;
+    warmup += rampSeconds;
+
+    for (let i = 0; i < slot.sets; i++) {
+      const cost = setSeconds(reps, rest);
+      total += cost;
+      working += cost;
+      if (completed.has(`${slotIndex}:${i}`)) {
+        done += cost;
+        // The warm-up is spent the moment the first work set of the exercise is.
+        if (i === 0) done += rampSeconds;
+      }
+    }
+  });
+
+  return {
+    totalSeconds: Math.round(total),
+    doneSeconds: Math.round(Math.min(done, total)),
+    remainingSeconds: Math.round(Math.max(0, total - done)),
+    warmupSeconds: Math.round(warmup),
+    workingSeconds: Math.round(working),
+  };
+}
+
 export function warmupRamp(topLoad, { bar = 20, increment = DEFAULT_INCREMENT } = {}) {
   if (!topLoad || topLoad <= bar) return [];
 

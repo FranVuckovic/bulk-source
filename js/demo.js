@@ -200,10 +200,13 @@ async function generate(db, plan, ROTATIONS, INCREMENT) {
     const endedAt = new Date(Date.parse(startedAt) + minutes * 60000).toISOString();
 
     const sets = [];
+    // Wall-clock position within the session, advanced as each set is written.
+    let elapsedSeconds = 240 + Math.round(wobble(index * 5) * 180);
     resolved.slots.forEach((slot, slotIndex) => {
       const exercise = plan.exercises[slot.ex];
       if (!exercise) return;
       const workingMax = maxAt(slot.ex, rotation);
+      const restSec = slot.restSec || exercise.defaultRestSec || 120;
 
       for (let setIndex = 0; setIndex < slot.sets; setIndex++) {
         // The odd set genuinely does not get logged — the app has to cope.
@@ -228,6 +231,10 @@ async function generate(db, plan, ROTATIONS, INCREMENT) {
           : slot.repsHigh ?? slot.reps ?? 8;
         const toFailure = setIndex >= slot.sets - (slot.failLast || 0);
 
+        // The set itself, then the rest after it, with a little variation so the
+        // gaps are not all identical.
+        elapsedSeconds += 25 + Math.round(restSec * (0.85 + wobble(index * 13 + slotIndex * 3 + setIndex) * 0.4));
+
         sets.push({
           exerciseId: slot.ex,
           slotIndex,
@@ -244,7 +251,12 @@ async function generate(db, plan, ROTATIONS, INCREMENT) {
           note: null,
           wasPrescribed: true,
           prescribedLoad: load,
-          timestampISO: startedAt,
+          // Spaced by the exercise's own rest interval plus the time the set
+          // takes, so the demo exercises the timing report the way a real
+          // session does. Writing them all at `startedAt` made every generated
+          // session look bulk-entered — which it was, but it meant the rest
+          // chart never appeared in the demo at all.
+          timestampISO: new Date(Date.parse(startedAt) + elapsedSeconds * 1000).toISOString(),
           localDate,
           gripWidth: exercise.grips ? exercise.grips[0] : null,
           bodyweightUsed: exercise.bodyweightLoaded ? bodyweight : null,

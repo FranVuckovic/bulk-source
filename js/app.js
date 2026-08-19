@@ -990,6 +990,43 @@ const ctx = {
   },
 
   /**
+   * Move a session's start to its first set.
+   *
+   * For the log opened by a tap that was then undone: un-ticking deletes the
+   * set but not the session, so the start instant can sit hours before any work
+   * happened and every duration derived from it is wrong.
+   */
+  async repairSessionStart(logId) {
+    const log = state.logs.find((row) => row.id === logId);
+    if (!log) throw new Error('that session no longer exists');
+
+    const stamps = state.sets
+      .filter((set) => set.sessionLogId === logId && set.timestampISO)
+      .map((set) => set.timestampISO)
+      .sort();
+    if (!stamps.length) return { moved: false };
+
+    const from = log.startedAt;
+    const to = stamps[0];
+    const end = log.endedAt || stamps[stamps.length - 1];
+
+    await put(state.db, 'sessionLogs', { ...log, startedAt: to });
+    await put(state.db, 'auditLog', {
+      atISO: nowISO(), entity: 'sessionLog', entityId: logId, action: 'edit', field: 'startedAt', from, to,
+    });
+
+    await loadEverything();
+    await restoreActiveSession();
+    buildHistory();
+    render();
+    return {
+      moved: true,
+      wasSeconds: from ? Math.round((Date.parse(end) - Date.parse(from)) / 1000) : null,
+      spanSeconds: Math.round((Date.parse(end) - Date.parse(to)) / 1000),
+    };
+  },
+
+  /**
    * Reopen a finished session so it can be carried on.
    *
    * For the session ended by a mis-tap with half the work still to do. Refused
@@ -1209,7 +1246,7 @@ const ctx = {
  * open sheet is a level too: back closes the sheet before it changes screen,
  * because that is what the gesture means when something is covering the page.
  */
-const VIEW_KEYS = ['tab', 'progressSection', 'planSection', 'logSection', 'bodySection', 'historyFilter'];
+const VIEW_KEYS = ['tab', 'progressSection', 'planSection', 'logSection', 'bodySection', 'historyFilter', 'logSessionId'];
 
 const currentView = () => Object.fromEntries(VIEW_KEYS.map((key) => [key, state[key] ?? null]));
 
@@ -1303,6 +1340,38 @@ function onSheetClose({ fromBack }) {
  * showing a current value is universally taken to mean. Deferred a frame
  * because Android Chrome moves the caret itself after focus.
  */
+/*
+ * The elapsed clock on the Train screen.
+ *
+ * Same rule as the rest timer, for the same reason: the element carries the
+ * instant the session started and every repaint subtracts it from Date.now().
+ * Nothing accumulates, so a throttled or suspended interval costs a late
+ * redraw and never a wrong number. The element is rewritten by every render,
+ * which is why this reads it from the DOM each time rather than holding a
+ * reference to it.
+ */
+function paintSessionClock() {
+  const el = document.getElementById('sess-elapsed');
+  const since = el?.dataset.since;
+  if (!el || !since) return;
+  const seconds = Math.max(0, (Date.now() - Date.parse(since)) / 1000);
+  const value = Math.round(seconds);
+  const h = Math.floor(value / 3600);
+  const m = Math.floor((value % 3600) / 60);
+  const sec = value % 60;
+  el.textContent = h
+    ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+    : `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+function wireSessionClock() {
+  setInterval(paintSessionClock, 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) paintSessionClock();
+  });
+  window.addEventListener('focus', paintSessionClock);
+}
+
 function wireKeyboardHandling() {
   const viewport = window.visualViewport;
   if (viewport) {
@@ -1791,6 +1860,7 @@ async function boot() {
   wireEvents();
   wireBackButton();
   wireKeyboardHandling();
+  wireSessionClock();
   render();
 
   // Asked for after the first render, so the prompt never delays the screen.

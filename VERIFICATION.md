@@ -1,8 +1,8 @@
 # Bulk v2 — verification
 
-**Build:** `sw.js` VERSION `v2.2.0` · database v3 · plan format 3 · plan `fopip-v2`
+**Build:** `sw.js` VERSION `v2.3.0` · database v3 · plan format 3 · plan `fopip-v2`
 **Verified:** 19 August 2026
-**Method:** 249 automated tests, plus a driven pass in a real Chromium at
+**Method:** 267 automated tests, plus a driven pass in a real Chromium at
 390 × 844 against twelve rotations of generated history.
 
 v2.2.0 adds demo mode, the five-section navigation, the repair tools and the
@@ -59,11 +59,13 @@ version bump. To exercise the update path itself, open `http://localhost:8123/?s
 | `performance.test.js` | 6 | 200 sessions and 6,000 sets against explicit budgets |
 | `recovery.test.js` | 6 | Soft delete, restore, the bin listing, that a cascade-deleted set is not listed apart from its session, and refusing stores it cannot recover |
 | `screens.test.js` | 18 | Every screen *and every section behind a tab* on an empty database, and at both ends of every block, with no arithmetic leaking into the page |
-| `timing.test.js` | 7 | Rest and duration from the stored tick times, and every case where they must not be reported |
+| `timing.test.js` | 13 | Rest and duration from the stored tick times, and every case where they must not be reported |
 | `readiness.test.js` | 4 | The four defects reachable by flagging a day part-way through a session |
+| `timer.test.js` | 6 | That the rest timer reads correctly across a gap with no ticks delivered at all |
+| `duration.test.js` | 6 | How long a session takes with its warm-up ramps counted |
 | `photos.test.js` | 4 | Orientation-independent fitting and size formatting |
 
-**249 passing, 0 failing**, about 1 s.
+**267 passing, 0 failing**, about 1 s.
 
 `shell.test.js` exists because two of the defects found during this pass were
 not wrong code but unused code. `js/photos.js` was imported by the Body screen
@@ -265,6 +267,41 @@ if it were added by mistake.
   index 0 and shifted every logged set onto the wrong exercise.
 - Rotation 1: switching to yellow after logging keeps the logged set visible,
   writes `readiness: yellow` to the session log, and survives a reload.
+
+## v2.3.0 — found by using it in a gym
+
+The first real session was logged on v2.1.3 and the export read back here.
+Everything below was diagnosed against those 27 sets rather than against
+generated data.
+
+### Fifteen of twenty-seven sets showed no estimate, and would not say why
+
+Reported as "no e1RM when the added weight is 0". It is not the zero — the same
+zero at twelve reps estimates fine at 132.4 kg, and the prescribed row on the
+same screen is also +0 kg and shows 121.8. It is the twelve-rep limit, which is
+deliberate; the silence was not. Every withheld estimate now names its reason.
+
+### The rest timer measured how often the browser called it
+
+`restLeft -= 1` on a one-second interval, which mobile browsers throttle to
+about once a minute in the background or suspend outright. Rewritten against
+`Date.now()`; six tests move the clock forward by up to a day without
+delivering a single tick.
+
+### A session reported eight hours
+
+`startedAt` 11:14, first set 16:30. The log opens on the first thing you do and
+un-ticking a set removes the set but not the log, so a tap that was undone
+stamped the start five hours early. The session screen shows the span the work
+actually occupied, says how far out the start is, and offers to move it.
+
+### Verified against the real export
+
+Imported through the app's own import path: 1 session, 27 sets, 5 settings
+restored. The session screen then reported 14,746 kg moved, 340 reps, 27 sets,
+6 to failure, a typical rest of 7m 28s across 22 counted gaps, and 164 minutes
+of work — with the comparison section correctly saying there is nothing to
+compare a first session against.
 
 ## Known limits
 
