@@ -44,8 +44,8 @@ bumped.
 
 ## Undoing any part of it
 
-Ten commits, each one thing. Any of them can be reverted on its own without
-disturbing the others:
+Thirteen commits, each one thing. Any of them can be reverted on its own
+without disturbing the others:
 
 ```bash
 git revert <hash>
@@ -55,6 +55,9 @@ Newest first:
 
 | Commit | What it does | Safe to revert alone |
 |---|---|---|
+| `fb79d4e` | Back with a sheet open closed the app | **keep this one** |
+| `c4729ac` | Every export failed the app's own backup verifier | **keep this one** |
+| `3733c38` | Tests for every tabbed section, and this file | yes |
 | `516c213` | Session timing report, hand-driven timer, scale on weigh-ins | yes |
 | `7ed887d` | v2.2.0 version bump, docs brought up to date | yes — but the version bump is what makes an update reach the phone |
 | `83dec36` | The set-counting proposal document | yes — it is a document, it changes no behaviour |
@@ -66,10 +69,12 @@ Newest first:
 | `4ef605b` | Demo mode, sample-data safety, erase offers a backup | yes |
 | `6c7430e` | Version display and the update banner | yes |
 
-The two marked **keep** are defect fixes with no visual component. `a22b4fb` in
-particular fixes something live for you right now: from rotation 11, flagging a
-red day part-way through session A moved every logged set onto the wrong
-exercise.
+The four marked **keep** are defect fixes with no visual component. `a22b4fb`
+in particular fixes something live for you right now: from rotation 11,
+flagging a red day part-way through session A moved every logged set onto the
+wrong exercise. `c4729ac` is the one that mattered most for trusting your
+backups — before it, every export failed the app's own verifier the moment you
+took it.
 
 To throw away the lot and go back to where you were:
 
