@@ -40,7 +40,7 @@ import { rollUpFromSets, plannedVsCompleted } from '../volume.js';
 import { resolveSession, toDisplaySession } from '../plan.js';
 import { alive } from '../db.js';
 import { addDays } from '../dates.js';
-import { escape, fmtLoad, fmtNum, toDisplay, flag, openSheet, closeSheet } from './components.js';
+import { escape, fmtLoad, fmtNum, toDisplay, flag, subnav, openSheet, closeSheet } from './components.js';
 import {
   barChart,
   heatmap,
@@ -171,12 +171,39 @@ function metrics(state) {
    View
    ═══════════════════════════════════════════════════════════════════════ */
 
+/**
+ * Progress, in four parts.
+ *
+ * This was one column of twenty headings: the verdict, then every strength
+ * chart, then bodyweight, then volume, then records, then the tape, then a link
+ * to History at the very bottom. Nothing told you what was down there, and
+ * anything you wanted twice you had to scroll to twice.
+ *
+ * The parts are the questions you actually arrive with. Summary answers "is
+ * this working"; Strength, Body and Volume are the three things being asked
+ * about, each with its own charts.
+ */
+const SECTIONS = [
+  ['summary', 'Summary'],
+  ['strength', 'Strength'],
+  ['body', 'Body'],
+  ['volume', 'Volume'],
+];
+
 export function view(ctx) {
   const { state } = ctx;
   const unit = state.settings.unit;
   const m = metrics(state);
-  const liftName = state.plan.exercises[m.focus].name;
+  const section = state.progressSection || 'summary';
+  const tabs = subnav(SECTIONS, section, 'prog-section');
 
+  if (section === 'strength') return tabs + strengthView(ctx, state, m, unit);
+  if (section === 'body') return tabs + bodyView(state, m, unit);
+  if (section === 'volume') return tabs + volumeView(state, m);
+  return tabs + summaryView(state, m, unit);
+}
+
+function summaryView(state, m, unit) {
   return `
   ${tiles(state, m, unit)}
 
@@ -187,21 +214,22 @@ export function view(ctx) {
   ${flagsSection(state, m)}
   ${deloadCard(state, m)}
 
-  ${liftPicker(state, m.focus)}
-
-  <h3>Estimated 1RM — ${escape(liftName.split(' (')[0])}</h3>
-  ${strengthCard(state, m, unit)}
-
-  <h3>Bodyweight — 7-day average</h3>
-  ${bodyweightCard(state, m, unit)}
-
-  <h3>Waist at navel</h3>
-  ${waistCard(m)}
-
   <h3>Consistency</h3>
   <div class="card">${consistency(state)}
     <p class="hint">${consistencySummary(state)} One cell per day, coloured by session. Your single biggest risk is
     not finishing 33 rotations, and this is the only view that makes adherence visible.</p></div>
+
+  <h3>Work done</h3>
+  ${tonnageCard(state)}`;
+}
+
+function strengthView(ctx, state, m, unit) {
+  const liftName = state.plan.exercises[m.focus].name;
+  return `
+  ${liftPicker(state, m.focus)}
+
+  <h3>Estimated 1RM — ${escape(liftName.split(' (')[0])}</h3>
+  ${strengthCard(state, m, unit)}
 
   <h3>Load and reps — every set of ${escape(liftName.split(' (')[0])}</h3>
   <div class="card">${scatter(state, m.focus, unit)}
@@ -210,10 +238,34 @@ export function view(ctx) {
     count. Orange is the last fortnight: if it sits above the faded dots, you are getting stronger at every rep
     range. Rising only on the low-rep side means strength is outpacing work capacity.</p></div>
 
+  <h3>Records</h3>
+  ${recordsCard(state, m, unit)}
+
+  <h3>Block comparison</h3>
+  ${blockCard(state, m, unit)}
+
   <h3>Strength against bodyweight</h3>
   ${strengthVsBodyweight(m)}
 
-  <h3>This rotation — planned against logged</h3>
+  <h3>Working maxes</h3>
+  ${workingMaxes(ctx)}`;
+}
+
+function bodyView(state, m, unit) {
+  return `
+  <h3 style="margin-top:0">Bodyweight — 7-day average</h3>
+  ${bodyweightCard(state, m, unit)}
+
+  <h3>Waist at navel</h3>
+  ${waistCard(m)}
+
+  <h3>Tape measurements</h3>
+  ${measurementsCard(state)}`;
+}
+
+function volumeView(state, m) {
+  return `
+  <h3 style="margin-top:0">This rotation — planned against logged</h3>
   ${plannedCard(state, m)}
 
   <h3>Volume by muscle, rotation by rotation</h3>
@@ -222,34 +274,7 @@ export function view(ctx) {
   <h3>Weekly session load</h3>
   <div class="card">${sessionLoadChart(state)}
     <p class="hint">Session RPE × duration, summed per week, with a three-week average. It usually climbs for a week
-    or two <b>before</b> you consciously feel run down.</p></div>
-
-  <h3>Records</h3>
-  ${recordsCard(state, m, unit)}
-
-  <h3>Block comparison</h3>
-  ${blockCard(state, m, unit)}
-
-  <h3>Working maxes</h3>
-  ${workingMaxes(ctx)}
-
-  <h3>Tape measurements</h3>
-  ${measurementsCard(state)}
-
-  <h3>Work done</h3>
-  ${tonnageCard(state)}
-
-  <h3>Everything logged</h3>
-  <div class="card flush">
-    <div class="big-row" data-act="history-open-screen"><div class="ic">≡</div><div class="m"><b>History</b>
-      <span>Every session, weigh-in, measurement and niggle by date — and the only place anything can be deleted</span></div>
-      <div class="car">›</div></div>
-  </div>
-
-  <h3>Export</h3>
-  <div class="card"><p style="margin:0">A full backup, verified against what is in the database before it is
-    handed to you — <button data-act="history-backup" style="background:none;border:0;color:var(--s1);font:inherit;font-weight:650;padding:0;cursor:pointer">download one now</button>.
-    Settings has the same thing plus import.</p></div>`;
+    or two <b>before</b> you consciously feel run down.</p></div>`;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1025,10 +1050,13 @@ function workingMaxes(ctx) {
 }
 
 export const actions = {
+  'prog-section'(ctx, data) {
+    ctx.goTo({ tab: 'prog', progressSection: data.id });
+  },
+
+  /** History is its own bottom section now, not a room off the back of this one. */
   'history-open-screen'(ctx) {
-    ctx.state.progressSection = 'history';
-    ctx.render();
-    window.scrollTo(0, 0);
+    ctx.goTo({ tab: 'log', logSection: 'entries' });
   },
 
   'focus-lift'(ctx, data) {

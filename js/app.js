@@ -567,6 +567,12 @@ function resetBodyDraft() {
   for (const [id] of body.MEASUREMENT_SITES) {
     state.bodyDraft[`m-${id}`] = measurement[id] == null ? '' : String(measurement[id]);
   }
+  // Today's stored choice if there is one, otherwise the default. A row saved
+  // before this field existed has no time against it, and reopening it must not
+  // invent one — but a fresh entry starts on waking, which is the reading that
+  // is actually repeatable.
+  state.bodyDraft.measureTime = measurement.timeOfDay || body.DEFAULT_MEASUREMENT_TIME;
+  state.bodyDraft.measureTimeNote = measurement.timeOfDayNote || '';
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

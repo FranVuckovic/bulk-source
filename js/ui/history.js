@@ -13,7 +13,8 @@
  */
 
 import { e1rm, systemLoad } from '../calc.js';
-import { escape, fmtLoad, fmtNum, openSheet, closeSheet } from './components.js';
+import { escape, fmtLoad, fmtNum, subnav, flag, openSheet, closeSheet } from './components.js';
+import { measurementTimeLabel } from './body.js';
 
 const KINDS = [
   ['all', 'All'],
@@ -90,7 +91,14 @@ export function entries(state) {
       dateISO: dayOf(row.dateISO),
       title: 'Measurements',
       summary:
-        [row.waist == null ? null : `waist ${row.waist}`, row.chest == null ? null : `chest ${row.chest}`]
+        [
+          row.waist == null ? null : `waist ${row.waist}`,
+          row.chest == null ? null : `chest ${row.chest}`,
+          // Two tape readings taken at different times of day are not
+          // comparable, so which one this was belongs on the row rather than
+          // two taps inside it.
+          measurementTimeLabel(row) || 'time not recorded',
+        ]
           .filter(Boolean)
           .join(' · ') || 'all fields blank',
       record: row,
@@ -118,8 +126,32 @@ export function entries(state) {
   return rows.sort((a, b) => b.dateISO.localeCompare(a.dateISO) || a.kind.localeCompare(b.kind));
 }
 
+/**
+ * The Log — a bottom section of its own.
+ *
+ * It used to be the foot of the Progress screen, reached by scrolling past ten
+ * charts, and the export lived in Settings. Both are things you go looking for
+ * deliberately, and both were somewhere you would only find by accident. The
+ * record of what you did, the backups of it, and the bin it goes to when
+ * deleted are one subject and they are together.
+ */
+const SECTIONS = (state) => [
+  ['entries', 'Everything'],
+  ['backups', 'Backups'],
+  ['bin', 'Bin', (state.deleted || []).length ? String(state.deleted.length) : ''],
+];
+
 export function view(ctx) {
   const { state } = ctx;
+  const section = state.logSection || 'entries';
+  const tabs = subnav(SECTIONS(state), section, 'log-section');
+
+  if (section === 'backups') return tabs + backupsView(state);
+  if (section === 'bin') return tabs + binView(state);
+  return tabs + entriesView(state);
+}
+
+function entriesView(state) {
   const filter = state.historyFilter || 'all';
   const all = entries(state);
   const shown = filter === 'all' ? all : all.filter((row) => row.kind === filter);
@@ -130,11 +162,28 @@ export function view(ctx) {
     byDate.get(row.dateISO).push(row);
   }
 
+  const unfinished = state.logs.filter((log) => !log.endedAt);
+
   return `
-  <button class="back" data-act="history-close">‹ Progress</button>
-  <h3 style="margin-top:0">History</h3>
-  <p style="margin:0 2px 12px">Everything the app has stored, newest first. Tap an entry to see exactly what is
-  in it, or to delete it.</p>
+  <h3 style="margin-top:0">Everything logged</h3>
+  <p style="margin:0 2px 12px">Every record the app holds, newest first. Tap an entry to see exactly what is in it,
+  to correct it, or to delete it.</p>
+
+  ${
+    unfinished.length
+      ? flag(
+          'warn',
+          '!',
+          `<b>${unfinished.length} session${unfinished.length === 1 ? '' : 's'} never finished.</b> ${
+            unfinished.length === 1 ? 'It counts' : 'They count'
+          } towards no rotation and ${
+            unfinished.length === 1 ? 'its sets are' : 'their sets are'
+          } still in every chart. Open ${
+            unfinished.length === 1 ? 'it' : 'them'
+          } below to finish or delete.`
+        )
+      : ''
+  }
 
   <div class="picker">${KINDS.map(
     ([id, label]) =>
@@ -153,7 +202,7 @@ export function view(ctx) {
             (row) => `<div class="big-row" data-act="history-open" data-key="${escape(row.key)}">
             <div class="ic">${escape(row.kind === 'session' ? row.title.slice(0, 1) : row.kind.slice(0, 1).toUpperCase())}</div>
             <div class="m"><b>${escape(row.title)}</b><span>${escape(row.summary)}</span></div>
-            <div class="car">›</div></div>`
+            <div class="car">\u203a</div></div>`
           )
           .join('')}</div>`
           )
@@ -161,10 +210,58 @@ export function view(ctx) {
       : '<div class="card"><p style="margin:0">Nothing stored under that filter yet.</p></div>'
   }
 
-  ${recoveryList(state)}
-
   <p class="hint" style="margin:14px 2px">${all.length} entries in total. Deleting removes an entry from every
-  chart and average straight away, and keeps it in the recovery list until you empty the bin.</p>`;
+  chart and average straight away, and keeps it in the Bin until you empty it.</p>`;
+}
+
+/**
+ * Backups. The same export and import that live in Settings, put where the
+ * record is — it is the record you are backing up.
+ */
+function backupsView(state) {
+  const last = state.settings.lastBackupISO;
+  return `
+  <h3 style="margin-top:0">Backups</h3>
+  ${
+    last
+      ? flag('ok', '\u2713', `<b>Last backup ${escape(last)}.</b> Taken from this device, into your downloads.`)
+      : flag(
+          'warn',
+          '!',
+          `<b>No backup taken yet.</b> Everything you have logged exists in exactly one place: this browser, on this
+           device. A backup is one tap and it is the only thing standing between a cleared browser and starting again.`
+        )
+  }
+  <div class="card">
+    <p style="margin:0 0 10px">${state.logs.length} sessions \u00b7 ${state.sets.length} sets \u00b7 ${
+    state.daily.length
+  } daily \u00b7 ${state.measurements.length} measurements \u00b7 ${state.media.length} media.</p>
+    <button class="big" data-act="open-export">Export a zip</button>
+    <button class="big ghost mt" data-act="history-backup">Download a plain JSON backup</button>
+    <button class="big ghost mt" data-act="pick-import">Import from a zip</button>
+    <button class="big ghost mt" data-act="pick-verify">Verify a backup restores</button>
+    <input type="file" id="import-file" accept=".zip,application/zip" hidden data-act-file="import">
+    <input type="file" id="verify-file" accept=".zip,application/zip" hidden data-act-file="verify">
+    <p class="hint">The zip holds CSVs you can open in anything, a lossless <b>data.json</b> for restoring, your plan,
+    and your photos as real files.</p>
+    <p class="hint"><b>Importing replaces.</b> Every store the backup carries is emptied and refilled from it \u2014 it is a
+    restore, not a merge. A safety export of what is here downloads first, automatically.</p>
+    <p class="hint">Verify reads a backup and checks it against what is stored, without touching your data \u2014 so you
+    find out a backup is broken <b>before</b> you need it, not after.</p>
+  </div>`;
+}
+
+function binView(state) {
+  const deleted = state.deleted || [];
+  return `
+  <h3 style="margin-top:0">Bin</h3>
+  <p style="margin:0 2px 12px">Deleting takes a record out of the way, not out of existence. Everything deleted
+  waits here until you empty it, and travels in a backup meanwhile \u2014 so restoring an export restores the bin with it.</p>
+  ${
+    deleted.length
+      ? recoveryList(state)
+      : '<div class="card"><p style="margin:0">Nothing has been deleted, so there is nothing here.</p></div>'
+  }`;
 }
 
 /**
@@ -184,8 +281,7 @@ function recoveryList(state) {
     return `${row.kind === 'physique' ? 'Physique photo' : 'Form check'}`;
   };
 
-  return `<h3>Recently deleted</h3>
-  <div class="card flush">${deleted
+  return `<div class="card flush">${deleted
     .slice(0, 30)
     .map(
       (entry) => `<div class="big-row" style="cursor:default"><div class="ic">↺</div>
@@ -199,9 +295,9 @@ function recoveryList(state) {
     .join('')}</div>
   <p class="hint" style="margin:8px 2px 0">${deleted.length} deleted record${
     deleted.length === 1 ? '' : 's'
-  }${deleted.length > 30 ? ', 30 shown' : ''}. They are excluded from every chart and average, and still travel in a
-  backup — so restoring an export restores the bin with it. Emptying the bin, in Settings, is the only thing in this
-  app that destroys data.</p>`;
+  }${deleted.length > 30 ? ', 30 shown' : ''}. They are excluded from every chart and average.</p>
+  <button class="big ghost mt" data-act="empty-bin">Empty the bin — destroy these ${deleted.length}</button>
+  <p class="hint">Emptying the bin is the only thing in this app that destroys data.</p>`;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -228,6 +324,16 @@ function sessionDetail(ctx, row) {
     }${log.sessionRpe ? ` · session RPE ${log.sessionRpe}` : ''}${
       log.bodyweight ? ` · ${fmtLoad(log.bodyweight, unit)} ${unit}` : ''
     }${log.isPartial ? ' · logged as partial' : ''}</p>
+    <p style="text-align:center;font-size:12px;color:var(--muted);margin:0 0 10px">${[
+      log.cycleSequence ? `rotation ${log.cycleSequence}` : null,
+      log.blockId != null ? `block ${log.blockId}` : null,
+      log.readiness && log.readiness !== 'normal' ? `<b style="color:var(--warn)">${escape(log.readiness)} day</b>` : null,
+      log.effortMode ? `${escape(log.effortMode)} failure` : null,
+      log.completionRatio != null ? `${Math.round(log.completionRatio * 100)}% of prescribed` : null,
+      log.endedAt ? null : '<b style="color:var(--warn)">never finished</b>',
+    ]
+      .filter(Boolean)
+      .join(' · ')}</p>
     ${log.note ? `<div class="cue">${escape(log.note)}</div>` : ''}
     <div style="max-height:42vh;overflow:auto;margin-top:10px">
       ${[...grouped.entries()]
@@ -238,11 +344,39 @@ function sessionDetail(ctx, row) {
             .map((set) => {
               const total = systemLoad(set.load, set.bodyweightUsed || 0);
               const estimate = set.reps ? e1rm(total, set.reps, set.rpe ?? 8) : null;
-              return `${set.load == null ? '—' : `${set.bodyweightUsed ? '+' : ''}${fmtLoad(set.load, unit)}`} × ${
-                set.reps ?? '—'
-              } @ ${set.rpe ?? '—'}${estimate ? ` <span style="color:var(--muted)">(e1RM ${fmtLoad(estimate, unit)})</span>` : ''}`;
+              const marks = [
+                set.isAmrap ? 'AMRAP' : null,
+                set.isIndexSet ? 'index' : null,
+                set.isMyoRep ? 'myo' : null,
+                set.toFailure ? 'to failure' : null,
+                set.gripWidth || null,
+                set.pauseStyle || null,
+              ].filter(Boolean);
+
+              return `<div style="padding:2px 0">${
+                set.load == null ? '—' : `${set.bodyweightUsed ? '+' : ''}${fmtLoad(set.load, unit)}`
+              } × ${set.reps ?? '—'} @ ${set.rpe ?? '—'}${
+                estimate ? ` <span style="color:var(--muted)">(e1RM ${fmtLoad(estimate, unit)})</span>` : ''
+              }${
+                marks.length
+                  ? ` <span style="color:var(--muted);font-variant-numeric:normal">· ${escape(marks.join(' · '))}</span>`
+                  : ''
+              }${
+                /*
+                 * The note you typed when you logged the set. It has been
+                 * stored since the first version and displayed nowhere at all —
+                 * not here, not in the export preview, not on the Train screen
+                 * after the fact. Writing something down and never being shown
+                 * it again is worse than not offering the field.
+                 */
+                set.note
+                  ? `<div style="color:var(--ink);font-variant-numeric:normal;font-size:12.5px;margin:3px 0 2px;padding-left:9px;border-left:2px solid var(--s1)">${escape(
+                      set.note
+                    )}</div>`
+                  : ''
+              }</div>`;
             })
-            .join('<br>')}</div></div>`
+            .join('')}</div></div>`
         )
         .join('')}
     </div>
@@ -279,10 +413,8 @@ export const actions = {
     window.scrollTo(0, 0);
   },
 
-  'history-close'(ctx) {
-    ctx.state.progressSection = null;
-    ctx.render();
-    window.scrollTo(0, 0);
+  'log-section'(ctx, data) {
+    ctx.goTo({ tab: 'log', logSection: data.id });
   },
 
   /** Step one of two: say exactly what will go, and offer the backup. */

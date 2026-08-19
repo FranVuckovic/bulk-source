@@ -21,6 +21,34 @@ export const MEASUREMENT_SITES = [
   ['neck', 'Neck'],
 ];
 
+/**
+ * When the tape was read.
+ *
+ * The plan asks for the waist at the navel, relaxed, *at the same time of day*,
+ * because that is the measurement that separates a lean bulk from a fat one and
+ * it moves by more than a week's real change between waking and bedtime. Two
+ * readings taken at different times are not comparable, and until now nothing
+ * recorded which was which.
+ *
+ * Waking is the default because it is the one that is reliably repeatable:
+ * before food, before water, before training.
+ */
+export const MEASUREMENT_TIMES = [
+  ['waking', 'After waking up'],
+  ['pre-gym', 'Before gym'],
+  ['post-gym', 'After gym'],
+  ['pre-sleep', 'Before sleep'],
+  ['other', 'Other'],
+];
+
+export const DEFAULT_MEASUREMENT_TIME = 'waking';
+
+export const measurementTimeLabel = (row) => {
+  if (!row?.timeOfDay) return null;
+  if (row.timeOfDay === 'other') return row.timeOfDayNote || 'Other time';
+  return (MEASUREMENT_TIMES.find(([id]) => id === row.timeOfDay) || [])[1] || row.timeOfDay;
+};
+
 export const NIGGLE_SITES = [
   'Left elbow',
   'Right elbow',
@@ -144,8 +172,23 @@ export function view(ctx) {
     </div><div class="g2 mt">
       ${MEASUREMENT_SITES.slice(6).map(([id, label]) => field(`m-${id}`, label, draft[`m-${id}`])).join('')}
     </div>
+    <div class="mt"><label>When these were taken</label>
+      <div class="picker" style="padding-bottom:2px">${MEASUREMENT_TIMES.map(
+        ([id, label]) =>
+          `<button class="pill ${
+            (draft.measureTime || DEFAULT_MEASUREMENT_TIME) === id ? 'on' : ''
+          }" data-act="measure-time" data-id="${id}">${escape(label)}</button>`
+      ).join('')}</div>
+      ${
+        (draft.measureTime || DEFAULT_MEASUREMENT_TIME) === 'other'
+          ? `<input id="b-measureTimeNote" type="text" placeholder="When, exactly?" value="${escape(
+              draft.measureTimeNote || ''
+            )}" data-body-field="measureTimeNote" style="margin-top:8px">`
+          : ''
+      }
+    </div>
     <button class="big mt" data-act="save-measurements">Save measurements</button>
-    <p class="hint">Leave anything blank. Empty is stored as empty, never as zero. Waist at the navel, relaxed, same time of day — it is the lean-bulk discriminator, so consistency matters more than precision.</p></div>`,
+    <p class="hint">Leave anything blank. Empty is stored as empty, never as zero. Waist at the navel, relaxed — it is the lean-bulk discriminator, so consistency matters more than precision. <b>Same time of day, every time</b>: the waist moves more between waking and bedtime than it does in a good week, so two readings taken at different times are not comparable. Anything recorded before this was added has no time against it and says so rather than guessing.</p></div>`,
     state.shut
   )}
 
@@ -267,9 +310,21 @@ export const actions = {
     confirmBlanks(ctx, blanks, 'daily', () => ctx.saveDaily(row));
   },
 
+  'measure-time'(ctx, data) {
+    ctx.state.bodyDraft.measureTime = data.id;
+    ctx.render();
+  },
+
   'save-measurements'(ctx) {
     const draft = ctx.state.bodyDraft;
-    const row = { dateISO: draft.dateISO };
+    const timeOfDay = draft.measureTime || DEFAULT_MEASUREMENT_TIME;
+    const row = {
+      dateISO: draft.dateISO,
+      timeOfDay,
+      // Only meaningful for "other", and stored as null otherwise rather than
+      // left holding whatever was typed before the choice changed.
+      timeOfDayNote: timeOfDay === 'other' ? draft.measureTimeNote?.trim() || null : null,
+    };
     for (const [id] of MEASUREMENT_SITES) row[id] = parse(draft[`m-${id}`]);
 
     const blanks = countBlanks(MEASUREMENT_SITES.map(([id]) => row[id]));
