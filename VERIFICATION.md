@@ -1,8 +1,8 @@
 # Bulk v2 — verification
 
-**Build:** `sw.js` VERSION `v2.1.0` · database v3 · plan format 3 · plan `fopip-v2`
+**Build:** `sw.js` VERSION `v2.1.1` · database v3 · plan format 3 · plan `fopip-v2`
 **Verified:** 19 August 2026
-**Method:** 212 automated tests, plus a manual pass in a 390 × 844 viewport in
+**Method:** 217 automated tests, plus a manual pass in a 390 × 844 viewport in
 both colour schemes against twelve rotations of generated history.
 
 v1 is archived at `archive/v1/` and tagged `v1.0`. It still runs and still
@@ -50,10 +50,11 @@ version bump. To exercise the update path itself, open `http://localhost:8123/?s
 | `performance.test.js` | 6 | 200 sessions and 6,000 sets against explicit budgets |
 | `recovery.test.js` | 5 | Soft delete, restore, the bin listing, and refusing stores it cannot recover |
 | `photos.test.js` | 4 | Orientation-independent fitting and size formatting |
+| `service-worker.test.js` | 5 | The takeover rule, and that no branch can answer a module request with the shell |
 | `screens.test.js` | 6 | Every screen on an empty database, and at both ends of every block, with no arithmetic leaking into the page |
 | `shell.test.js` | 6 | The offline shell covers the module graph, and the app calls the safe paths rather than merely containing them |
 
-**212 passing, 0 failing**, about 0.6 s.
+**217 passing, 0 failing**, about 0.6 s.
 
 `shell.test.js` exists because two of the defects found during this pass were
 not wrong code but unused code. `js/photos.js` was imported by the Body screen
@@ -153,8 +154,19 @@ colour schemes at 390 × 844.
 
 - No console errors and no CSP violations on any screen.
 - The service worker serves the whole shell from one versioned cache, so a
-  half-updated app is not reachable; a new build waits and is applied by a tap,
-  and warns first if a session is open.
+  half-updated app is not reachable.
+- **The update flow, end to end on the live site.** With v2.1.0 controlling and
+  v2.1.1 published: the banner appeared, *Update now* reloaded the page once,
+  the old cache was deleted, and the banner did not come back. It warns first
+  if a session is open.
+- **Taking over from v1.** Registered the archived v1 worker on a clean origin,
+  let it take control, then registered v2.1.1: it activated without waiting,
+  claimed the page and dropped the old cache. This is not a nicety — v1's
+  worker answered any failed fetch with `index.html`, including a request for a
+  JavaScript module, which Chrome refuses to run as `text/html`. On a device
+  holding it, the app rendered its header and tab bar and nothing else, and had
+  no way to say why: the module that reports errors was one of the ones that
+  failed to load.
 - A second tab takes the pen and the older one says so rather than racing it.
 
 ---
