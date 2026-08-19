@@ -62,6 +62,8 @@ import {
   escape,
   fmtLoad,
   fmtNum,
+  flag,
+  deviceIsolationNote,
   openSheet,
   closeSheet,
   stopRest,
@@ -86,6 +88,8 @@ const state = {
   storage: { supported: false, persisted: false },
   integrity: null,
   buildVersion: null,
+  updateVersion: null,
+  shellReport: null,
 
   logs: [],
   sets: [],
@@ -587,25 +591,63 @@ function staleBanner() {
   </span></div>`;
 }
 
+/**
+ * The update banner names both versions.
+ *
+ * "A new version is ready" does not tell you what you are moving from, what you
+ * are moving to, or whether it landed. Both numbers are stated here and the
+ * header carries the same pair, so after the reload you can see at a glance
+ * whether the update actually took.
+ */
 function updateBanner() {
   if (!state.updateReady) return '';
   const mid = !!state.activeLog;
+  const from = state.buildVersion || 'the current build';
+  const to = state.updateVersion;
+
   return `<div class="flag f-${mid ? 'warn' : 'info'}" style="margin:0 0 12px"><i>${mid ? '!' : 'i'}</i><span>
-    <b>A new version of Bulk is ready.</b> ${
+    <b>Update ready${to ? `: ${escape(from)} → ${escape(to)}` : ''}.</b> ${
+      to
+        ? ''
+        : `You are on <b>${escape(from)}</b>. `
+    }${
       mid
         ? 'You are part-way through a session — finish it first. Applying an update reloads the app, and an unlogged set would be lost.'
-        : 'It is downloaded and waiting. Applying it reloads the app; your data is untouched.'
+        : 'It is downloaded and waiting. Applying it reloads the app; <b>your training data is untouched</b> — the update replaces code only and never opens the database.'
     }
-    <button data-act="apply-update" style="display:block;margin-top:6px;background:none;border:0;color:var(--s1);font:inherit;font-weight:650;padding:0;cursor:pointer">Update now</button>
+    <button data-act="apply-update" style="display:block;margin-top:6px;background:none;border:0;color:var(--s1);font:inherit;font-weight:650;padding:0;cursor:pointer">Update now${
+      to ? ` — take ${escape(to)}` : ''
+    }</button>
   </span></div>`;
+}
+
+/**
+ * What build is this, in the two words that answer it.
+ *
+ * `not cached` is the honest answer on a development machine, where the offline
+ * shell is deliberately off and there is no worker to ask. With an update
+ * waiting it reads `v2.1.3 → v2.1.4`, because "which version am I moving from
+ * and to" is the question an update banner has to answer and the old one did
+ * not.
+ */
+function versionLabel() {
+  const from = state.buildVersion;
+  const to = state.updateVersion;
+  if (!from) return 'not cached';
+  return to && to !== from ? `${from} → ${to}` : from;
 }
 
 function render() {
   document.getElementById('ttl').textContent = TABS[state.tab];
-  document.getElementById('chip').textContent =
-    state.tab === 'train'
-      ? `Session ${state.trainSessionId}`
-      : `Rotation ${state.cycle.sequence}/${state.plan.meta.rotations}`;
+
+  const version = document.getElementById('ver');
+  version.textContent = versionLabel();
+  version.classList.toggle('up', !!state.updateVersion && state.updateVersion !== state.buildVersion);
+
+  // Always the rotation, on every screen, and always tappable. The session
+  // letter used to live here and duplicated the session header directly below
+  // it; where you are in 33 rotations is the thing worth carrying everywhere.
+  document.getElementById('chip').textContent = `Rotation ${state.cycle.sequence}/${state.plan.meta.rotations}`;
   document.getElementById('view').innerHTML = staleBanner() + updateBanner() + screenFor(state.tab);
 
   for (const key of ['train', 'body', 'prog', 'plan']) {
@@ -929,6 +971,68 @@ const globalActions = {
   },
 
   /**
+   * Which build is this, and is it whole?
+   *
+   * Reached from the version in the header. Everything here answers a question
+   * that used to need a developer: what am I running, is an update waiting,
+   * are all the offline files actually present, and where does this data live.
+   */
+  'about-build'() {
+    const from = state.buildVersion;
+    const to = state.updateVersion;
+    const shell = state.shellReport;
+
+    openSheet(`<div class="ttl">This build</div>
+      <p style="text-align:center;font-size:30px;font-weight:800;margin:14px 0 2px;letter-spacing:-.02em;font-variant-numeric:tabular-nums">${escape(
+        from || 'not cached'
+      )}</p>
+      <p style="text-align:center;font-size:13px;margin:0 0 12px">${
+        from
+          ? 'the version running on this device right now'
+          : 'served straight from a development machine, with the offline shell switched off so every edit is visible'
+      }</p>
+      ${
+        to && to !== from
+          ? `<div class="flag f-info"><i>i</i><span><b>${escape(from)} → ${escape(to)}</b> is downloaded and waiting.
+              Applying it reloads the app. It replaces code only — the update path never opens your database.</span></div>
+             <button class="big mt" data-act="apply-update">Update now — take ${escape(to)}</button>`
+          : from
+            ? flag('ok', '✓', '<b>This is the newest build this device has seen.</b> The app checks for a new one every time it starts.')
+            : ''
+      }
+      ${
+        shell
+          ? flag(
+              shell.offline ? 'warn' : 'ok',
+              shell.offline ? '!' : '✓',
+              shell.offline
+                ? `<b>Offline shell not verified.</b> There was no connection to check against. The app still runs on what is already cached.`
+                : `<b>Offline shell complete — ${shell.checked} files.</b>${
+                    shell.restored ? ` ${shell.restored} were missing and have been put back.` : ' Nothing was missing.'
+                  } This is what lets the app run with no signal, and with the website gone.`
+            )
+          : ''
+      }
+      <h3>Where this data lives</h3>
+      ${deviceIsolationNote()}
+      <p class="hint">Plan <b>${escape(state.plan.meta.id)}</b> · plan format ${state.plan.format} ·
+        database v${state.integrity?.formatVersion ?? '—'}</p>
+      <button class="big ghost mt" data-act="sheet-close">Close</button>`);
+  },
+
+  /** The rotation chip goes where the rotation is explained. */
+  'chip-tap'() {
+    state.tab = 'plan';
+    state.planSection = null;
+    closeSheet();
+    render();
+    // After the render, or the anchor does not exist yet.
+    requestAnimationFrame(() => {
+      document.getElementById('periodisation')?.scrollIntoView({ block: 'start' });
+    });
+  },
+
+  /**
    * Apply a waiting build. The worker swaps, `controllerchange` fires, and the
    * page reloads once — so every module comes from the same new version rather
    * than a mix of the two.
@@ -1245,6 +1349,11 @@ function registerServiceWorker() {
         // update, not a first install. A first install has nothing to offer.
         if (worker && worker.state === 'installed' && navigator.serviceWorker.controller) {
           state.updateReady = true;
+          // Ask the waiting build what it calls itself, so the banner can name
+          // both ends of the move rather than only saying that one exists.
+          // A build older than v2.2.0 does not answer this and the banner
+          // falls back to naming the current version alone.
+          worker.postMessage('waiting-version');
           render();
         }
       };
@@ -1258,9 +1367,20 @@ function registerServiceWorker() {
       navigator.serviceWorker.addEventListener('message', (event) => {
         if (event.data?.version) {
           state.buildVersion = event.data.version;
-          if (state.tab === 'set') render();
+          render();
         }
-        if (event.data?.shell) state.shellReport = event.data.shell;
+        // Sent by the build that is waiting, not the one in control. Kept in a
+        // separate field precisely so the two can never be confused — showing
+        // the incoming version as the running one would be worse than showing
+        // nothing.
+        if (event.data?.waitingVersion) {
+          state.updateVersion = event.data.waitingVersion;
+          render();
+        }
+        if (event.data?.shell) {
+          state.shellReport = event.data.shell;
+          render();
+        }
       });
       navigator.serviceWorker.controller?.postMessage('version');
       // Ask the worker to top up anything missing from the offline shell. A

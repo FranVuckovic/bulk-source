@@ -92,7 +92,7 @@ function overview(state) {
   ${volumeBars(state, volume, frequency, wholeMuscle)}
   <p class="hint" style="margin:0 2px 14px">Fractional sets — a set where the muscle is the main mover counts 1.0, a meaningful supporting role counts 0.5, and anything under 0.3 is not counted at all. Speed bench counts <b>zero</b>: at RPE 5–6 it is motor-pattern practice, not a growth stimulus.</p>
 
-  <h3>Blocks through March — what changes and when</h3>
+  <h3 id="periodisation">Blocks through March — what changes and when</h3>
   <div class="card">${state.plan.blocks
     .map(
       (block) => `<details ${block.id === state.block.idx ? 'open' : ''}><summary>${escape(block.name)} <span style="font-weight:500;color:var(--muted);font-size:12px">rotations ${block.from}–${block.to}</span></summary><div class="c">

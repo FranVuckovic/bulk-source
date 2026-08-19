@@ -7,7 +7,7 @@
  * rounding drift into a single stored number.
  */
 
-import { escape, fmtNum, toDisplay, flag, openSheet, closeSheet } from './components.js';
+import { escape, fmtNum, toDisplay, flag, deviceIsolationNote, openSheet, closeSheet } from './components.js';
 
 const bytes = (n) =>
   n == null ? '—' : n > 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n > 1e6 ? `${(n / 1e6).toFixed(0)} MB` : `${(n / 1e3).toFixed(0)} KB`;
@@ -115,10 +115,29 @@ export function view(ctx) {
     <button class="big danger mt" data-act="erase">Erase all data</button>
     <p class="hint">Requires typing ERASE. Everything logged goes: sessions, sets, weigh-ins, measurements, photos and maxes. The plan file is untouched.</p></div>
 
+  <h3>Where this data lives</h3>
+  <div class="card">
+    ${deviceIsolationNote()}
+  </div>
+
   <h3>About</h3>
-  <div class="card"><p style="margin:0">Bulk · build <b>${escape(state.buildVersion || 'not cached')}</b> ·
-    plan format ${state.plan.format} · database v${state.integrity?.formatVersion ?? '—'} ·
-    ${escape(state.plan.meta.id)}</p>
+  <div class="card">
+    <p style="margin:0 0 2px;font-size:22px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums">${escape(
+      state.buildVersion || 'not cached'
+    )}${
+      state.updateVersion && state.updateVersion !== state.buildVersion
+        ? ` <span style="color:var(--s1);font-size:15px;font-weight:700">→ ${escape(state.updateVersion)}</span>`
+        : ''
+    }</p>
+    <p style="margin:0 0 10px">${
+      state.updateVersion && state.updateVersion !== state.buildVersion
+        ? `You are running <b>${escape(state.buildVersion)}</b>. <b>${escape(
+            state.updateVersion
+          )}</b> is downloaded and waiting for you to take it.`
+        : 'The build running on this device. The same number is in the header on every screen.'
+    }</p>
+    <p style="margin:0">Plan format ${state.plan.format} · database v${state.integrity?.formatVersion ?? '—'} ·
+      ${escape(state.plan.meta.id)}</p>
     <p class="hint">The build number comes from the service worker's version. If you update the app and this does not
     change, the update has not reached this device — close every tab and reopen. It reads <b>not cached</b> when the
     app is being served from a development machine, where the offline shell is deliberately switched off so edits

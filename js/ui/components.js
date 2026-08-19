@@ -112,4 +112,42 @@ export function section(id, title, count, body, shut) {
 export const flag = (kind, icon, html) =>
   `<div class="flag f-${kind}"><i>${icon}</i><span>${html}</span></div>`;
 
+/**
+ * Where this data lives, said out loud.
+ *
+ * IndexedDB is scoped to an origin *inside one browser profile on one device*.
+ * The phone and the laptop load the same address and get two entirely separate
+ * databases; nothing syncs between them, and no code in this app could make it,
+ * because there is no server to sync through.
+ *
+ * That is good news and bad news in the same sentence, and only the good half
+ * is obvious. The good half: the two copies cannot collide or overwrite each
+ * other. The bad half: log in both places and you quietly own two histories
+ * that disagree, and neither one is wrong. This is worth saying before it
+ * happens rather than after, which is why it appears wherever the question
+ * naturally comes up rather than once in a settings page.
+ */
+export const deviceIsolationNote = () => `
+  ${flag(
+    'ok',
+    '✓',
+    `<b>This device has its own database, and it is the only copy.</b> Storage belongs to this browser on this
+     device. Nothing syncs, because there is no server to sync through — so the app on your phone and the app in a
+     desktop browser can never collide or overwrite one another.`
+  )}
+  ${flag(
+    'warn',
+    '!',
+    `<b>They cannot share, either.</b> Log sessions in both places and you get <b>two separate histories that both
+     look correct</b>, diverging from the day you started. Pick one device as the real log. A different browser on
+     the same device counts as a different device, and a private window is a third one that is thrown away when it
+     closes.`
+  )}
+  ${flag(
+    'info',
+    'i',
+    `<b>The zip is the bridge.</b> Export from one, import into the other. That is the only way data moves between
+     devices, and it replaces rather than merges — so move in one direction, deliberately.`
+  )}`;
+
 export const card = (inner, cls = '') => `<div class="card ${cls}">${inner}</div>`;
