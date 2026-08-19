@@ -13,8 +13,9 @@
  */
 
 import { e1rm, systemLoad } from '../calc.js';
+import { sessionTiming } from '../analytics.js';
 import { escape, fmtLoad, fmtNum, subnav, flag, openSheet, closeSheet } from './components.js';
-import { measurementTimeLabel } from './body.js';
+import { measurementTimeLabel, scaleLabel } from './body.js';
 
 const KINDS = [
   ['all', 'All'],
@@ -75,7 +76,7 @@ export function entries(state) {
       dateISO: dayOf(row.dateISO),
       title: 'Daily',
       summary: [
-        row.bodyweight == null ? null : `${row.bodyweight} kg`,
+        row.bodyweight == null ? null : `${row.bodyweight} kg${scaleLabel(row) ? ` (${scaleLabel(row)})` : ''}`,
         row.bodyfatPct == null ? null : `${row.bodyfatPct}% bf`,
         row.sleepHours == null ? null : `${row.sleepHours} h sleep`,
         row.steps == null ? null : `${row.steps} steps`,
@@ -380,6 +381,7 @@ function sessionDetail(ctx, row) {
         )
         .join('')}
     </div>
+    ${timingSection(ctx, log, row.sets)}
     <button class="big ghost mt" data-act="repair-session" data-id="${log.id}">Fix something about this session</button>
     <button class="big danger mt" data-act="history-delete" data-key="${escape(row.key)}">Delete this session</button>
     <button class="big ghost mt" data-act="sheet-close">Close</button>`;
@@ -494,6 +496,80 @@ function repairSetSheet(ctx, set) {
     <button class="big danger mt" data-act="repair-set-delete" data-id="${set.id}">Delete just this set</button>
     <button class="big ghost mt" data-act="sheet-close">Cancel</button>
     <p class="hint">Every correction is recorded with the field, the old value and the new one.</p>`;
+}
+
+const clock = (seconds) =>
+  seconds == null ? '—' : seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`;
+
+const timeOfDay = (iso) => {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+
+/**
+ * What the session actually looked like in time.
+ *
+ * Every set has stored the moment it was ticked since the first version and
+ * nothing ever read it back. This is that data, finally shown: when each set
+ * went in, how long since the one before it, and what the whole thing took.
+ *
+ * It declines to draw conclusions when it should. A session logged from memory
+ * afterwards has ticks seconds apart, and "8s rest" from that is not a
+ * measurement — it is an artefact that looks like one. The report says so and
+ * stops, whether you told it or it worked it out from the gaps.
+ */
+function timingSection(ctx, log, sets) {
+  const t = sessionTiming(log, sets);
+  if (!t.setCount) return '';
+
+  const timeline = t.entries
+    .map((entry) => {
+      const name = ctx.state.plan.exercises[entry.exerciseId]?.name || entry.exerciseId;
+      return `<div class="tl-row${entry.isLongGap ? ' gap' : ''}">
+        <span class="t">${escape(timeOfDay(entry.atISO))}</span>
+        <span class="n">${escape(name.split(' (')[0])}</span>
+        <span class="r">${entry.isFirst ? 'start' : escape(clock(entry.gapSeconds))}</span></div>`;
+    })
+    .join('');
+
+  if (!t.reliable) {
+    return `<h3>Timing</h3>
+      <div class="card">
+        ${flag(
+          'warn',
+          '!',
+          t.statedUnreliable
+            ? `<b>Marked as logged after the fact.</b> The times below are when the rows were filled in, not when the
+               work happened, so no rest or duration is reported from them. Everything else about this session is
+               exactly as it was.`
+            : `<b>These look like they were filled in together.</b> Most of the gaps are under
+               ${escape(String(20))} seconds, which is not rest between working sets. Rest and duration are not
+               reported rather than reported wrongly.`
+        )}
+        <div class="timeline">${timeline}</div>
+      </div>`;
+  }
+
+  return `<h3>Timing</h3>
+    <div class="card">
+      <div class="g3">
+        <div class="tstat"><b>${escape(clock(t.totalSeconds))}</b><span>total</span></div>
+        <div class="tstat"><b>${escape(clock(t.medianRestSeconds))}</b><span>typical rest</span></div>
+        <div class="tstat"><b>${escape(clock(t.longestRestSeconds))}</b><span>longest rest</span></div>
+      </div>
+      <div class="timeline mt">${timeline}</div>
+      <p class="hint">Time of day, exercise, and the gap since the previous set. ${
+        t.countedRests
+          ? `${t.countedRests} gap${t.countedRests === 1 ? '' : 's'} counted as rest.`
+          : 'Not enough gaps to call anything typical.'
+      }${
+        t.longGaps
+          ? ` ${t.longGaps} gap${t.longGaps === 1 ? '' : 's'} over 20 minutes ${
+              t.longGaps === 1 ? 'is' : 'are'
+            } shown but left out of the rest figures — that is a queue or an interruption, not a rest interval.`
+          : ''
+      }</p>
+    </div>`;
 }
 
 function plainDetail(row) {

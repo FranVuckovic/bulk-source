@@ -54,6 +54,27 @@ p{margin:0 0 10px;color:var(--ink2);font-size:13.5px}
 .gear svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8}
 .back{background:none;border:0;color:var(--s1);font:inherit;font-size:14px;font-weight:600;cursor:pointer;padding:0;margin-bottom:10px}
 
+/* the session timeline */
+.timeline{max-height:34vh;overflow:auto}
+.tl-row{display:flex;align-items:baseline;gap:9px;font-size:12px;padding:4px 0;border-bottom:1px solid var(--grid);
+  font-variant-numeric:tabular-nums;color:var(--ink2)}
+.tl-row:last-child{border-bottom:0}
+.tl-row .t{flex:0 0 auto;min-width:42px;color:var(--muted)}
+.tl-row .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.tl-row .r{flex:0 0 auto;font-weight:650}
+.tl-row.gap .r{color:var(--s2)}
+.tstat{text-align:center;padding:8px 4px;background:var(--sunk);border-radius:9px}
+.tstat b{display:block;font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.tstat span{display:block;font-size:10.5px;color:var(--muted);margin-top:2px}
+
+/* the timing switch, next to Finish session */
+.timing-row{display:flex;align-items:center;gap:11px;padding:10px 11px;background:var(--sunk);border-radius:10px}
+.timing-row > div{flex:1;min-width:0}
+.timing-row b{display:block;font-size:13px}
+.timing-row span{display:block;font-size:11.5px;color:var(--muted);margin-top:2px;line-height:1.45}
+.timing-row button{flex:0 0 auto;background:var(--surface);border:1px solid var(--line);color:var(--ink2);font:inherit;
+  font-size:12px;font-weight:650;padding:7px 11px;border-radius:8px;cursor:pointer}
+
 /* records — the current best, and the staircase behind it */
 .rec-wrap{border-bottom:1px solid var(--grid)}
 .rec-wrap:last-child{border-bottom:0}
@@ -192,7 +213,9 @@ nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.9;st
 .rest.on{display:flex}
 .rest .t{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
 .rest .l{font-size:11px;opacity:.85;text-transform:uppercase;letter-spacing:.07em;font-weight:700}
-.rest button{background:rgba(255,255,255,.22);border:0;color:#fff;font:inherit;font-size:12.5px;font-weight:650;padding:7px 12px;border-radius:8px;cursor:pointer}
+.rest.stop{background:var(--c6)}
+.rbtns{display:flex;gap:6px}
+.rest button{background:rgba(255,255,255,.22);border:0;color:#fff;font:inherit;font-size:12.5px;font-weight:650;padding:7px 11px;border-radius:8px;cursor:pointer}
 
 /* tiles / flags */
 .tiles{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:11px}

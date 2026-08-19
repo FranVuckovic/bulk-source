@@ -33,6 +33,30 @@ export const MEASUREMENT_SITES = [
  * Waking is the default because it is the one that is reliably repeatable:
  * before food, before water, before training.
  */
+/**
+ * Which scale the weight came off.
+ *
+ * Two scales rarely agree, and a bulk is read from a trend of a few hundred
+ * grams a week — so a week logged on the gym scale next to a week logged at
+ * home can invent a gain or hide one. Recording which is what makes that
+ * visible instead of silent.
+ *
+ * Deliberately optional, with no default. Most weigh-ins are on the same scale
+ * and asking every morning would be noise; a blank means "not recorded", which
+ * is honest, rather than "home", which would be a guess.
+ */
+export const SCALES = [
+  ['home', 'Home scale'],
+  ['gym', 'Gym scale'],
+  ['other', 'Other'],
+];
+
+export const scaleLabel = (row) => {
+  if (!row?.scale) return null;
+  if (row.scale === 'other') return row.scaleNote || 'Other scale';
+  return (SCALES.find(([id]) => id === row.scale) || [])[1] || row.scale;
+};
+
 export const MEASUREMENT_TIMES = [
   ['waking', 'After waking up'],
   ['pre-gym', 'Before gym'],
@@ -148,6 +172,28 @@ export function view(ctx) {
           <option value="no" ${draft.caffeine === 'no' ? 'selected' : ''}>No</option>
         </select></div>
     </div>
+    <div class="mt"><label>Which scale (optional)</label>
+      <div class="picker" style="padding-bottom:2px">${SCALES.map(
+        ([id, label]) =>
+          `<button class="pill ${draft.scale === id ? 'on' : ''}" data-act="daily-scale" data-id="${id}">${escape(
+            label
+          )}</button>`
+      ).join('')}${
+        draft.scale
+          ? `<button class="pill" data-act="daily-scale" data-id="">Clear</button>`
+          : ''
+      }</div>
+      ${
+        draft.scale === 'other'
+          ? `<input id="b-scaleNote" type="text" placeholder="Which scale?" value="${escape(
+              draft.scaleNote || ''
+            )}" data-body-field="scaleNote" style="margin-top:8px">`
+          : ''
+      }
+      <p class="hint">Leave it blank unless it changes. Two scales rarely agree, and this bulk is read from a trend
+      of a few hundred grams a week — so a stretch weighed at the gym next to a stretch weighed at home can invent a
+      gain or hide one.</p></div>
+
     <div class="mt"><label for="b-note">Note</label>
       <input id="b-note" type="text" value="${escape(draft.note ?? '')}" data-body-field="note" placeholder="Anything worth remembering…"></div>
     <p class="hint">${
@@ -304,10 +350,19 @@ export const actions = {
       steps: parse(draft.steps),
       mood: parse(draft.mood),
       caffeine: draft.caffeine || null,
+      scale: draft.scale || null,
+      scaleNote: draft.scale === 'other' ? draft.scaleNote?.trim() || null : null,
       note: draft.note || null,
     };
     const blanks = countBlanks([row.bodyweight, row.bodyfatPct, row.sleepHours]);
     confirmBlanks(ctx, blanks, 'daily', () => ctx.saveDaily(row));
+  },
+
+  'daily-scale'(ctx, data) {
+    // Tapping the one already chosen clears it, because "not recorded" has to
+    // stay reachable once something has been picked.
+    ctx.state.bodyDraft.scale = ctx.state.bodyDraft.scale === data.id ? '' : data.id;
+    ctx.render();
   },
 
   'measure-time'(ctx, data) {

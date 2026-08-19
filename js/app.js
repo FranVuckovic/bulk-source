@@ -70,6 +70,9 @@ import {
   closeSheet,
   sheetIsOpen,
   stopRest,
+  toggleTimer,
+  resetTimer,
+  openStopwatch,
   fromDisplay,
   toDisplay,
   parseNumber,
@@ -328,6 +331,9 @@ async function ensureActiveLog() {
         blockId: state.block.idx,
         effortMode: state.effortMode,
         readiness: state.readiness || 'normal',
+        // Real until said otherwise: a session logged as it happens is the
+        // normal case, and the switch beside Finish is for the times it is not.
+        timingReliable: true,
         rotationIndex: state.plan.meta.rotationOrder.indexOf(state.trainSessionId),
         bodyweight: null,
         sessionRpe: null,
@@ -559,6 +565,10 @@ function resetBodyDraft() {
     steps: daily.steps == null ? '' : String(daily.steps),
     mood: daily.mood == null ? '' : String(daily.mood),
     caffeine: daily.caffeine || '',
+    // No default: blank means "not recorded", and guessing "home" would put a
+    // fact in the database that nobody stated.
+    scale: daily.scale || '',
+    scaleNote: daily.scaleNote || '',
     note: daily.note || '',
     niggleSite: '',
     niggleSeverity: '1',
@@ -884,6 +894,40 @@ const ctx = {
     await loadEverything();
     render();
     return { ok: true };
+  },
+
+  /**
+   * Start the clock, without logging anything.
+   *
+   * The session has always started itself on the first tick, and still does —
+   * this is not a step you have to take, and nothing refuses to work without
+   * it. It exists so the warm-up can be inside the recorded session rather than
+   * before it, which is the difference between "68 minutes" and "68 minutes
+   * plus however long I was on the bike".
+   */
+  async startSession() {
+    if (state.activeLog) return state.activeLog;
+    const log = await ensureActiveLog();
+    render();
+    return log;
+  },
+
+  /**
+   * Say whether this session's timestamps mean anything.
+   *
+   * Stored on the log, so it travels with the session and applies to it alone.
+   * Everything except the timing report is unaffected either way.
+   */
+  async setTimingReliable(reliable) {
+    if (!state.activeLog) return;
+    const from = state.activeLog.timingReliable !== false;
+    state.activeLog = { ...state.activeLog, timingReliable: !!reliable };
+    await put(state.db, 'sessionLogs', state.activeLog);
+    await put(state.db, 'auditLog', {
+      atISO: nowISO(), entity: 'sessionLog', entityId: state.activeLog.id, action: 'edit',
+      field: 'timingReliable', from, to: !!reliable,
+    });
+    render();
   },
 
   /* ═══════════════════════════════════════════════════════════════════════
@@ -1400,6 +1444,15 @@ const globalActions = {
   },
   'rest-skip'() {
     stopRest();
+  },
+  'rest-toggle'() {
+    toggleTimer();
+  },
+  'rest-reset'() {
+    resetTimer();
+  },
+  'open-timer'() {
+    openStopwatch();
   },
   async unit(_ctx, data) {
     const from = state.settings.unit;

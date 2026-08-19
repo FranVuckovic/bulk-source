@@ -370,6 +370,119 @@ export function blockComparison(sets, { exercises, logs, lifts }) {
   return rows.sort((a, b) => a.blockId - b.blockId || a.name.localeCompare(b.name));
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   Session timing
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Gaps shorter than this are not rest — they are two rows filled in together.
+ * Used to notice a session typed up afterwards rather than logged as it
+ * happened, so the app can say the timing is not meaningful instead of
+ * reporting eight seconds of rest between working sets.
+ */
+export const MIN_REAL_REST_SECONDS = 20;
+
+/**
+ * A gap longer than this is almost certainly not rest between sets — a phone
+ * call, a queue for a rack, or the session being picked up again later. Still
+ * reported, because it is real; just not counted into the typical rest.
+ */
+export const LONG_GAP_SECONDS = 20 * 60;
+
+/**
+ * What actually happened, minute by minute, from the timestamps already stored.
+ *
+ * Every set has carried a `timestampISO` since the first version and nothing
+ * has ever read it. The times are therefore free — this derives rest between
+ * sets, working time and session length from data already in the database,
+ * including for sessions logged long before the report existed.
+ *
+ * The whole thing is conditional on the timing being real. A session typed up
+ * on the bus home has timestamps a few seconds apart, and reporting "8 s of
+ * rest" from them would be worse than reporting nothing: it looks like a
+ * measurement. `reliable` is false when the owner has said so, and
+ * `looksBulkEntered` is true when the gaps say so regardless of what anyone
+ * said, so a screen can decline to draw conclusions from it.
+ */
+export function sessionTiming(log, sets, { now = null } = {}) {
+  const ordered = (sets || [])
+    .filter((set) => !set.deletedAtISO && set.timestampISO)
+    .sort((a, b) => a.timestampISO.localeCompare(b.timestampISO));
+
+  const stated = log?.timingReliable;
+  const startedAt = log?.startedAt || ordered[0]?.timestampISO || null;
+  const endedAt = log?.endedAt || (log && !log.endedAt ? now : null) || ordered[ordered.length - 1]?.timestampISO || null;
+
+  const entries = ordered.map((set, i) => {
+    const at = Date.parse(set.timestampISO);
+    const previous = i ? Date.parse(ordered[i - 1].timestampISO) : startedAt ? Date.parse(startedAt) : null;
+    const gapSeconds = previous == null || !Number.isFinite(at) ? null : Math.max(0, Math.round((at - previous) / 1000));
+    return {
+      setId: set.id,
+      exerciseId: set.exerciseId,
+      slotIndex: set.slotIndex,
+      setIndex: set.setIndex,
+      atISO: set.timestampISO,
+      gapSeconds,
+      isFirst: i === 0,
+      isLongGap: gapSeconds != null && gapSeconds > LONG_GAP_SECONDS,
+    };
+  });
+
+  // Gaps between one set and the next — the first entry's gap is warm-up time
+  // from the session start, which is not rest between sets.
+  const gaps = entries.slice(1).map((entry) => entry.gapSeconds).filter((g) => g != null);
+  const restGaps = gaps.filter((g) => g >= MIN_REAL_REST_SECONDS && g <= LONG_GAP_SECONDS);
+
+  // More than half the gaps too short to be rest means the rows were filled in
+  // together, whatever the session log claims.
+  const tooShort = gaps.filter((g) => g < MIN_REAL_REST_SECONDS).length;
+  const looksBulkEntered = gaps.length >= 3 && tooShort / gaps.length > 0.5;
+
+  const totalSeconds =
+    startedAt && endedAt ? Math.max(0, Math.round((Date.parse(endedAt) - Date.parse(startedAt)) / 1000)) : null;
+
+  const sorted = [...restGaps].sort((a, b) => a - b);
+  const reliable = stated === false ? false : !looksBulkEntered;
+
+  /*
+   * When the timing is not real, the derived figures are not merely hidden —
+   * they are not returned. A metric object that carries a median it has just
+   * said is meaningless is one screen away from printing it, and this file's
+   * whole reason for existing is that a view should not have to know which of
+   * the numbers it was handed are safe to show.
+   */
+  const derived = reliable
+    ? {
+        totalSeconds,
+        medianRestSeconds: sorted.length ? sorted[Math.floor(sorted.length / 2)] : null,
+        longestRestSeconds: restGaps.length ? Math.max(...restGaps) : null,
+        shortestRestSeconds: restGaps.length ? Math.min(...restGaps) : null,
+        countedRests: restGaps.length,
+      }
+    : {
+        totalSeconds: null,
+        medianRestSeconds: null,
+        longestRestSeconds: null,
+        shortestRestSeconds: null,
+        countedRests: 0,
+      };
+
+  return {
+    reliable,
+    statedUnreliable: stated === false,
+    looksBulkEntered,
+    startedAt,
+    endedAt,
+    setCount: entries.length,
+    // The timeline itself is always returned: when each row was written is a
+    // fact either way, and it is what shows you *why* the timing is not real.
+    entries,
+    longGaps: entries.filter((entry) => entry.isLongGap && !entry.isFirst).length,
+    ...derived,
+  };
+}
+
 /**
  * How a record got to where it is.
  *

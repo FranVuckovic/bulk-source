@@ -69,32 +69,98 @@ export const sheetIsOpen = () => document.getElementById('sheet').classList.cont
    Rest timer
    ═══════════════════════════════════════════════════════════════════════ */
 
+/*
+ * One bar, two jobs.
+ *
+ * `rest` counts down from the exercise's own rest interval and starts itself
+ * when a set is ticked. `stopwatch` counts up and is driven by hand, for
+ * everything the automatic one cannot know about — a warm-up, a hold, a rack
+ * you are waiting for, a set someone else is using the bar for.
+ *
+ * They share the bar because two timers on screen at once would be two numbers
+ * that disagree, and the answer to "how long has it been" has to be one number.
+ */
 let restTimer = null;
 let restLeft = 0;
+let mode = 'rest';
+let running = false;
+
+const clock = (total) => {
+  const value = Math.max(0, Math.round(total));
+  return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
+};
 
 const paintRest = () => {
-  const minutes = Math.floor(Math.max(0, restLeft) / 60);
-  const seconds = Math.max(0, restLeft) % 60;
-  document.getElementById('rt').textContent = `${minutes}:${String(seconds).padStart(2, '0')}`;
+  document.getElementById('rt').textContent = clock(restLeft);
+  const label = document.getElementById('rl');
+  if (label) label.textContent = mode === 'rest' ? 'Rest' : running ? 'Timer' : 'Timer — paused';
+  const toggle = document.getElementById('rest-toggle');
+  if (toggle) toggle.textContent = running ? 'Pause' : 'Start';
+  const bar = document.getElementById('rest');
+  bar.classList.toggle('stop', mode === 'stopwatch');
+};
+
+function tick() {
+  restLeft += mode === 'rest' ? -1 : 1;
+  paintRest();
+  // A countdown ends by itself; a stopwatch runs until it is told not to.
+  if (mode === 'rest' && restLeft <= 0) stopRest();
+}
+
+const run = () => {
+  clearInterval(restTimer);
+  restTimer = setInterval(tick, 1000);
+  running = true;
 };
 
 /** Rest comes from the exercise, not from a fixed three minutes. */
 export function startRest(seconds) {
+  mode = 'rest';
   restLeft = seconds;
   document.getElementById('rest').classList.add('on');
+  run();
   paintRest();
+}
+
+/** The hand-driven one. Opening it does not start it. */
+export function openStopwatch() {
+  mode = 'stopwatch';
+  restLeft = 0;
+  running = false;
   clearInterval(restTimer);
-  restTimer = setInterval(() => {
-    restLeft -= 1;
-    paintRest();
-    if (restLeft <= 0) stopRest();
-  }, 1000);
+  restTimer = null;
+  document.getElementById('rest').classList.add('on');
+  paintRest();
+}
+
+export function toggleTimer() {
+  if (mode === 'rest') {
+    // Pausing a rest countdown is the same as not wanting it any more.
+    stopRest();
+    return;
+  }
+  if (running) {
+    clearInterval(restTimer);
+    restTimer = null;
+    running = false;
+  } else {
+    run();
+  }
+  paintRest();
+}
+
+export function resetTimer() {
+  restLeft = 0;
+  if (mode === 'stopwatch') paintRest();
+  else stopRest();
 }
 
 export function stopRest() {
   clearInterval(restTimer);
   restTimer = null;
-  document.getElementById('rest').classList.remove('on');
+  running = false;
+  mode = 'rest';
+  document.getElementById('rest').classList.remove('on', 'stop');
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

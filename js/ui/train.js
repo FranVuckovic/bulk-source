@@ -260,7 +260,7 @@ export function view(ctx) {
 
   <div class="card flush">${slots.map((slot, si) => exerciseBlock(state, slot, si)).join('')}</div>
 
-  <div class="mini" style="margin:0 2px 12px"><button data-act="open-add">+ Add exercise</button></div>
+  <div class="mini" style="margin:0 2px 12px"><button data-act="open-add">+ Add exercise</button><button data-act="open-timer">Timer</button></div>
 
   <div class="card">
     <label for="session-note">Session note</label>
@@ -272,7 +272,48 @@ export function view(ctx) {
         <input id="session-rpe" type="number" inputmode="decimal" step="0.5" data-bind="sessionRpe" value="${escape(state.draft.sessionRpe)}"></div>
     </div>
     <p class="hint">Session RPE = how hard the <b>whole session</b> felt, 0–10, rated about 20 minutes after you finish. Multiplied by duration it gives a session load — the earliest warning sign that weekly fatigue is climbing, usually a week before you feel it.</p>
+    ${timingRow(state)}
+    ${
+      state.activeLog
+        ? ''
+        : `<button class="big ghost mt" data-act="start-session">Start session</button>
+           <p class="hint">Only starts the clock. You never have to press it — the session starts itself the moment
+           you tick your first set, and finishes fine either way. It is here for when you want the warm-up counted.</p>`
+    }
     <button class="big mt" data-act="finish">Finish session</button>
+  </div>`;
+}
+
+/**
+ * Is the clock telling the truth about this session?
+ *
+ * Every set has always stored the moment it was ticked, so rest and session
+ * length come free — but only when the ticks happened when the work did. Log
+ * the whole session from memory on the bus home and the timestamps are all
+ * within a minute of each other, which would report eight seconds of rest
+ * between working sets and look like a measurement rather than an artefact.
+ *
+ * So it is stated rather than assumed. The default is that it is real, because
+ * usually it is; this is the switch for the times it is not. Everything else
+ * about the session is unaffected either way — only the timing report is.
+ */
+function timingRow(state) {
+  const log = state.activeLog;
+  const reliable = log ? log.timingReliable !== false : true;
+  const started = log?.startedAt ? new Date(log.startedAt) : null;
+
+  return `<div class="timing-row mt">
+    <div>
+      <b>${reliable ? 'Timing is real' : 'Timing is not meaningful'}</b>
+      <span>${
+        reliable
+          ? started
+            ? `Running since ${started.getHours()}:${String(started.getMinutes()).padStart(2, '0')} — rest and session length will be recorded.`
+            : 'Rest and session length will be recorded from when you tick each set.'
+          : 'Logged after the fact, so rest and duration will not be reported for this session. Everything else is kept.'
+      }</span>
+    </div>
+    <button data-act="toggle-timing">${reliable ? 'Not really' : 'It is real'}</button>
   </div>`;
 }
 
@@ -963,6 +1004,15 @@ export const actions = {
   'do-finish'(ctx) {
     closeSheet();
     ctx.finishSession();
+  },
+
+  /** Start the clock without logging anything. */
+  async 'start-session'(ctx) {
+    await ctx.startSession();
+  },
+
+  async 'toggle-timing'(ctx) {
+    await ctx.setTimingReliable(ctx.state.activeLog?.timingReliable === false);
   },
 };
 

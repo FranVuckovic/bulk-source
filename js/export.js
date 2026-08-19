@@ -167,9 +167,9 @@ export function toCsv(rows, columns) {
 }
 
 export const CSV_COLUMNS = Object.freeze({
-  sessionLogs: ['id', 'dateISO', 'startedAt', 'endedAt', 'sessionId', 'blockId', 'rotationIndex', 'bodyweight', 'sessionRpe', 'note', 'isPartial'],
+  sessionLogs: ['id', 'dateISO', 'startedAt', 'endedAt', 'sessionId', 'blockId', 'rotationIndex', 'bodyweight', 'sessionRpe', 'note', 'isPartial', 'timingReliable'],
   sets: ['id', 'sessionLogId', 'exerciseId', 'slotIndex', 'setIndex', 'load', 'bodyweightUsed', 'reps', 'rpe', 'rir', 'toFailure', 'isAmrap', 'isIndexSet', 'isMyoRep', 'velocity', 'note', 'wasPrescribed', 'prescribedLoad', 'timestampISO', 'gripWidth', 'variantUsed', 'pauseStyle'],
-  daily: ['dateISO', 'bodyweight', 'bodyfatPct', 'sleepHours', 'steps', 'mood', 'caffeine', 'note'],
+  daily: ['dateISO', 'bodyweight', 'scale', 'scaleNote', 'bodyfatPct', 'sleepHours', 'steps', 'mood', 'caffeine', 'note'],
   measurements: ['dateISO', 'timeOfDay', 'timeOfDayNote', 'waist', 'chest', 'shoulders', 'armL', 'armR', 'quadL', 'quadR', 'neck', 'note'],
   niggles: ['id', 'dateISO', 'site', 'severity', 'context', 'note'],
   media: ['id', 'dateISO', 'kind', 'exerciseId', 'load', 'reps', 'note', 'fileRef'],

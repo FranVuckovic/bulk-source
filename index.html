@@ -37,8 +37,12 @@
 <div class="wrap" id="view"></div>
 
 <div class="rest" id="rest">
-  <div><div class="l">Rest</div><div class="t" id="rt">3:00</div></div>
-  <button data-act="rest-skip">Skip</button>
+  <div><div class="l" id="rl">Rest</div><div class="t" id="rt">3:00</div></div>
+  <div class="rbtns">
+    <button id="rest-toggle" data-act="rest-toggle">Pause</button>
+    <button data-act="rest-reset">Reset</button>
+    <button data-act="rest-skip">Close</button>
+  </div>
 </div>
 
 <div class="sheet" id="sheet"><div class="bg" data-act="sheet-close"></div><div class="pan" id="pan"></div></div>
