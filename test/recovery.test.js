@@ -80,6 +80,12 @@ test('the bin lists every recoverable store, newest deletion first', async () =>
   ids.measurements = await put(db, 'measurements', { dateISO: '2026-08-01', waist: 82 });
   ids.niggles = await put(db, 'niggles', { dateISO: '2026-08-01', site: 'Left elbow', severity: 1 });
   ids.media = await put(db, 'media', { dateISO: '2026-08-01', kind: 'physique' });
+  const { sessionLogId } = await saveSession(
+    db,
+    { dateISO: '2026-08-01', sessionId: 'A', status: 'partial' },
+    [{ exerciseId: 'benchComp', slotIndex: 0, setIndex: 0, load: 100, reps: 1, rpe: 8 }]
+  );
+  ids.sets = (await getAll(db, 'sets')).find((row) => row.sessionLogId === sessionLogId).id;
 
   for (const store of RECOVERABLE_STORES) {
     await softDeleteRow(db, store, ids[store]);
@@ -89,18 +95,38 @@ test('the bin lists every recoverable store, newest deletion first', async () =>
   }
 
   const bin = await deletedRecords(db);
-  assert.equal(bin.length, 4);
+  assert.equal(bin.length, 5);
   assert.deepEqual(
     [...bin].map((entry) => entry.store),
-    ['media', 'niggles', 'measurements', 'daily'],
+    ['sets', 'media', 'niggles', 'measurements', 'daily'],
     'newest deletion first'
   );
+});
+
+test('a set deleted on its own can be restored without changing its session', async () => {
+  const db = await openFresh();
+  const { sessionLogId } = await saveSession(
+    db,
+    { dateISO: '2026-08-01', sessionId: 'A', status: 'partial' },
+    [{ exerciseId: 'benchComp', slotIndex: 0, setIndex: 0, load: 100, reps: 1, rpe: 8 }]
+  );
+  const set = (await getAll(db, 'sets')).find((row) => row.sessionLogId === sessionLogId);
+
+  await softDeleteRow(db, 'sets', set.id, { reason: 'logged against the wrong exercise' });
+  assert.equal(alive(await getAll(db, 'sets')).length, 0);
+  assert.deepEqual((await deletedRecords(db)).map((entry) => entry.store), ['sets']);
+
+  await restoreRow(db, 'sets', set.id);
+  const restored = alive(await getAll(db, 'sets'))[0];
+  assert.equal(restored.exerciseId, 'benchComp');
+  assert.equal(restored.load, 100);
+  assert.equal(alive(await getAll(db, 'sessionLogs')).length, 1, 'the session stays live throughout');
 });
 
 test('an unrecoverable store is refused rather than silently ignored', async () => {
   const db = await openFresh();
   await assert.rejects(() => softDeleteRow(db, 'maxes', 1), /not a recoverable store/);
-  await assert.rejects(() => restoreRow(db, 'sets', 1), /not a recoverable store/);
+  await assert.rejects(() => restoreRow(db, 'cycles', 1), /not a recoverable store/);
 });
 
 test('restoring something that is gone says so', async () => {
