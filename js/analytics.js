@@ -360,7 +360,9 @@ export function blockComparison(sets, { exercises, logs, lifts }) {
         name: lift.name,
         blockId,
         first: ordered[0].value,
+        firstDateISO: ordered[0].dateISO,
         last: ordered[ordered.length - 1].value,
+        lastDateISO: ordered[ordered.length - 1].dateISO,
         change: ordered[ordered.length - 1].value - ordered[0].value,
         sampleCount: ordered.length,
       });

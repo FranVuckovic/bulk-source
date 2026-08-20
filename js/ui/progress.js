@@ -51,7 +51,6 @@ import {
   timeChart,
   groupedBars,
   indexedByDate,
-  rowBars,
 } from './charts.js';
 
 const SESSION_COLORS = {
@@ -862,7 +861,7 @@ function recordsCard(state, m, unit, { onlyExerciseId = null, excludeExerciseId 
 }
 
 function blockCard(state, m, unit) {
-  const lifts = trackedLifts(state);
+  const lifts = trackedLifts(state).filter((lift) => lift.id === m.focus);
   const rows = blockChanges(m.sets, { exercises: m.exercises, logs: m.logs, lifts }).filter((r) => r.change != null);
 
   if (!rows.length) {
@@ -870,43 +869,36 @@ function blockCard(state, m, unit) {
       <p class="hint">Each block is compared using its own first and last observation, in date order.</p></div>`;
   }
 
-  const blockName = (id) => state.plan.blocks.find((b) => b.id === id)?.name ?? `Block ${id}`;
-
-  // One chart per block, so the row labels are lift names rather than a block
-  // name repeated down the left-hand side and cut off at the edge.
-  const byBlock = new Map();
-  for (const r of rows) {
-    if (!byBlock.has(r.blockId)) byBlock.set(r.blockId, []);
-    byBlock.get(r.blockId).push(r);
-  }
-
-  const losses = rows.filter((r) => r.change < 0);
-
-  return `<div class="card">
-    ${[...byBlock.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(
-        ([blockId, blockRows], index) => `<p class="hint" style="margin:${
-          index ? '14px' : '0'
-        } 0 4px"><b>${escape(blockName(blockId))}</b></p>
-        ${rowBars(
-          blockRows.map((r) => ({
-            label: r.name.split(' (')[0],
-            value: toDisplay(r.change, unit),
-            display: `${r.change >= 0 ? '+' : ''}${fmtNum(toDisplay(r.change, unit), 1)}`,
-          })),
-          // Only the last group carries the caption; the same sentence under
-          // each of three charts is noise.
-          { unit: `${unit} of estimated max`, caption: index === byBlock.size - 1 ? null : false }
-        )}`
-      )
+  return `<div class="card block-comparison">
+    ${rows
+      .sort((a, b) => a.blockId - b.blockId)
+      .map((row) => {
+        const block = state.plan.blocks.find((candidate) => candidate.id === row.blockId);
+        const isCalibration = block?.type === 'baseline';
+        const change = toDisplay(row.change, unit);
+        return `<div class="block-row">
+          <div class="block-row-head"><b>${escape(block?.name ?? `Block ${row.blockId}`)}</b><span>${
+            isCalibration ? 'calibration · not a progress score' : `${row.sampleCount} index sets`
+          }</span></div>
+          <div class="block-endpoints">
+            <div><small>First</small><b>${fmtLoad(row.first, unit)} ${escape(unit)}</b><span>${escape(
+              row.firstDateISO
+            )}</span></div>
+            <i>→</i>
+            <div><small>Latest</small><b>${fmtLoad(row.last, unit)} ${escape(unit)}</b><span>${escape(
+              row.lastDateISO
+            )}</span></div>
+            <div class="block-delta"><small>Movement</small><b>${change >= 0 ? '+' : ''}${fmtNum(change, 1)} ${escape(
+              unit
+            )}</b><span>${isCalibration ? 'measurement spread' : 'endpoint change'}</span></div>
+          </div>
+        </div>`;
+      })
       .join('')}
-    <p class="hint">First observation to last, <b>in date order</b> — so a block where you went backwards reads as a
-    loss instead of being flipped into a gain. Every tracked lift gets its own bar.${
-      losses.length
-        ? ` ${losses.length} went down; a single bad index set can do that, so read it against the trend line above.`
-        : ''
-    }</p></div>`;
+    <p class="hint"><b>This is not a score.</b> It shows the first and latest eligible estimate inside each block.
+    Baseline and calibration deliberately establish the starting number, so a negative value there is measurement
+    spread, not a failed phase. In later blocks, confirm the direction against the full trend above; one hard or poor
+    index set can move an endpoint.</p></div>`;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1210,7 +1202,11 @@ function workingMaxes(ctx) {
   const bumpable = rows.filter((r) => r.midBlock.change === 'raise');
 
   return `<div class="card">
-    <table><thead><tr><th>Lift</th><th>Working</th><th>Observed</th><th>Δ</th><th>Sets</th></tr></thead><tbody>
+    <div class="working-key">
+      <p><b>Working max</b><span>The stable anchor used to calculate prescribed loads. It is intentionally not changed after every good set.</span></p>
+      <p><b>Best evidence</b><span>The highest eligible estimated 1RM observed in this block.</span></p>
+    </div>
+    <table><thead><tr><th>Lift</th><th>Working max</th><th>Best evidence</th><th>Gap</th><th>Index sets</th></tr></thead><tbody>
       ${rows
         .map(
           (row) =>

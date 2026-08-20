@@ -227,6 +227,8 @@ test('block comparison uses chronological endpoints and keeps every lift', () =>
   assert.ok(bench.change < 0, 'a decline is reported as a decline, not converted to a gain');
   assert.equal(bench.first, 120);
   assert.equal(bench.last, 110);
+  assert.equal(bench.firstDateISO, '2026-08-01');
+  assert.equal(bench.lastDateISO, '2026-08-20');
 
   const dip = rows.find((r) => r.lift === 'dip');
   assert.ok(dip, 'the second lift is not dropped');
