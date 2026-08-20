@@ -20,9 +20,10 @@ older build brief and decision log provide history, not current verification.
 
 ## Current state
 
-- Working branch: `codex/v2.5-product-hardening`
+- Working branch: `claude/project-onboarding-verify-lz3ob6`. The v2.6.0 work
+  arrived on `codex/v2.5-product-hardening` and was merged there.
 - Current shell: `v2.6.0`
-- Test command: `npm test` (255 passing at this handoff)
+- Test command: `npm test` (309 passing after the merge)
 - Local app: `npm run serve`, then `http://localhost:8123/`
 - Demo: Settings → Demo data → Explore the demo. Demo and personal data use
   separate IndexedDB databases.
@@ -33,8 +34,8 @@ older build brief and decision log provide history, not current verification.
 
 ## Repository and release model
 
-`bulk-source` is the source of truth. `bulk` is generated GitHub Pages output.
-Both are currently public. Work and history belong in the source repository;
+`bulk-source` is the source of truth and is **private**. `bulk` is generated
+GitHub Pages output and is public. Work and history belong in the source repository;
 the live repository is replaced by `dev/publish.sh`. That script force-pushes,
 so inspect it and obtain approval before running it.
 

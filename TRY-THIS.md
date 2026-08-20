@@ -1,11 +1,15 @@
-# v2.4.0 — how to try it, and how to undo any of it
+# How to try it, and how to undo any of it
 
 Everything is on the branch `claude/project-onboarding-verify-lz3ob6`.
 
-**v2.4.0 is published.** Pushed to the public `bulk` repo on 20 August 2026,
-replacing v2.1.3. Your phone will offer it and wait for your tap — see
-`PUBLISHING.md` for what that does to your data (nothing) and how to roll back
-(exactly).
+**v2.4.0 is what is published.** It went to the public `bulk` repo on 20 August
+2026, replacing v2.1.3. Your phone will offer it and wait for your tap.
+
+**v2.6.0 is on this branch and is not published.** It is v2.4.0 plus a second
+round of work that arrived as a handoff bundle from another session, merged
+here. Nothing has gone to the public repo since v2.4.0, so trying v2.6.0 means
+running it locally — see below. `PUBLISHING.md` has what a publish does to your
+data (nothing) and how to roll back (exactly).
 
 ---
 
@@ -13,7 +17,7 @@ replacing v2.1.3. Your phone will offer it and wait for your tap — see
 
 ```bash
 git checkout claude/project-onboarding-verify-lz3ob6
-npm test          # expect 278 passing, 0 failing
+npm test          # expect 309 passing, 0 failing
 npm run serve     # then open http://localhost:8123
 ```
 
@@ -44,6 +48,39 @@ Worth looking at specifically:
 | Body | Which scale the weigh-in was on; when the tape was read. |
 | Android | The back button now moves inside the app instead of closing it. |
 
+
+### New in v2.6.0
+
+| Where | What is new |
+|---|---|
+| Train | The clock and Start sit above the exercise list. |
+| Train | A session opened by accident can be **discarded** into the bin, restored from Log → Bin, or discarded and restarted cleanly. |
+| Train | **Custom** — an ad-hoc workout built from the exercise library that does not advance or inflate the A–F rotation. It says so on screen. |
+| Train | Any logged set can be marked an index set, not only the prescribed one. |
+| Train | Set controls grouped by consequence: fill a value, use a tool, change the exercise. |
+| Progress → Summary | Evidence is grouped — bodyweight & waist, strength, relative strength, plan completion — instead of one stack. |
+| Progress → Strength | The record set comes *before* the chart, with load, reps, RPE and date. "Prescriptions use" sits beside "Best eligible set this block". |
+| Progress → Strength | Relative strength is a real trend, matched only to bodyweight readings within three days. |
+| Progress → Volume | The tonnage comparison uses a real 44-tonne lorry. |
+| Plan | Tabs wrap; workout cards and muscle groups collapse reliably. Stimulus colour is proportional — orange means materially high, not slightly over. |
+| Body | Measurements show dates, a selectable trend and a bodyweight comparison. |
+| Settings | Five named groups, only the routine one open. Demo mode is first, and its warning appears only while the demo database is live. |
+
+`docs/release-v2.6.0.md` is the full list. No exercise, set, rep, RPE, rotation
+or block rule changed, and the database schema is still v3.
+
+### Undoing v2.6.0 as a whole
+
+The v2.6.0 work arrived as one branch and was merged as one commit, so it comes
+out as one:
+
+```bash
+git revert -m 1 <the merge commit>
+```
+
+That leaves v2.4.0 — what is live today — with the two fixes made since. To go
+back to exactly what is published instead, `git checkout e304ef7`.
+
 To test the update path itself — the thing that shows `v2.1.3 → v2.4.0` — open
 `http://localhost:8123/?sw=1`. The offline shell is deliberately off on
 localhost otherwise, or every edit would be invisible until the version is
@@ -53,7 +90,7 @@ bumped.
 
 ## Undoing any part of it
 
-Thirteen commits, each one thing. Any of them can be reverted on its own
+The v2.4.0 commits, each one thing. Any of them can be reverted on its own
 without disturbing the others:
 
 ```bash
@@ -102,8 +139,8 @@ v2.4.0 publish. Nothing on this branch has touched `main` or your database.
 `dev/publish.sh` force-pushes over the public repo and replaces its history.
 Ask before running it. The checklist:
 
-1. `npm test` — 278, 0 failing.
-2. Check `sw.js` VERSION reads `v2.4.0`. The publish set is derived from the
+1. `npm test` — 309, 0 failing.
+2. Check `sw.js` VERSION reads `v2.6.0`. The publish set is derived from the
    `SHELL` array in that file, and `js/demo.js` was added to it — a test
    enforces that the shell covers the module graph, so this cannot silently go
    wrong.

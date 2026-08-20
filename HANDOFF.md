@@ -34,16 +34,16 @@ wants from a session is the change, working, and a short honest account of it.
 6. `docs/bulk-plan.md` and `docs/plan-rationale.md` — the training plan and the
    research behind it. MANDATORY before touching anything training-related.
 7. `docs/set-counting-proposal.md` — a decision waiting on the owner.
-8. `git log` — 55 commits whose messages explain *why*. Several document a
+8. `git log` — 82 commits whose messages explain *why*. Several document a
    defect in full. The last twenty are the most relevant.
 
 ## Step 2 — prove you have access, then report
 
 Run these and tell me the results before doing anything else:
 
-- `npm test` — must be **278 passing, 0 failing**
-- `git rev-list --count HEAD` — must be **55**
-- `grep VERSION sw.js` — must be **v2.4.0**
+- `npm test` — must be **309 passing, 0 failing**
+- `git rev-list --count HEAD` — must be **82**
+- `grep VERSION sw.js` — must be **v2.6.0**
 - Count exercises in `data/plan-fopip-v2.json` — must be **49**
 - `git branch --show-current` — must be **claude/project-onboarding-verify-lz3ob6**
 - Confirm you can read `docs/`, `test/`, `archive/` and `dev/`
@@ -86,10 +86,14 @@ reaches the phone.
 ## Current state
 
 - **v2.4.0 is live** on GitHub Pages. Published 20 August 2026.
+- **v2.6.0 is on the branch and is NOT published.** It is v2.4.0 plus a second
+  round of work that arrived as a Git bundle from another session and was
+  merged here. `docs/release-v2.6.0.md` lists it.
 - Work is on branch `claude/project-onboarding-verify-lz3ob6`. `main` is
-  v2.1.3 — the previous release, kept as an exact rollback point.
-- The owner has NOT yet used v2.4.0 in a real session. Several rounds of
-  changes went in on tests and browser-driving alone. Real use will find things
+  v2.1.3; `e304ef7` on this branch is v2.4.0 — the version actually running on
+  the phone, and the sensible rollback point.
+- The owner has NOT yet used v2.4.0 or v2.6.0 in a real session. Every round so
+  far went in on tests and browser-driving alone. Real use will find things
   those did not.
 
 ## How to work here — the parts that bite

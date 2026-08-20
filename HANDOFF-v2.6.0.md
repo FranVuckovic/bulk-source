@@ -1,3 +1,9 @@
+> **Spent.** This was the restoration prompt that came with the v2.6.0 handoff
+> bundle. The bundle has been restored and merged into
+> `claude/project-onboarding-verify-lz3ob6`; the branch it names no longer needs
+> restoring and the release sequence below has not been run. Kept as the record
+> of where v2.6.0 came from. For picking the project up cold, read `HANDOFF.md`.
+
 # Prompt for the environment that will commit and publish Bulk v2.6.0
 
 Copy everything below this line into the new coding environment after attaching
