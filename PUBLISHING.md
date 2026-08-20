@@ -3,6 +3,12 @@
 Written 20 August 2026, against `v2.4.0`. Every claim below was tested, and the
 test is named next to it.
 
+**Status: v2.4.0 is live.** Published 20 August 2026, replacing v2.1.3. The
+public repo holds 29 files, verified identical to the local build and verified
+to contain none of your data. The published bytes were then run in a browser
+with the offline shell on: version `v2.4.0`, five tabs, 28 files cached as
+`bulk-v2.4.0`, zero external hosts contacted, no console errors.
+
 ---
 
 ## The short answers
@@ -118,8 +124,8 @@ The two states are both on `origin`, so neither can be lost:
 
 | | Commit | What it is |
 |---|---|---|
-| **Old** (currently live) | `5ffae2e` — branch `main` | v2.1.3 |
-| **New** | `621b9d3` — branch `claude/project-onboarding-verify-lz3ob6` | v2.4.0 |
+| **Old** (previous release) | `5ffae2e` — branch `main` | v2.1.3 |
+| **New** (live now) | branch `claude/project-onboarding-verify-lz3ob6` | v2.4.0 |
 
 To go back:
 

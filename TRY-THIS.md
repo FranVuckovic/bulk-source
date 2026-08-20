@@ -1,8 +1,11 @@
 # v2.4.0 — how to try it, and how to undo any of it
 
 Everything is on the branch `claude/project-onboarding-verify-lz3ob6`.
-**Nothing has been published.** The public `bulk` repo is untouched, and
-`dev/publish.sh` has not been run.
+
+**v2.4.0 is published.** Pushed to the public `bulk` repo on 20 August 2026,
+replacing v2.1.3. Your phone will offer it and wait for your tap — see
+`PUBLISHING.md` for what that does to your data (nothing) and how to roll back
+(exactly).
 
 ---
 
@@ -86,16 +89,18 @@ To throw away the lot and go back to where you were:
 
 ```bash
 git checkout main
+npm run publish -- https://github.com/FranVuckovic/bulk.git
 ```
 
-Nothing on this branch has touched `main`, the public repo, or your database.
+That republishes v2.1.3 and is byte-for-byte exact — verified before the
+v2.4.0 publish. Nothing on this branch has touched `main` or your database.
 
 ---
 
-## Before publishing
+## Publishing again, later
 
-`dev/publish.sh` force-pushes over the public repo and replaces its history, so
-it is yours to run, not mine. When you do:
+`dev/publish.sh` force-pushes over the public repo and replaces its history.
+Ask before running it. The checklist:
 
 1. `npm test` — 278, 0 failing.
 2. Check `sw.js` VERSION reads `v2.4.0`. The publish set is derived from the
