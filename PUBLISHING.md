@@ -1,19 +1,15 @@
 # Publishing, updating, and what happens to your data
 
-Written 20 August 2026, against `v2.4.0`. Every claim below was tested, and the
+Written 20 August 2026, against `v2.7.0`. Every claim below was tested, and the
 test is named next to it.
 
-**Status: v2.4.0 is live. v2.6.0 is ready but NOT published.** v2.4.0 went out
-on 20 August 2026, replacing v2.1.3. The public repo holds 29 files, verified
-identical to the local build and verified to contain none of your data. The
-published bytes were then run in a browser with the offline shell on: version
-`v2.4.0`, five tabs, 28 files cached as `bulk-v2.4.0`, zero external hosts
-contacted, no console errors.
+**Status: v2.7.0 is live.** Published 20 August 2026. It replaced v2.4.0, which
+had replaced v2.1.3 earlier the same day. Every claim below about your data,
+about updating and about rolling back holds unchanged across all three: the
+database version has been 3 throughout, so no migration has ever run.
 
-**v2.6.0 sits on this branch, unpublished.** Nothing has been pushed to the
-public repo since v2.4.0. Everything below about data, auto-update and rollback
-applies unchanged to it — the database version is still 3 — but the checklist at
-the end has one more line: v2.6.0 has never run on your phone.
+Your phone is on whatever it last accepted. It will offer v2.7.0 and wait for
+your tap.
 
 ---
 
@@ -116,8 +112,8 @@ Nothing is required. But:
 ```bash
 cd /path/to/bulk-source
 git checkout claude/project-onboarding-verify-lz3ob6
-npm test                                                    # 309, 0 failing
-grep VERSION sw.js                                          # reads v2.6.0
+npm test                                                    # 314, 0 failing
+grep VERSION sw.js                                          # reads v2.7.0
 npm run publish -- https://github.com/FranVuckovic/bulk.git
 ```
 
@@ -135,10 +131,10 @@ The two states are both on `origin`, so neither can be lost:
 | | Commit | What it is |
 |---|---|---|
 | **Oldest kept** | `5ffae2e` — branch `main` | v2.1.3 |
-| **Live now** | `e304ef7` on `claude/project-onboarding-verify-lz3ob6` | v2.4.0 |
-| **Staged, not published** | tip of `claude/project-onboarding-verify-lz3ob6` | v2.6.0 |
+| **Previous release** | `e304ef7` on `claude/project-onboarding-verify-lz3ob6` | v2.4.0 |
+| **Live now** | tip of `claude/project-onboarding-verify-lz3ob6` | v2.7.0 |
 
-Rolling back from v2.6.0, if it is ever published, means republishing from
+Rolling back from v2.7.0 means republishing from
 `e304ef7` rather than from `main` — v2.4.0 is the version you have actually
 used, so it is the sensible thing to fall back to:
 

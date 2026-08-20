@@ -1,9 +1,20 @@
 # Why the Plan screen is orange — and what to do about it
 
-**Status: a proposal. Nothing in this document has been implemented.**
-The counting method, the target bands and the plan itself are unchanged.
-This exists so the decision can be made on numbers rather than on an impression
-of orange.
+**Status: DECIDED, 20 August 2026. Option 1 implemented in v2.7.0, and the
+Deloads text replaced.** The counting method, the target bands and the plan
+itself are still unchanged — option 1 was the one that required no training
+change, which is why it was recommended. Options 2 and 3 were not taken; they
+are training content and remain open if you ever want them.
+
+What shipped, beyond the option as written: a muscle that is nobody's head —
+forearms, quads, hamstrings, calves, glutes — is judged like a roll-up, because
+its own figure already is a whole-muscle number; the deltoid heads have no
+roll-up and so are not judged at all; and there is a maintenance band between
+the published floor of 4 sets and the growth range at 10, so an accessory held
+on purpose is not coloured as a shortfall.
+
+The rest of this document is the analysis the decision was made on, kept as
+written.
 
 **Written:** 19 August 2026 · against `data/plan-fopip-v2.json`, rotation 12
 
@@ -258,7 +269,7 @@ the plan, the bands, the muscle weights, the myo-rep value, or the counting
 method. `data/plan-fopip-v2.json` and `js/volume.js` are untouched by this
 document.
 
-Say which option you want and it is one commit.
+**Taken: option 1.** Implemented in v2.7.0.
 
 ---
 
@@ -305,7 +316,7 @@ numbers are carried over unchanged, only the trigger changes:
 > 10%, everything at 3+ RIR minimum. Never take a full rest week: complete
 > cessation was found worse than training through.
 
-One line in `data/plan-fopip-v2.json` under `knowledge`. Say the word.
+**Done in v2.7.0**, with the suggested text, in `data/plan-fopip-v2.json` under `knowledge`. "When things go wrong" was corrected in the same pass: it said to pull the deload forward, which implied a scheduled one.
 
 ---
 
