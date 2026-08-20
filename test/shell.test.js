@@ -183,3 +183,17 @@ test('the published build includes everything index.html asks for', () => {
     assert.ok(shell.has(path), `index.html references ${path}, which is not published`);
   }
 });
+
+test('the demo warning is hidden unless demo mode is actually on', () => {
+  // The author stylesheet sets `.demostrip { display:flex }`, which overrides
+  // the browser's built-in `[hidden] { display:none }` rule. Without an author
+  // rule of our own the warning appears on real data even though both the HTML
+  // and app state correctly set the hidden property.
+  const html = read('index.html');
+  const css = read('css/app.css');
+  const app = read('js/app.js');
+
+  assert.match(html, /id="demostrip"[^>]*\bhidden\b/, 'the strip starts hidden before JavaScript runs');
+  assert.match(css, /\.demostrip\[hidden\]\s*\{\s*display\s*:\s*none\s*\}/, 'author CSS must honour hidden');
+  assert.match(app, /getElementById\('demostrip'\)\.hidden\s*=\s*!state\.demo/, 'render follows demo state');
+});
