@@ -20,7 +20,7 @@
  * is obvious from inside the app whether an update actually landed.
  */
 
-const VERSION = 'v2.4.7';
+const VERSION = 'v2.4.8';
 const CACHE = `bulk-${VERSION}`;
 
 const SHELL = [

@@ -880,7 +880,7 @@ function scatter(state, exerciseId, unit) {
         reps: set.reps,
         load: toDisplay(systemLoad(set.load, set.bodyweightUsed || 0), unit),
         dateISO,
-        recent: daysBetween(dateISO, state.todayISO) <= 14,
+        ageDays: Math.max(0, daysBetween(dateISO, state.todayISO)),
       };
     })
     .filter(Boolean);
@@ -888,7 +888,10 @@ function scatter(state, exerciseId, unit) {
   if (!points.length) return emptyChart('No sets logged for this lift yet.');
 
   const max = Math.max(...points.map((p) => p.load));
-  const curves = [max * 0.85, max, max * 1.15].map((v) => Math.round(v / 5) * 5);
+  const curves =
+    exerciseId === 'benchComp'
+      ? [100, 110, 120, 130, 140, 150].map((kg) => toDisplay(kg, unit))
+      : [max * 0.85, max, max * 1.15].map((v) => Math.round(v / 5) * 5);
   return scatterIso(points, { curves, pctFor: pct, unit });
 }
 
