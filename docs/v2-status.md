@@ -1,8 +1,9 @@
 # Bulk v2 — implementation status
 
 **Against:** `Bulk-v2-update-kit`, 62 requirements
-**Updated:** 19 August 2026
-**Verification:** [`VERIFICATION.md`](../VERIFICATION.md) — 199 tests, 0 failing
+**Updated:** 20 August 2026
+**Verification:** [`VERIFICATION.md`](../VERIFICATION.md) — 248 tests, 0 failing;
+current v2.5 interactive acceptance pending
 
 v1 is archived at `archive/v1/` and tagged `v1.0`. It still runs and still reads
 a v1 export.
@@ -80,3 +81,25 @@ update path itself is what needs testing.
 | MATH-03 | Prescription conflict validation at authoring time | The plan file is validated for resolvability at startup, but a slot whose percentage and RPE disagree is not flagged to the author |
 | SEC-05 | Response headers | `frame-ancestors` and `X-Frame-Options` cannot come from a meta tag, and GitHub Pages does not allow custom headers |
 | UX-09 (part) | Photo capture from the camera | The file picker covers it on Android and iOS; there is no in-app camera |
+
+## v2.5 product-hardening addendum
+
+The branch `codex/v2.5-product-hardening` addresses the owner's post-v2 audit
+without changing the training split:
+
+- demo warning visibility and access to demo mode;
+- recoverable discard/restart of accidental active sessions;
+- custom workouts that do not affect A–F rotation progress;
+- manual index-set marking on any logged set;
+- grouped set actions, wrapped Plan navigation and reliable collapsed state;
+- dated measurement comparisons and bodyweight context;
+- strength record evidence (weight, reps, RPE, date and e1RM), visible reps on
+  heaviest load, recency-coloured load/reps scatter, clearer block calibration,
+  and a defined working-max explanation;
+- honest relative-strength trend and corrected lorry comparison;
+- grouped/collapsible Progress and Plan summaries, with stimulus warning colour
+  reserved for material rather than trivial overages;
+- async UI writes now propagate failures to the central error presentation.
+
+The exact change/evidence/defer matrix is in `product-audit-v2.5.md`. No plan
+exercise, set, rep, RPE, rotation or block rule was changed in this pass.

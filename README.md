@@ -3,8 +3,11 @@
 Personal training app for a 33-week bench-focused bulk.
 Vanilla JS PWA — no framework, no dependencies, no network access.
 
-Start with `CLAUDE.md` for the current handoff and working rules.
-`BUILD-BRIEF.md` and the files in `docs/` hold the product and training rationale.
+Start with `AGENTS.md` and `CLAUDE.md` for the current handoff and working
+rules. `docs/product-audit-v2.5.md` records the latest product audit;
+`VERIFICATION.md` distinguishes automated evidence from real-browser evidence.
+`BUILD-BRIEF.md` and the remaining files in `docs/` hold the original product
+and training rationale.
 
 ## Running it
 
@@ -38,6 +41,9 @@ first, so use it only in a disposable browser profile.
 
 - `bulk-source` is the source of truth: source, tests, documentation and history.
 - `bulk` is generated publishing output for GitHub Pages. Never edit it directly.
+
+Both repositories are currently public. Public access lets a reviewer read and
+clone them; it does not grant permission to push.
 
 Publishing is destructive and outward-facing. Read `CLAUDE.md` and
 `dev/publish.sh`, run the full verification protocol, and ask before publishing.

@@ -52,7 +52,7 @@ with the output. If something was skipped, say that.
 ## Commands
 
 ```bash
-npm test          # 225 tests, ~0.6s, node:test only
+npm test          # 248 tests, ~0.6s, node:test only
 npm run serve     # dev server on :8123, no-store headers
 npm run publish -- https://github.com/FranVuckovic/bulk.git
 ```
@@ -65,7 +65,7 @@ There is no build, no bundler, no transpiler. What is in `js/` is what runs.
 
 | | |
 |---|---|
-| **`bulk-source`** (private) | This project. Source, tests, docs, archive, history. **Work here.** |
+| **`bulk-source`** (public) | This project. Source, tests, docs, archive, history. **Work here.** |
 | **`bulk`** (public) | Build output only. Served by GitHub Pages so the app can be installed to a phone. |
 
 `dev/publish.sh` does `rm -rf dist` → `git init` → **`push -f`**. It replaces
@@ -77,6 +77,11 @@ itself. Do not restate that list anywhere else; a second copy is how a retired
 plan file titled after its owner ended up on a public repository.
 
 Publishing is outward-facing. **Ask first.**
+
+Public visibility is read access, not write access. Pushes still require the
+owner to authorize GitHub through OAuth, SSH, a device login or an installed
+GitHub connector. Never ask for or store a raw password or personal access
+token in this repository.
 
 ---
 
@@ -140,6 +145,11 @@ those shapes. Do not delete them because they look like they test strings.
 `test/screens.test.js` renders every screen on an empty database and at both
 ends of every block, and fails if `NaN`, `undefined` or `[object Object]`
 reaches the page.
+
+`test/body-ui.test.js` and `test/train-ui.test.js` also check that rejected UI
+writes are returned to the central action handler. An async save that is
+started but neither awaited nor returned can fail without the user seeing the
+error; treat that as data-loss risk.
 
 ---
 

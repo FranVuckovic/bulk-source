@@ -1,16 +1,23 @@
 # Bulk v2 — verification
 
-**Build:** `sw.js` VERSION `v2.1.3` · database v3 · plan format 3 · plan `fopip-v2`
-**Verified:** 19 August 2026
-**Method:** 221 automated tests, plus a manual pass in a 390 × 844 viewport in
-both colour schemes against twelve rotations of generated history.
+**Current build:** `sw.js` VERSION `v2.5.5` · database v3 · plan format 3 · plan
+`fopip-v2`
+**Automated verification:** 20 August 2026 · 248 passing, 0 failing
+**Current visual/interactive verification:** pending
+
+The v2.5 changes have been tested through domain, database, rendering, wiring,
+failure-propagation and performance tests. They have **not** yet completed a
+fresh real-browser/mobile acceptance pass. The Codex browser controller could
+not attach to the open local tabs, so claiming visual verification would be
+false. The detailed browser observations later in this file are retained as
+historical evidence for v2.1.3, not proof for v2.5.5.
 
 v1 is archived at `archive/v1/` and tagged `v1.0`. It still runs and still
 reads a v1 export.
 
 ---
 
-## How to reproduce this
+## How to reproduce the current automated pass
 
 ```bash
 npm test
@@ -35,26 +42,26 @@ version bump. To exercise the update path itself, open `http://localhost:8123/?s
 
 ---
 
-## Automated
+## Current automated evidence
 
-| Suite | Tests | What it holds down |
-|---|---|---|
-| `calc.test.js` | 48 | The RPE table, e1RM and its confidence, rounding, prescriptions, the working-max rule and its exceptions |
-| `db.test.js` | 26 | Migrations with backfill, idempotent writes under a real race, atomic session start and finish, cascade and soft delete |
-| `progress.test.js` | 25 | Rolling averages, slopes, records, decision flags, deload triggers |
-| `plan.test.js` / `plan-engine.test.js` | 33 | The plan file itself, and that all 33 × 6 rotations resolve |
-| `volume.test.js` | 15 | Fractional sets, head against whole-muscle counting, planned versus completed |
-| `export.test.js` | 14 | Zip round-trip with CRC, staged validation, atomic apply, content verification |
-| `analytics.test.js` | 12 | Every metric the Progress screen renders, including the four v1 defects |
-| `cycle.test.js` | 11 | Rotation progress, partial and skipped positions, corrections, projection |
-| `performance.test.js` | 6 | 200 sessions and 6,000 sets against explicit budgets |
-| `recovery.test.js` | 5 | Soft delete, restore, the bin listing, and refusing stores it cannot recover |
-| `photos.test.js` | 4 | Orientation-independent fitting and size formatting |
-| `service-worker.test.js` | 7 | The takeover rule, and that no branch can answer a module request with the shell |
-| `screens.test.js` | 6 | Every screen on an empty database, and at both ends of every block, with no arithmetic leaking into the page |
-| `shell.test.js` | 6 | The offline shell covers the module graph, and the app calls the safe paths rather than merely containing them |
+The 248 tests cover calculations, plan compilation, rotations, volume,
+analytics, IndexedDB migrations and transactions, export/import, recovery,
+performance, service-worker integrity, all-screen rendering, and action wiring.
+New v2.5 regressions include demo isolation/visibility, recoverable session
+discard, custom-workout isolation from the A–F rotation, manual index sets,
+collapsible Plan sections, record evidence, chart recency bands, and rejected
+UI writes reaching the central error handler.
 
-**221 passing, 0 failing**, about 0.6 s.
+Coverage is diagnostic rather than a release score:
+
+```bash
+node --test --experimental-test-coverage test/*.test.js
+```
+
+On 20 August it reported 65.23% line, 73.07% branch and 64.49% function
+coverage. Core data and plan modules are around 96–100% line coverage; DOM-heavy
+action modules are lower. That is exactly why the real-device checklist below
+remains mandatory.
 
 `shell.test.js` exists because two of the defects found during this pass were
 not wrong code but unused code. `js/photos.js` was imported by the Body screen
@@ -72,10 +79,44 @@ and at this size that is tens of millions of comparisons.
 
 ---
 
-## Manual
+## Current v2.5.5 real-browser acceptance checklist
 
-Each of these was checked in the browser against the sample database, in both
-colour schemes at 390 × 844.
+Use a narrow phone viewport and both colour schemes. Run once with demo data
+and once with a fresh disposable personal database.
+
+- Confirm the demo banner appears only in demo mode, “Back to my data” returns
+  to the personal database, and changing demo data does not change personal
+  data.
+- Start A, log/edit/unlog a set, toggle index-set status, add and remove a set,
+  swap an exercise, set grip, and finish. Reload after each save-sensitive step
+  and confirm the state survived.
+- Start a session accidentally, discard it, confirm it appears in Recently
+  deleted, restore it, discard it again, and confirm a fresh session can start.
+- Build and finish a custom workout; confirm it does not advance the A–F
+  rotation or inflate planned rotation volume.
+- Inspect Plan on a phone: tabs wrap without horizontal scrolling; workout and
+  muscle sections open and close independently; no card is stuck open.
+- Inspect Strength: lift selection needs no horizontal scroll; record evidence
+  precedes the chart; weight, reps, RPE, date and e1RM are legible; block
+  baseline reads as calibration, not a failed negative score.
+- Inspect Summary, measurements and Settings for clipped text, excessive blank
+  space, overlapping tap targets and unwanted horizontal scroll.
+- Export, delete one harmless demo entry, restore it, import the export in a
+  disposable database, and run the integrity check.
+- Install/update with `?sw=1`: an update must wait for approval, warn if a
+  session is active, reload once, and still open offline.
+- Check the console for exceptions and CSP/service-worker errors throughout.
+
+Until this list passes, v2.5.5 is a tested development candidate, not a
+published release.
+
+---
+
+## Historical v2.1.3 manual evidence
+
+Each item below was checked on 19 August 2026 against v2.1.3 in the browser with
+the sample database, in both colour schemes at 390 × 844. It remains useful
+regression context but does not certify the later UI changes.
 
 ### The maths says what it means
 
