@@ -619,7 +619,13 @@ function plannedCard(state, m) {
   const plannedSessions = state.plan.meta.rotationOrder.map((sessionId) =>
     toDisplaySession(resolveSession(state.plan, { rotation: state.cycle.sequence, sessionId }))
   );
-  const cycleLogIds = new Set(m.logs.filter((log) => log.cycleId === state.cycle.id).map((log) => log.id));
+  const cycleLogIds = new Set(
+    m.logs
+      .filter(
+        (log) => log.cycleId === state.cycle.id && state.plan.meta.rotationOrder.includes(log.rotationPosition)
+      )
+      .map((log) => log.id)
+  );
   const loggedSets = m.sets.filter((set) => cycleLogIds.has(set.sessionLogId));
 
   const rows = plannedVsCompleted({

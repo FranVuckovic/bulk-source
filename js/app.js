@@ -177,6 +177,7 @@ async function loadEverything() {
 
   state.cycles = alive(await getAll(state.db, 'cycles')).sort((a, b) => a.sequence - b.sequence);
   const finished = state.logs.filter((log) => log.endedAt);
+  const plannedFinished = finished.filter((log) => state.plan.meta.rotationOrder.includes(log.rotationPosition));
 
   // ── where the plan actually is ──
   const stored = await readSettings(state.db);
@@ -185,8 +186,8 @@ async function loadEverything() {
     state.cycles.find((c) => c.sequence === sequence) ||
     newCycle(state.plan, { sequence, startedAtISO: stored.cycleStartedAtISO ?? null, localStartDate: stored.cycleStartedDate ?? null });
 
-  state.cycleProgress = cycleProgress(state.plan, state.cycle, finished);
-  state.next = nextSession(state.plan, state.cycle, finished);
+  state.cycleProgress = cycleProgress(state.plan, state.cycle, plannedFinished);
+  state.next = nextSession(state.plan, state.cycle, plannedFinished);
   state.boundary = blockBoundary(state.plan, state.cycle);
 
   const block = blockFor(state.plan, state.cycle.sequence);
@@ -197,8 +198,8 @@ async function loadEverything() {
   // ripple through every view at once.
   state.position = {
     nextSessionId: state.next.position,
-    sessionsDone: finished.length,
-    lastSessionId: finished.length ? finished[finished.length - 1].rotationPosition ?? null : null,
+    sessionsDone: plannedFinished.length,
+    lastSessionId: plannedFinished.length ? plannedFinished[plannedFinished.length - 1].rotationPosition ?? null : null,
   };
   state.blockProgress = {
     blockDone: state.cycleProgress.complete,
@@ -207,16 +208,18 @@ async function loadEverything() {
     daysElapsed: state.cycle.localStartDate ? daysBetween(state.cycle.localStartDate, state.todayISO) : null,
   };
 
-  const firstLogged = finished.length ? (finished[0].localDate || finished[0].dateISO || '').slice(0, 10) : null;
+  const firstLogged = plannedFinished.length
+    ? (plannedFinished[0].localDate || plannedFinished[0].dateISO || '').slice(0, 10)
+    : null;
   state.planProgress = {
-    sessionsDone: finished.length,
+    sessionsDone: plannedFinished.length,
     cyclesDone: Math.max(0, state.cycle.sequence - 1) + (state.cycleProgress.finished ? 1 : 0),
     daysElapsed: firstLogged ? daysBetween(firstLogged, state.todayISO) : null,
     calendarWeek: firstLogged ? Math.floor(Math.max(0, daysBetween(firstLogged, state.todayISO)) / 7) + 1 : 1,
     pace: null,
   };
   if (state.planProgress.daysElapsed > 0) {
-    state.planProgress.pace = finished.length / (state.planProgress.daysElapsed / 7);
+    state.planProgress.pace = plannedFinished.length / (state.planProgress.daysElapsed / 7);
     state.projection = projectedFinish(state.plan, {
       cyclesDone: state.planProgress.cyclesDone,
       daysElapsed: state.planProgress.daysElapsed,
@@ -354,7 +357,7 @@ async function ensureActiveLog() {
         startedAt: nowISO(),
         endedAt: null,
         sessionId: state.trainSessionId,
-        rotationPosition: state.trainSessionId,
+        rotationPosition: state.trainSessionId === train.CUSTOM_SESSION_ID ? null : state.trainSessionId,
         cycleId: state.cycle.id,
         cycleSequence: state.cycle.sequence,
         blockId: state.block.idx,
@@ -363,7 +366,10 @@ async function ensureActiveLog() {
         // Real until said otherwise: a session logged as it happens is the
         // normal case, and the switch beside Finish is for the times it is not.
         timingReliable: true,
-        rotationIndex: state.plan.meta.rotationOrder.indexOf(state.trainSessionId),
+        rotationIndex:
+          state.trainSessionId === train.CUSTOM_SESSION_ID
+            ? null
+            : state.plan.meta.rotationOrder.indexOf(state.trainSessionId),
         bodyweight: null,
         sessionRpe: null,
         note: null,
@@ -517,7 +523,10 @@ async function persistDraft() {
 
 async function finishSession() {
   await persistDraft();
-  const session = state.plan.sessions.find((s) => s.id === state.trainSessionId);
+  const isCustom = state.trainSessionId === train.CUSTOM_SESSION_ID;
+  const session = isCustom
+    ? { id: 'Custom', name: 'Custom workout' }
+    : state.plan.sessions.find((s) => s.id === state.trainSessionId);
   const prescribed = prescribedSetCount({ slots: train.slotsFor(state) });
   const logged = state.loggedSets.size;
   const ratio = completionRatio(logged, prescribed);
@@ -559,7 +568,11 @@ async function finishSession() {
       finishedLog.isPartial ? ' — logged as a partial session' : ''
     }${Number.isFinite(minutes) && minutes > 0 ? ` · ${minutes} min` : ''}</p>
     ${
-      state.cycleProgress.finished
+      isCustom
+        ? `<p style="text-align:center;font-size:13px">Saved to History and analytics. The plan did not move; next in the rotation is still <b>${escape(
+            state.position.nextSessionId
+          )}</b>.</p><button class="big mt" data-act="sheet-close">Done</button>`
+        : state.cycleProgress.finished
         ? `<p style="text-align:center;font-size:13px">That completes <b>rotation ${state.cycle.sequence}</b>${
             state.cycleProgress.partial || state.cycleProgress.skipped
               ? ` — with ${state.cycleProgress.partial + state.cycleProgress.skipped} position${
@@ -742,6 +755,13 @@ const ctx = {
           id
         )}</button>`);
       return;
+    }
+    if (!state.activeLog && state.trainSessionId !== id) {
+      // An unstarted custom builder is only a draft. Switching away discards
+      // that draft rather than leaking its exercises into a planned session.
+      state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {} };
+      state.grips = {};
+      state.loggedSets = new Map();
     }
     state.trainSessionId = id;
     state.exOpen = new Set(['0']);

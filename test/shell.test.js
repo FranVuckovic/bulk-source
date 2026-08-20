@@ -139,6 +139,16 @@ test('exercise actions are grouped by consequence instead of rendered as one but
   assert.ok(block.includes("prescribed != null\n      ? `<button class=\"warn\" data-act=\"clear-pres\""));
 });
 
+test('custom workouts are explicitly outside plan rotation progress', () => {
+  const app = read('js/app.js');
+  const train = read('js/ui/train.js');
+
+  assert.ok(train.includes("export const CUSTOM_SESSION_ID = 'custom'"));
+  assert.ok(train.includes('does not advance or change the A–F rotation'));
+  assert.ok(app.includes('plannedFinished = finished.filter'));
+  assert.ok(app.includes('rotationPosition: state.trainSessionId === train.CUSTOM_SESSION_ID ? null'));
+});
+
 test('every icon the manifest names is precached and present', () => {
   // An icon whose bytes change but whose filename does not is an icon the
   // installed app will never notice. The filenames carry the version, so the

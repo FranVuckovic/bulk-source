@@ -52,7 +52,11 @@ export function newCycle(plan, { sequence, startedAtISO, localStartDate, id }) {
  */
 export function cycleProgress(plan, cycle, sessions) {
   const order = plan.meta.rotationOrder;
-  const live = (sessions || []).filter((s) => !s.deletedAtISO && s.cycleId === cycle.id);
+  // Ad-hoc sessions deliberately share the current cycle for analytics, but
+  // have no rotation position and must never satisfy or inflate A–F progress.
+  const live = (sessions || []).filter(
+    (s) => !s.deletedAtISO && s.cycleId === cycle.id && order.includes(s.rotationPosition)
+  );
 
   const positions = order.map((position) => {
     const logs = live.filter((log) => log.rotationPosition === position);

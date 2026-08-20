@@ -111,6 +111,23 @@ test('deleted sessions do not count towards a cycle', () => {
   assert.equal(progress.nextPosition, 'B', 'the deleted session is owed again');
 });
 
+test('a custom workout never advances or inflates the A–F rotation', () => {
+  const cycle = newCycle(PLAN, { sequence: 1, id: 'cycle-1' });
+  const custom = {
+    id: 99,
+    cycleId: cycle.id,
+    sessionId: 'custom',
+    rotationPosition: null,
+    status: 'complete',
+    completionRatio: 1,
+  };
+
+  const progress = cycleProgress(PLAN, cycle, [custom]);
+  assert.equal(progress.complete, 0);
+  assert.equal(progress.dose, 0);
+  assert.equal(progress.nextPosition, 'A');
+});
+
 test('finishing a rotation offers the next one, never silently', () => {
   const c3 = cycle(3);
   const all = PLAN.meta.rotationOrder.map((p) => logFor(c3, p, 'complete'));

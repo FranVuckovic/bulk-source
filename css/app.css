@@ -135,6 +135,7 @@ nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.9;st
 .picker{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;-webkit-overflow-scrolling:touch}
 .pill{flex:0 0 auto;font:inherit;font-size:12.5px;font-weight:650;padding:8px 15px;border-radius:99px;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--ink2);min-width:42px}
 .pill.on{border-color:var(--s1);background:var(--s1);color:#fff}
+.picker .pill.custom{padding-left:11px;padding-right:11px}
 
 /* workouts — one line when shut, everything when open */
 .card.wo{padding:0;overflow:hidden}
