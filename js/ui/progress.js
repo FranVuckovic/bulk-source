@@ -146,6 +146,11 @@ function metrics(state) {
     .filter((m) => Number.isFinite(m.waist))
     .map((m) => ({ dateISO: m.dateISO, value: m.waist }));
 
+  const relative = relativeStrengthSnapshot(
+    perCycle.length ? perCycle : series.points,
+    averaged
+  );
+
   return {
     focus,
     logs,
@@ -158,6 +163,7 @@ function metrics(state) {
     best,
     bodyweight,
     averaged,
+    relative,
     latestAverage,
     calendarWeek,
     gain,
@@ -235,8 +241,14 @@ function strengthView(ctx, state, m, unit) {
   <h3>Best performance — ${escape(shortName)}</h3>
   ${recordsCard(state, m, unit, { onlyExerciseId: m.focus })}
 
+  <h3>What prescriptions use</h3>
+  ${selectedWorkingMax(ctx, m.focus)}
+
   <h3>Estimated 1RM trend</h3>
   ${strengthCard(state, m, unit)}
+
+  <h3>Strength relative to bodyweight</h3>
+  ${strengthVsBodyweight(m)}
 
   <details class="card section-fold"><summary>Load and reps · every ${escape(shortName)} set</summary><div class="c">
     ${scatter(state, m.focus, unit)}
@@ -252,9 +264,7 @@ function strengthView(ctx, state, m, unit) {
   <details class="card section-fold"><summary>Programming diagnostics</summary><div class="c">
     <h3>Block comparison</h3>
     ${blockCard(state, m, unit)}
-    <h3>Strength against bodyweight</h3>
-    ${strengthVsBodyweight(m)}
-    <h3>Working maxes</h3>
+    <h3>All working maxes</h3>
     ${workingMaxes(ctx)}
   </div></details>`;
 }
@@ -297,7 +307,13 @@ const evidence = (metric) =>
       }${metric.confidence ? `, ${CONFIDENCE_WORD[metric.confidence] || metric.confidence}` : ''})</span>`;
 
 function verdict(state, m, unit) {
-  const rows = [];
+  const groups = {
+    weight: [],
+    strength: [],
+    together: [],
+    adherence: [],
+  };
+  const push = (group, row) => groups[group].push(row);
 
   // 1 · is the bulk running at the intended rate
   if (m.gain.ok) {
@@ -305,7 +321,7 @@ function verdict(state, m, unit) {
     // Off the band is not the same as off the rails: the severity follows the
     // action, so a line that says "nothing to do yet" does not wear a warning.
     const acting = /kcal/.test(m.gain.action);
-    rows.push([
+    push('weight', [
       m.gain.status === 'in' ? 'ok' : acting ? 'warn' : 'info',
       m.gain.status === 'in'
         ? 'Gaining at the intended rate'
@@ -315,12 +331,19 @@ function verdict(state, m, unit) {
       `${fmtNum(m.gain.perWeek, 2)} kg/week against a ${band} target for week ${m.calendarWeek}. ${m.gain.action}`,
       m.gain,
     ]);
+  } else {
+    push('weight', [
+      'info',
+      'Bodyweight trend needs more weigh-ins',
+      `${escape(m.gain.reason || 'Not enough readings yet')}. The judgement uses the trend, never a single morning weight.`,
+      {},
+    ]);
   }
 
   // 2 · is the gain running lean
   if (m.gain.ok && m.waistTrend.ok) {
     const ratio = m.gain.perWeek > 0 ? m.waistTrend.perWeek / m.gain.perWeek : null;
-    rows.push(
+    push('weight',
       ratio == null
         ? ['info', 'Lean-bulk ratio', 'Bodyweight is not rising, so there is no ratio to take.', m.waistTrend]
         : ratio < 0.35
@@ -331,18 +354,18 @@ function verdict(state, m, unit) {
 
   // 3 · is strength moving
   if (m.strength.ok) {
-    rows.push(
+    push('strength',
       m.strength.perWeek <= 0
         ? ['bad', 'Estimated max is not trending up', `${fmtNum(toDisplay(m.strength.perWeek, unit), 2)} ${unit} per week across ${m.strength.spanDays} days. Flat while gaining is a recovery or programming problem, not a food problem.`, m.strength]
         : ['ok', 'Strength is trending up', `About ${fmtNum(toDisplay(m.strength.perWeek, unit), 2)} ${unit} of estimated max per week. At this rate you add ${fmtNum(toDisplay(m.strength.perWeek * 12, unit), 1)} ${unit} over the next twelve weeks.`, m.strength]
     );
   } else {
-    rows.push(['info', 'Not enough index sets to call a strength trend', `${escape(m.strength.reason)}. Index sets are the only ones that count, and only from the standard technique.`, {}]);
+    push('strength', ['info', 'Not enough index sets to call a strength trend', `${escape(m.strength.reason)}. Index sets are the only ones that count, and only from the standard technique.`, {}]);
   }
 
   // 4 · the four-week change, measured at both ends
   if (m.change.ok) {
-    rows.push([
+    push('strength', [
       m.change.change >= 0 ? 'ok' : 'warn',
       `${m.change.change >= 0 ? 'Up' : 'Down'} ${fmtLoad(Math.abs(m.change.change), unit)} ${unit} in ${Math.round(m.change.actualDays / 7)} weeks`,
       `From ${fmtLoad(m.change.from, unit)} on ${escape(m.change.fromDateISO)} to ${fmtLoad(m.change.to, unit)} on ${escape(m.change.toDateISO)} — both ends are real index sets, not a best-ever compared against a recent one.`,
@@ -353,32 +376,72 @@ function verdict(state, m, unit) {
   // 5 · are you training often enough
   const pace = state.planProgress.pace;
   if (pace != null) {
-    rows.push(
+    push('adherence',
       pace >= 4.5
         ? ['ok', 'Training often enough', `${fmtNum(pace, 1)} sessions a week. The rotation needs about 5 to stay on the calendar.`, {}]
         : ['warn', 'Below the pace the calendar needs', `${fmtNum(pace, 1)} sessions a week. Rotations advance on sessions, so nothing is lost — but the finish date moves.`, {}]
     );
+  } else {
+    push('adherence', [
+      'info',
+      'Training pace needs a few sessions',
+      'The plan advances by completed A–F sessions, not by calendar weeks. A pace appears once there is enough history.',
+      {},
+    ]);
   }
 
   // 6 · the goal, always in kilograms
   if (m.goal?.ok && m.goal.projection) {
-    rows.push([
+    push('strength', [
       'info',
       `${GOAL_BENCH_KG} kg bench in ${m.goal.projection.lowWeeks}–${m.goal.projection.highWeeks} weeks`,
       `${fmtNum(m.goal.remaining, 1)} kg to go at ${fmtNum(m.goal.perWeek, 2)} kg/week. The goal is a weight on a bar, so it stays in kilograms whatever the display unit says. It is a range because a slope from ${m.goal.sampleCount} readings is not a date.`,
       m.goal,
     ]);
   } else if (m.goal?.ok && m.goal.remaining > 0) {
-    rows.push(['info', `${fmtNum(m.goal.remaining, 1)} kg from the ${GOAL_BENCH_KG} kg bench`, `No projection: ${escape(m.goal.reason || 'nothing is rising yet')}.`, {}]);
+    push('strength', ['info', `${fmtNum(m.goal.remaining, 1)} kg from the ${GOAL_BENCH_KG} kg bench`, `No projection: ${escape(m.goal.reason || 'nothing is rising yet')}.`, {}]);
   }
 
-  if (!rows.length) {
+  if (m.relative.latest != null && m.relative.change != null) {
+    push('together', [
+      m.relative.change > 0.01 ? 'ok' : m.relative.change < -0.01 ? 'warn' : 'info',
+      m.relative.change > 0.01
+        ? 'Strength is outpacing bodyweight'
+        : m.relative.change < -0.01
+          ? 'Bodyweight is outpacing strength'
+          : 'Strength and bodyweight are moving together',
+      `${fmtNum(m.relative.latest, 2)}× bodyweight now, ${m.relative.change >= 0 ? '+' : ''}${fmtNum(
+        m.relative.change,
+        2
+      )} since ${escape(m.relative.fromDateISO)}. Based on ${m.relative.sampleCount} index-set/bodyweight matches within three days; this is your own trend, not a percentile.`,
+      {},
+    ]);
+  } else {
+    push('together', [
+      'info',
+      'Relative strength needs matched evidence',
+      'Log index sets and bodyweight readings within three days of each other. Then this section shows whether strength is rising faster than mass.',
+      {},
+    ]);
+  }
+
+  const count = Object.values(groups).reduce((sum, rows) => sum + rows.length, 0);
+  if (!count) {
     return flag('info', 'i', 'Log a few weeks and this becomes a straight answer about whether the bulk is working.');
   }
-  return rows
-    .map(([kind, title, detail, metric]) =>
-      flag(kind, kind === 'ok' ? '✓' : kind === 'info' ? 'i' : '!', `<b>${escape(title)}.</b> ${escape(detail)}${evidence(metric || {})}`)
-    )
+  const labels = {
+    weight: ['Bodyweight & waist', 'Is mass moving at the intended rate and staying lean?'],
+    strength: ['Strength', 'Are the selected lift and the goal moving?'],
+    together: ['Strength relative to bodyweight', 'Is performance improving faster than mass?'],
+    adherence: ['Plan completion', 'Is training happening often enough?'],
+  };
+  return Object.entries(groups)
+    .filter(([, rows]) => rows.length)
+    .map(([group, rows]) => `<section class="verdict-section"><div class="verdict-head"><b>${labels[group][0]}</b><span>${labels[group][1]}</span></div>${rows
+      .map(([kind, title, detail, metric]) =>
+        flag(kind, kind === 'ok' ? '✓' : kind === 'info' ? 'i' : '!', `<b>${escape(title)}.</b> ${escape(detail)}${evidence(metric || {})}`)
+      )
+      .join('')}</section>`)
     .join('');
 }
 
@@ -567,6 +630,20 @@ export function relativeStrengthSeries(strengthPoints, bodyweightPoints, maxGapD
     .filter(Boolean);
 }
 
+export function relativeStrengthSnapshot(strengthPoints, bodyweightPoints) {
+  const ratios = relativeStrengthSeries(strengthPoints, bodyweightPoints);
+  const first = ratios[0];
+  const latest = ratios[ratios.length - 1];
+  return {
+    points: ratios,
+    sampleCount: ratios.length,
+    latest: latest?.value ?? null,
+    change: ratios.length > 1 ? latest.value - first.value : null,
+    fromDateISO: first?.dateISO ?? null,
+    toDateISO: latest?.dateISO ?? null,
+  };
+}
+
 function strengthVsBodyweight(m) {
   const strengthPoints = m.perCycle.length ? m.perCycle : m.series.points;
   const rows = alignByDate(
@@ -589,9 +666,9 @@ function strengthVsBodyweight(m) {
     }
     return row;
   });
-  const ratios = relativeStrengthSeries(strengthPoints, m.averaged);
-  const latestRatio = ratios[ratios.length - 1]?.value ?? null;
-  const ratioChange = ratios.length > 1 ? latestRatio - ratios[0].value : null;
+  const ratios = m.relative.points;
+  const latestRatio = m.relative.latest;
+  const ratioChange = m.relative.change;
 
   return `<div class="card">
     ${
@@ -1184,18 +1261,46 @@ export function maxRows(state) {
         rpe: point.rpe,
       }));
 
-    const observed = inBlock.length ? Math.max(...inBlock.map((o) => o.e1rm)) : null;
+    const bestObservation = inBlock.length
+      ? inBlock.reduce((best, observation) => (observation.e1rm > best.e1rm ? observation : best))
+      : null;
+    const observed = bestObservation?.e1rm ?? null;
 
     return {
       ...lift,
       workingMax: stored,
       observed,
+      bestObservation,
       observations: inBlock,
       overBy: stored && observed ? (observed / stored - 1) * 100 : null,
       boundary: proposeBlockBoundaryMax(stored, inBlock),
       midBlock: proposeMidBlockBump(stored, inBlock),
     };
   });
+}
+
+function selectedWorkingMax(ctx, exerciseId) {
+  const { state } = ctx;
+  const unit = state.settings.unit;
+  const row = maxRows(state).find((candidate) => candidate.id === exerciseId);
+  if (!row) return '<div class="card"><p style="margin:0">This lift does not use a working max.</p></div>';
+
+  const best = row.bestObservation;
+  return `<div class="card selected-max">
+    <div class="working-key">
+      <p><small>Prescriptions use</small><b>${row.workingMax == null ? '—' : `${fmtLoad(row.workingMax, unit)} ${unit}`}</b><span>Working max · stable calculation anchor, not a record.</span></p>
+      <p><small>Best eligible set this block</small><b>${row.observed == null ? '—' : `${fmtLoad(row.observed, unit)} ${unit} e1RM`}</b><span>${
+        best
+          ? `${fmtLoad(best.load, unit)} ${unit} × ${best.reps}${best.rpe ? ` · RPE ${best.rpe}` : ''} · ${escape(best.dateISO)}`
+          : 'No eligible index set yet.'
+      }</span></p>
+    </div>
+    <p class="hint">The left number sets future loads. The right number is evidence from one real set; it does not change prescriptions by itself.${
+      row.overBy == null
+        ? ''
+        : ` Best evidence is <b>${row.overBy >= 0 ? '+' : ''}${fmtNum(row.overBy, 1)}%</b> versus the anchor.`
+    }</p>
+  </div>`;
 }
 
 function workingMaxes(ctx) {
@@ -1209,18 +1314,22 @@ function workingMaxes(ctx) {
       <p><b>Working max</b><span>The stable anchor used to calculate prescribed loads. It is intentionally not changed after every good set.</span></p>
       <p><b>Best evidence</b><span>The highest eligible estimated 1RM observed in this block.</span></p>
     </div>
-    <table><thead><tr><th>Lift</th><th>Working max</th><th>Best evidence</th><th>Gap</th><th>Index sets</th></tr></thead><tbody>
+    <div class="max-list">
       ${rows
         .map(
-          (row) =>
-            `<tr><td>${escape(row.short)}</td><td>${
-              row.workingMax == null ? '—' : fmtLoad(row.workingMax, unit)
-            }</td><td>${row.observed == null ? '—' : fmtLoad(row.observed, unit)}</td><td>${
-              row.overBy == null ? '—' : `${row.overBy >= 0 ? '+' : ''}${fmtNum(row.overBy, 1)}%`
-            }</td><td>${row.observations.length}</td></tr>`
+          (row) => {
+            const best = row.bestObservation;
+            return `<div class="max-row"><b>${escape(row.short)}</b><div class="g2">
+              <p><small>Prescriptions use</small><strong>${row.workingMax == null ? '—' : `${fmtLoad(row.workingMax, unit)} ${unit}`}</strong><span>working max</span></p>
+              <p><small>Best this block</small><strong>${row.observed == null ? '—' : `${fmtLoad(row.observed, unit)} ${unit}`}</strong><span>${
+                best ? `${fmtLoad(best.load, unit)}×${best.reps}${best.rpe ? ` @${best.rpe}` : ''}` : 'no eligible set'
+              }</span></p></div><small>${row.observations.length} index set${row.observations.length === 1 ? '' : 's'}${
+                row.overBy == null ? '' : ` · evidence ${row.overBy >= 0 ? '+' : ''}${fmtNum(row.overBy, 1)}% vs anchor`
+              }</small></div>`;
+          }
         )
         .join('')}
-    </tbody></table>
+    </div>
     <p class="hint">Observed is the best index set in <b>this block</b> (${escape(state.block.name)}, rotations ${
       state.block.from ?? 1
     }–${state.block.to ?? state.cycle.sequence}) — an all-time best from four blocks ago is not evidence about

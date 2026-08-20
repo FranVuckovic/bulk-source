@@ -21,6 +21,7 @@ import * as progressScreen from '../js/ui/progress.js';
 import * as planScreen from '../js/ui/plan.js';
 import * as bodyScreen from '../js/ui/body.js';
 import * as historyScreen from '../js/ui/history.js';
+import * as settingsScreen from '../js/ui/settings.js';
 
 const PLAN = JSON.parse(readFileSync(new URL('../data/plan-fopip-v2.json', import.meta.url), 'utf8'));
 
@@ -33,6 +34,11 @@ function emptyState({ sequence = 1 } = {}) {
     maxes: new Map(),
     cycle,
     settings: { unit: 'kg', increment: 2.5, bodyweight: 90, barKg: 20 },
+    storage: { persisted: true, supported: true, usage: 0, quota: 1_000_000 },
+    integrity: { ok: true, problems: [], formatVersion: 3 },
+    buildVersion: 'v2.6.0',
+    updateVersion: null,
+    demo: false,
     todayISO: '2026-08-19',
     shut: new Set(),
     bodyDraft: { dateISO: '2026-08-19' },
@@ -52,6 +58,7 @@ const screens = [
   ['Plan', planScreen],
   ['Body', bodyScreen],
   ['History', historyScreen],
+  ['Settings', settingsScreen],
 ];
 
 for (const [name, screen] of screens) {
@@ -104,8 +111,22 @@ test('the tonnage comparison uses a real 44-tonne articulated lorry', () => {
 test('the Progress summary groups evidence and keeps secondary material collapsible', () => {
   const html = progressScreen.view({ state: emptyState(), render() {} });
   assert.match(html, /class="card summary-group" open/);
+  assert.match(html, /Bodyweight & waist/);
+  assert.match(html, /Strength relative to bodyweight/);
+  assert.match(html, /Plan completion/);
   assert.match(html, /Actions and recovery signals/);
   assert.match(html, /Consistency and work done/);
+});
+
+test('Settings keeps routine controls open and everything else in named compact groups', () => {
+  const html = settingsScreen.view({ state: emptyState(), render() {} });
+  assert.match(html, /Demo data/);
+  assert.match(html, /<details class="card settings-group" open>/);
+  assert.match(html, /Data &amp; backups/);
+  assert.match(html, /Privacy &amp; storage/);
+  assert.match(html, /Deletion &amp; reset/);
+  assert.match(html, /About this build/);
+  assert.equal((html.match(/<details class="card settings-group/g) || []).length, 5);
 });
 
 test('measurement history shows real dates, a selectable chart and a bodyweight comparison', () => {
@@ -147,6 +168,25 @@ test('relative strength matches only nearby bodyweight readings and reports the 
   assert.equal(rows[0].value, 1.5);
 });
 
+test('relative strength summary exposes the current ratio and real first-to-last change', () => {
+  const snapshot = progressScreen.relativeStrengthSnapshot(
+    [
+      { dateISO: '2026-08-01', value: 120 },
+      { dateISO: '2026-08-15', value: 132 },
+    ],
+    [
+      { dateISO: '2026-08-01', value: 80 },
+      { dateISO: '2026-08-15', value: 82.5 },
+    ]
+  );
+
+  assert.equal(snapshot.sampleCount, 2);
+  assert.equal(snapshot.latest, 1.6);
+  assert.ok(Math.abs(snapshot.change - 0.1) < 1e-12);
+  assert.equal(snapshot.fromDateISO, '2026-08-01');
+  assert.equal(snapshot.toDateISO, '2026-08-15');
+});
+
 test('Strength leads with the selected lift record and keeps the full lift list off the horizontal axis', () => {
   const state = emptyState();
   state.progressSection = 'strength';
@@ -161,6 +201,9 @@ test('Strength leads with the selected lift record and keeps the full lift list 
   assert.ok(html.indexOf('Best performance') < html.indexOf('Estimated 1RM trend'), 'the evidence precedes its graph');
   assert.match(html, /Record set: 100\.0 kg × 5 reps · RPE 8/);
   assert.match(html, /kg e1RM/);
+  assert.match(html, /What prescriptions use/);
+  assert.match(html, /Working max · stable calculation anchor, not a record/);
+  assert.ok(html.indexOf('Strength relative to bodyweight') < html.indexOf('Programming diagnostics'));
   assert.match(html, /class="lift-grid"/, 'all lifts live in a wrapping chooser');
   assert.doesNotMatch(html, /class="picker"/, 'the sideways lift carousel is gone');
 });

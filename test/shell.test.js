@@ -247,9 +247,11 @@ test('the demo warning is hidden unless demo mode is actually on', () => {
 test('demo data is the first Settings section instead of a buried utility', () => {
   const settings = read('js/ui/settings.js');
   const demo = settings.indexOf('>Demo data</h3>');
-  const units = settings.indexOf('>Units</h3>');
-  const danger = settings.indexOf('>Danger zone</h3>');
+  const training = settings.indexOf('Training &amp; display');
+  const danger = settings.indexOf('Deletion &amp; reset');
 
-  assert.ok(demo > 0 && demo < units && demo < danger);
+  assert.ok(demo > 0 && demo < training && demo < danger);
   assert.match(settings, /data-act="demo-on">Explore the demo/);
+  assert.match(settings, /<details class="card settings-group" open>/, 'only everyday settings start open');
+  assert.match(settings, /<details class="card settings-group danger-settings">/, 'destructive settings start collapsed');
 });
