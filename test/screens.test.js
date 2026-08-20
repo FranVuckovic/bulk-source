@@ -101,6 +101,13 @@ test('the tonnage comparison uses a real 44-tonne articulated lorry', () => {
   });
 });
 
+test('the Progress summary groups evidence and keeps secondary material collapsible', () => {
+  const html = progressScreen.view({ state: emptyState(), render() {} });
+  assert.match(html, /class="card summary-group" open/);
+  assert.match(html, /Actions and recovery signals/);
+  assert.match(html, /Consistency and work done/);
+});
+
 test('measurement history shows real dates, a selectable chart and a bodyweight comparison', () => {
   const state = emptyState();
   state.progressSection = 'body';

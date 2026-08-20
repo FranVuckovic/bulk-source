@@ -207,20 +207,23 @@ function summaryView(state, m, unit) {
   return `
   ${tiles(state, m, unit)}
 
-  <h3>Is this going to plan?</h3>
-  ${verdict(state, m, unit)}
+  <details class="card summary-group" open><summary>Is this going to plan?</summary><div class="c">
+    ${verdict(state, m, unit)}
+  </div></details>
 
-  <h3>What to do about it</h3>
-  ${flagsSection(state, m)}
-  ${deloadCard(state, m)}
+  <details class="card summary-group"><summary>Actions and recovery signals</summary><div class="c">
+    ${flagsSection(state, m)}
+    ${deloadCard(state, m)}
+  </div></details>
 
-  <h3>Consistency</h3>
-  <div class="card">${consistency(state)}
+  <details class="card summary-group"><summary>Consistency and work done</summary><div class="c">
+    <h3>Training days</h3>
+    ${consistency(state)}
     <p class="hint">${consistencySummary(state)} One cell per day, coloured by session. Your single biggest risk is
-    not finishing 33 rotations, and this is the only view that makes adherence visible.</p></div>
-
-  <h3>Work done</h3>
-  ${tonnageCard(state)}`;
+    not finishing 33 rotations, and this is the only view that makes adherence visible.</p>
+    <h3>Volume moved</h3>
+    ${tonnageCard(state)}
+  </div></details>`;
 }
 
 function strengthView(ctx, state, m, unit) {

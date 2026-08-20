@@ -39,7 +39,24 @@ export function view(ctx) {
   return `
   <button class="back" data-act="tab" data-tab="train">‹ Back</button>
 
-  <h3 style="margin-top:0">Units</h3>
+  <h3 style="margin-top:0">Demo data</h3>
+  <div class="card">
+    ${
+      state.demo
+        ? `${flag('warn', '!', `<b>Demo mode is on.</b> Everything on every screen is invented — twelve rotations of
+             generated training. Nothing here is yours and nothing can be saved.`)}
+           <button class="big mt" data-act="demo-off">Turn it off and go back to my data</button>
+           <p class="hint">Your real log is in a different database and has not been opened since demo mode came on.
+           Turning it off gives it back exactly as it was.</p>`
+        : `<p style="margin:0 0 10px">Explore every screen with twelve rotations of invented training. This is the
+             quickest way to learn the app before logging anything.</p>
+           ${flag('ok', '✓', `<b>Your real data cannot be touched by it.</b> The demo runs on a separate database and
+             writing is switched off entirely while it is on.`)}
+           <button class="big ghost" data-act="demo-on">Explore the demo</button>`
+    }
+  </div>
+
+  <h3>Units</h3>
   <div class="card"><div class="seg">
     <button class="${unit === 'kg' ? 'on' : ''}" data-act="unit" data-id="kg">Kilograms</button>
     <button class="${unit === 'lb' ? 'on' : ''}" data-act="unit" data-id="lb">Pounds</button></div>
@@ -114,25 +131,6 @@ export function view(ctx) {
     }</p>
     <button class="big danger mt" data-act="erase">Erase all data</button>
     <p class="hint">Requires typing ERASE. Everything logged goes: sessions, sets, weigh-ins, measurements, photos and maxes. The plan file is untouched.</p></div>
-
-  <h3>Demo mode</h3>
-  <div class="card">
-    ${
-      state.demo
-        ? `${flag('warn', '!', `<b>Demo mode is on.</b> Everything on every screen is invented — twelve rotations of
-             generated training. Nothing here is yours and nothing can be saved.`)}
-           <button class="big mt" data-act="demo-off">Turn it off and go back to my data</button>
-           <p class="hint">Your real log is in a different database and has not been opened since demo mode came on.
-           Turning it off gives it back exactly as it was.</p>`
-        : `<p style="margin:0 0 10px">Fills every screen and chart with twelve rotations of invented training, so you
-             can see what the app looks like with a history behind it${
-               state.logs.length ? '' : ' — useful before you have logged much'
-             }.</p>
-           ${flag('ok', '✓', `<b>Your real data cannot be touched by it.</b> The demo runs on a separate database and
-             writing is switched off entirely while it is on.`)}
-           <button class="big ghost" data-act="demo-on">Turn on demo mode</button>`
-    }
-  </div>
 
   <h3>Where this data lives</h3>
   <div class="card">

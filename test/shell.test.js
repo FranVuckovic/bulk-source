@@ -243,3 +243,13 @@ test('the demo warning is hidden unless demo mode is actually on', () => {
   assert.match(css, /\.demostrip\[hidden\]\s*\{\s*display\s*:\s*none\s*\}/, 'author CSS must honour hidden');
   assert.match(app, /getElementById\('demostrip'\)\.hidden\s*=\s*!state\.demo/, 'render follows demo state');
 });
+
+test('demo data is the first Settings section instead of a buried utility', () => {
+  const settings = read('js/ui/settings.js');
+  const demo = settings.indexOf('>Demo data</h3>');
+  const units = settings.indexOf('>Units</h3>');
+  const danger = settings.indexOf('>Danger zone</h3>');
+
+  assert.ok(demo > 0 && demo < units && demo < danger);
+  assert.match(settings, /data-act="demo-on">Explore the demo/);
+});
