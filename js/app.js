@@ -337,8 +337,12 @@ async function ensureActiveLog() {
   if (state.activeLog) return state.activeLog;
   if (startingSession) return startingSession;
 
-  // Stable for this position on this day, so a retry cannot open a second one.
-  const operationId = `start:${state.cycle.id}:${state.trainSessionId}:${todayISO()}`;
+  // Stable for this one start attempt, but never reused for a later legitimate
+  // restart of the same workout. The active-pointer transaction and
+  // `startingSession` prevent double opens; a date-level key incorrectly
+  // resurrected a discarded session when the user tried again that day.
+  const nonce = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const operationId = `start:${state.cycle.id}:${state.trainSessionId}:${nonce}`;
 
   startingSession = (async () => {
     const { log } = await startSessionAtomic(
