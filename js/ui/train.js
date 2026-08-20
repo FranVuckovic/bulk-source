@@ -700,6 +700,7 @@ function drawStepSheet(ctx) {
       <button data-act="flag" data-flag="toFailure" class="${c.toFailure ? 'warn' : ''}">${c.toFailure ? '\u2713 ' : ''}To failure</button>
       <button data-act="flag" data-flag="isAmrap" class="${c.isAmrap ? 'warn' : ''}">${c.isAmrap ? '\u2713 ' : ''}AMRAP</button>
       <button data-act="flag" data-flag="isMyoRep" class="${c.isMyoRep ? 'warn' : ''}">${c.isMyoRep ? '\u2713 ' : ''}Myo-reps</button>
+      <button data-act="flag" data-flag="isIndexSet" class="${c.isIndexSet ? 'warn' : ''}">${c.isIndexSet ? '\u2713 ' : ''}Index set</button>
       ${
         tracksPause(c.slot.ex)
           ? PAUSE_STYLES.map(
@@ -897,6 +898,7 @@ export const actions = {
       toFailure: values.logged ? !!values.logged.toFailure : values.toFailure,
       isAmrap: values.logged ? !!values.logged.isAmrap : !!slot.amrap,
       isMyoRep: values.logged ? !!values.logged.isMyoRep : !!slot.myoReps && i === slot.sets - 1,
+      isIndexSet: values.logged ? !!values.logged.isIndexSet : !!slot.idx,
       velocity: values.logged?.velocity ?? null,
       note: values.logged?.note ?? null,
       pauseStyle: values.logged?.pauseStyle ?? null,
@@ -1029,6 +1031,7 @@ export const actions = {
       toFailure: c.toFailure,
       isAmrap: c.isAmrap,
       isMyoRep: c.isMyoRep,
+      isIndexSet: c.isIndexSet,
       velocity: c.velocity,
       note: c.note,
       pauseStyle: c.pauseStyle,

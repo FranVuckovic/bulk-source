@@ -120,6 +120,16 @@ test('the session clock control is above the exercise list', () => {
   assert.ok(view.includes('data-act="discard-session"'), 'an active session exposes the recoverable escape hatch');
 });
 
+test('the set editor exposes and saves an explicit index-set choice', () => {
+  const train = read('js/ui/train.js');
+  const app = read('js/app.js');
+
+  assert.ok(train.includes('data-flag="isIndexSet"'), 'the set sheet has a visible index-set toggle');
+  assert.ok(train.includes('isIndexSet: values.logged ? !!values.logged.isIndexSet : !!slot.idx'));
+  assert.ok(train.includes('isIndexSet: c.isIndexSet'), 'the choice reaches saveSet');
+  assert.ok(app.includes('values.isIndexSet == null ? !!slot.idx : !!values.isIndexSet'));
+});
+
 test('every icon the manifest names is precached and present', () => {
   // An icon whose bytes change but whose filename does not is an icon the
   // installed app will never notice. The filenames carry the version, so the

@@ -401,7 +401,9 @@ async function saveSet(slotIndex, setIndex, values) {
     rir: values.rpe == null ? null : Math.max(0, 10 - values.rpe),
     toFailure: !!values.toFailure,
     isAmrap: !!values.isAmrap,
-    isIndexSet: !!slot.idx,
+    // The plan supplies the default, but the logger can deliberately promote
+    // or demote this individual set when it is the best evidence from the day.
+    isIndexSet: values.isIndexSet == null ? !!slot.idx : !!values.isIndexSet,
     isMyoRep: !!values.isMyoRep,
     velocity: values.velocity ?? null,
     note: values.note ?? null,
