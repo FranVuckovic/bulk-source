@@ -6,6 +6,7 @@ Vanilla JS PWA — no framework, no dependencies, no network access.
 Start with `AGENTS.md` and `CLAUDE.md` for the current handoff and working
 rules. `docs/product-audit-v2.5.md` records the latest product audit;
 `VERIFICATION.md` distinguishes automated evidence from real-browser evidence.
+`docs/release-v2.6.0.md` is the complete change list and release/rollback guide.
 `BUILD-BRIEF.md` and the remaining files in `docs/` hold the original product
 and training rationale.
 

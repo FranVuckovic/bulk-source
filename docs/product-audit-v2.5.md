@@ -1,8 +1,8 @@
-# Bulk v2.5 product audit
+# Bulk v2.5–v2.6 product audit
 
 **Date:** 20 August 2026
 **Branch:** `codex/v2.5-product-hardening`
-**Shell:** `v2.5.6`
+**Shell:** `v2.6.0`
 **Training content changed:** no
 
 ## Executive judgement
@@ -40,6 +40,10 @@ browser automation controller could not attach to the open local browser.
 | 960 tonnes compared to two lorries | Uses a 44-tonne articulated-lorry payload equivalent | Corrected + tested |
 | Relative strength could do more | Nearby bodyweight matching and an honest ratio trend added | Implemented + tested |
 | Save can silently fail or look inert | UI write promises reach the central error handler; niggle and form-check saves confirm success | Fixed + failure tested |
+| Relative strength remains buried | It now has a visible verdict group and a first-class Strength section before diagnostics | Implemented + tested |
+| “Is this going to plan?” mixes different questions | Visible groups now separate bodyweight/waist, strength, relative strength and plan completion | Implemented + render tested |
+| Settings is a long undifferentiated page | Demo remains first; routine controls are open; backup, privacy, deletion and build groups collapse independently | Implemented + render tested |
+| Working max and evidence remain abstract | Selected lift now shows the prescription anchor beside the exact best eligible set, with weight/reps/RPE/date | Implemented + tested |
 
 ## Training-volume finding
 
@@ -100,9 +104,9 @@ product/data decision the owner should explicitly approve.
 
 1. Export the phone's current data and verify the archive before updating.
 2. Push this branch to `bulk-source` and review it before merging.
-3. Tag the accepted source commit (for example `v2.5.6`).
+3. Tag the accepted source commit (for example `v2.6.0`).
 4. Run `npm test`, complete the acceptance checklist, then publish `bulk` only
    with explicit approval.
 5. If the release is worse, publish the prior tagged source shell again. The
-   database schema remains v3, so this v2.5 UI pass does not require a data
+   database schema remains v3, so this UI pass does not require a data
    downgrade.

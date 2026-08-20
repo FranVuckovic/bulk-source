@@ -2,7 +2,7 @@
 
 **Against:** `Bulk-v2-update-kit`, 62 requirements
 **Updated:** 20 August 2026
-**Verification:** [`VERIFICATION.md`](../VERIFICATION.md) — 249 tests, 0 failing;
+**Verification:** [`VERIFICATION.md`](../VERIFICATION.md) — 255 tests, 0 failing;
 current v2.5 interactive acceptance pending
 
 v1 is archived at `archive/v1/` and tagged `v1.0`. It still runs and still reads
@@ -100,6 +100,13 @@ without changing the training split:
 - grouped/collapsible Progress and Plan summaries, with stimulus warning colour
   reserved for material rather than trivial overages;
 - async UI writes now propagate failures to the central error presentation.
+- v2.6 surfaces relative strength in the main verdict and Strength screen,
+  divides the verdict into bodyweight/waist, strength, combined relative
+  strength and plan-completion evidence, shows the selected lift's working max
+  beside the exact best block set, and compresses Settings into five named
+  groups with destructive controls collapsed.
+- demo generation/isolation and every literal UI control binding now have
+  automated regression coverage.
 
 The exact change/evidence/defer matrix is in `product-audit-v2.5.md`. No plan
 exercise, set, rep, RPE, rotation or block rule was changed in this pass.

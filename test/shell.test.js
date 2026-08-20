@@ -12,6 +12,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, normalize, relative } from 'node:path';
+import { actions as trainActions, inputs as trainInputs } from '../js/ui/train.js';
+import { actions as bodyActions, files as bodyFiles } from '../js/ui/body.js';
+import { actions as progressActions } from '../js/ui/progress.js';
+import { actions as historyActions } from '../js/ui/history.js';
+import { actions as planActions, inputs as planInputs } from '../js/ui/plan.js';
+import { actions as settingsActions, files as settingsFiles } from '../js/ui/settings.js';
 
 const root = new URL('..', import.meta.url).pathname;
 const read = (path) => readFileSync(join(root, path), 'utf8');
@@ -39,6 +45,22 @@ function moduleGraph() {
     }
   }
   return seen;
+}
+
+function objectMethodNames(source, from, to) {
+  const block = source.slice(source.indexOf(from), source.indexOf(to, source.indexOf(from)));
+  return new Set(
+    [...block.matchAll(/^\s*(?:async\s+)?(?:'([^']+)'|([A-Za-z][\w-]*))\s*\(/gm)].map((match) => match[1] || match[2])
+  );
+}
+
+function literalBindings(attribute) {
+  const files = ['index.html', ...[...moduleGraph()]];
+  return new Set(
+    files.flatMap((file) =>
+      [...read(file).matchAll(new RegExp(`${attribute}="([^"$]+)"`, 'g'))].map((match) => match[1])
+    )
+  );
 }
 
 test('every module the app imports is in the offline shell', () => {
@@ -79,6 +101,38 @@ test('every js file in the project is reachable from the entry point', () => {
   }
   const orphans = files.filter((file) => !graph.has(file));
   assert.deepEqual(orphans, [], `imported by nothing: ${orphans.join(', ')}`);
+});
+
+test('every literal UI control is wired to a real handler', () => {
+  const app = read('js/app.js');
+  const globalActions = objectMethodNames(app, 'const globalActions = {', 'const changeHandlers = {');
+  const clickHandlers = new Set([
+    ...globalActions,
+    ...Object.keys(trainActions),
+    ...Object.keys(bodyActions),
+    ...Object.keys(progressActions),
+    ...Object.keys(historyActions),
+    ...Object.keys(planActions),
+    ...Object.keys(settingsActions),
+  ]);
+  for (const action of literalBindings('data-act')) {
+    assert.ok(clickHandlers.has(action), `data-act="${action}" has no click handler`);
+  }
+
+  const changeHandlers = objectMethodNames(app, 'const changeHandlers = {', '/** Hand a file');
+  for (const action of literalBindings('data-act-change')) {
+    assert.ok(changeHandlers.has(action), `data-act-change="${action}" has no change handler`);
+  }
+
+  const fileHandlers = new Set([...Object.keys(bodyFiles), ...Object.keys(settingsFiles)]);
+  for (const action of literalBindings('data-act-file')) {
+    assert.ok(fileHandlers.has(action), `data-act-file="${action}" has no file handler`);
+  }
+
+  const inputHandlers = new Set([...Object.keys(trainInputs), ...Object.keys(planInputs)]);
+  for (const action of literalBindings('data-act-input')) {
+    assert.ok(inputHandlers.has(action), `data-act-input="${action}" has no input handler`);
+  }
 });
 
 

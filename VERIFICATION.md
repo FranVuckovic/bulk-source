@@ -1,8 +1,8 @@
 # Bulk v2 — verification
 
-**Current build:** `sw.js` VERSION `v2.5.6` · database v3 · plan format 3 · plan
+**Current build:** `sw.js` VERSION `v2.6.0` · database v3 · plan format 3 · plan
 `fopip-v2`
-**Automated verification:** 20 August 2026 · 249 passing, 0 failing
+**Automated verification:** 20 August 2026 · 255 passing, 0 failing
 **Current visual/interactive verification:** pending
 
 The v2.5 changes have been tested through domain, database, rendering, wiring,
@@ -10,7 +10,7 @@ failure-propagation and performance tests. They have **not** yet completed a
 fresh real-browser/mobile acceptance pass. The Codex browser controller could
 not attach to the open local tabs, so claiming visual verification would be
 false. The detailed browser observations later in this file are retained as
-historical evidence for v2.1.3, not proof for v2.5.6.
+historical evidence for v2.1.3, not proof for v2.6.0.
 
 v1 is archived at `archive/v1/` and tagged `v1.0`. It still runs and still
 reads a v1 export.
@@ -44,13 +44,18 @@ version bump. To exercise the update path itself, open `http://localhost:8123/?s
 
 ## Current automated evidence
 
-The 249 tests cover calculations, plan compilation, rotations, volume,
+The 255 tests cover calculations, plan compilation, rotations, volume,
 analytics, IndexedDB migrations and transactions, export/import, recovery,
 performance, service-worker integrity, all-screen rendering, and action wiring.
 New v2.5 regressions include demo isolation/visibility, recoverable session
 discard, custom-workout isolation from the A–F rotation, manual index sets,
 collapsible Plan sections, record evidence, chart recency bands, and rejected
-UI writes reaching the central error handler.
+UI writes reaching the central error handler. The demo generator is now seeded
+twice through the real database layer to prove it replaces rather than
+duplicates data, cannot alter the personal database, remains read-only after
+boot, and renders the populated Summary, Strength and Settings screens. A
+wiring audit also checks every literal button, change control, text input and
+file picker against a real handler.
 
 Coverage is diagnostic rather than a release score:
 
@@ -58,8 +63,8 @@ Coverage is diagnostic rather than a release score:
 node --test --experimental-test-coverage test/*.test.js
 ```
 
-On 20 August it reported 65.23% line, 73.07% branch and 64.49% function
-coverage. Core data and plan modules are around 96–100% line coverage; DOM-heavy
+On 20 August it reported 69.04% line, 74.57% branch and 70.88% function
+coverage. Database, demo, cycle, plan and volume modules are around 96–100% line coverage; DOM-heavy
 action modules are lower. That is exactly why the real-device checklist below
 remains mandatory.
 
@@ -79,7 +84,7 @@ and at this size that is tens of millions of comparisons.
 
 ---
 
-## Current v2.5.5 real-browser acceptance checklist
+## Current v2.6.0 real-browser acceptance checklist
 
 Use a narrow phone viewport and both colour schemes. Run once with demo data
 and once with a fresh disposable personal database.
@@ -98,7 +103,15 @@ and once with a fresh disposable personal database.
   muscle sections open and close independently; no card is stuck open.
 - Inspect Strength: lift selection needs no horizontal scroll; record evidence
   precedes the chart; weight, reps, RPE, date and e1RM are legible; block
-  baseline reads as calibration, not a failed negative score.
+  baseline reads as calibration, not a failed negative score. The selected
+  lift must show “Prescriptions use” beside “Best eligible set this block”, and
+  relative strength must appear before Programming diagnostics.
+- Inspect “Is this going to plan?”: Bodyweight & waist, Strength, Strength
+  relative to bodyweight and Plan completion must be distinct visible groups,
+  not another layer of collapsed navigation.
+- Inspect Settings: Demo stays at the top; routine Training & display begins
+  open; Data & backups, Privacy & storage, Deletion & reset and About begin
+  collapsed and open independently.
 - Inspect Summary, measurements and Settings for clipped text, excessive blank
   space, overlapping tap targets and unwanted horizontal scroll.
 - Export, delete one harmless demo entry, restore it, import the export in a
@@ -107,7 +120,7 @@ and once with a fresh disposable personal database.
   session is active, reload once, and still open offline.
 - Check the console for exceptions and CSP/service-worker errors throughout.
 
-Until this list passes, v2.5.6 is a tested development candidate, not a
+Until this list passes, v2.6.0 is a tested release candidate, not a
 published release.
 
 ---

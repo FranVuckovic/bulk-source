@@ -21,14 +21,14 @@ older build brief and decision log provide history, not current verification.
 ## Current state
 
 - Working branch: `codex/v2.5-product-hardening`
-- Current shell: `v2.5.6`
-- Test command: `npm test` (249 passing at this handoff)
+- Current shell: `v2.6.0`
+- Test command: `npm test` (255 passing at this handoff)
 - Local app: `npm run serve`, then `http://localhost:8123/`
 - Demo: Settings → Demo data → Explore the demo. Demo and personal data use
   separate IndexedDB databases.
 - Current interactive acceptance status: pending. The Codex in-app browser
   controller could not attach to the visible local tabs on 20 August 2026.
-  Do not describe v2.5.5 as visually verified until `VERIFICATION.md`'s current
+  Do not describe v2.6.0 as visually verified until `VERIFICATION.md`'s current
   checklist has been completed.
 
 ## Repository and release model
