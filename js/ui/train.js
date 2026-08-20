@@ -478,6 +478,35 @@ function exerciseBlock(state, slot, slotIndex) {
   const workingMax = workingMaxFor(state, slot.ex);
 
   const rows = Array.from({ length: slot.sets }, (_, i) => setRow(state, slot, slotIndex, i)).join('');
+  const valueActions = `${
+    previous ? `<button data-act="same-as-last" data-si="${slotIndex}">Same as last time</button>` : ''
+  }${
+    prescribed != null
+      ? `<button class="warn" data-act="clear-pres" data-si="${slotIndex}">${
+          state.cleared.has(String(slotIndex)) ? 'Restore prescribed' : 'Clear prescribed'
+        }</button>`
+      : ''
+  }`;
+  const setupActions = `${
+    prescribed != null && !state.plan.exercises[slot.ex].bodyweightLoaded
+      ? `<button data-act="open-ramp" data-si="${slotIndex}">Warm-up</button>
+         <button data-act="open-plates" data-si="${slotIndex}">Plates</button>`
+      : ''
+  }${
+    exercise.grips
+      ? `<button data-act="open-grip" data-si="${slotIndex}">Grip: ${escape(
+          (state.grips[`${state.trainSessionId}-${slotIndex}`] || exercise.grips[0]).split(' (')[0]
+        )}</button>`
+      : ''
+  }`;
+  const exerciseActions = `<button data-act="add-set" data-si="${slotIndex}">+ Set</button>
+    <button data-act="open-swap" data-si="${slotIndex}">Swap</button>
+    <button data-act="about" data-id="${slot.ex}">About</button>
+    <button class="${exerciseNote(state, slotIndex) ? 'warn' : ''}" data-act="open-ex-note" data-si="${slotIndex}">${
+      exerciseNote(state, slotIndex) ? '\u2713 Note' : 'Note'
+    }</button>`;
+  const actionGroup = (label, buttons) =>
+    buttons ? `<div class="action-group"><span>${label}</span><div class="mini">${buttons}</div></div>` : '';
 
   return `<div class="ex ${open ? 'open' : ''}">
     <div class="exhead" data-act="toggle-ex" data-si="${slotIndex}">
@@ -540,26 +569,10 @@ function exerciseBlock(state, slot, slotIndex) {
             )}</div>`
           : ''
       }
-      <div class="mini">
-        ${previous ? `<button data-act="same-as-last" data-si="${slotIndex}">Same as last time</button>` : ''}
-        ${prescribed != null && !state.plan.exercises[slot.ex].bodyweightLoaded ? `<button data-act="open-ramp" data-si="${slotIndex}">Warm-up</button>` : ''}
-        ${prescribed != null && !state.plan.exercises[slot.ex].bodyweightLoaded ? `<button data-act="open-plates" data-si="${slotIndex}">Plates</button>` : ''}
-        <button data-act="add-set" data-si="${slotIndex}">+ Set</button>
-        <button data-act="open-swap" data-si="${slotIndex}">Swap</button>
-        <button class="warn" data-act="clear-pres" data-si="${slotIndex}">${
-          state.cleared.has(String(slotIndex)) ? 'Restore prescribed' : 'Clear prescribed'
-        }</button>
-        <button data-act="about" data-id="${slot.ex}">About</button>
-        <button class="${exerciseNote(state, slotIndex) ? 'warn' : ''}" data-act="open-ex-note" data-si="${slotIndex}">${
-          exerciseNote(state, slotIndex) ? '\u2713 Note' : 'Note'
-        }</button>
-        ${
-          exercise.grips
-            ? `<button data-act="open-grip" data-si="${slotIndex}">Grip: ${escape(
-                (state.grips[`${state.trainSessionId}-${slotIndex}`] || exercise.grips[0]).split(' (')[0]
-              )}</button>`
-            : ''
-        }
+      <div class="ex-actions">
+        ${actionGroup('Values', valueActions)}
+        ${actionGroup('Setup', setupActions)}
+        ${actionGroup('Exercise', exerciseActions)}
       </div></div></div>`;
 }
 

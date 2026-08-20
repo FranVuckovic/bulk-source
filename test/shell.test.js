@@ -130,6 +130,15 @@ test('the set editor exposes and saves an explicit index-set choice', () => {
   assert.ok(app.includes('values.isIndexSet == null ? !!slot.idx : !!values.isIndexSet'));
 });
 
+test('exercise actions are grouped by consequence instead of rendered as one button list', () => {
+  const train = read('js/ui/train.js');
+  const block = train.slice(train.indexOf('function exerciseBlock'), train.indexOf('function prescriptionHint'));
+
+  for (const label of ['Values', 'Setup', 'Exercise']) assert.ok(block.includes(`actionGroup('${label}'`));
+  assert.ok(block.includes('class="ex-actions"'));
+  assert.ok(block.includes("prescribed != null\n      ? `<button class=\"warn\" data-act=\"clear-pres\""));
+});
+
 test('every icon the manifest names is precached and present', () => {
   // An icon whose bytes change but whose filename does not is an icon the
   // installed app will never notice. The filenames carry the version, so the
