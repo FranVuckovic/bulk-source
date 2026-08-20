@@ -939,6 +939,22 @@ function measurementsCard(state) {
 }
 
 /** Total weight moved — useless for programming, oddly compelling at 6am. */
+const TONNAGE_COMPARISONS = [
+  // UK Department for Transport: the maximum fully laden weight of a
+  // six-axle articulated lorry is 44 tonnes. The previous 500-tonne value was
+  // more than eleven lorries accidentally treated as one.
+  [44000, 'a fully laden articulated lorry'],
+  [12000, 'an African elephant'],
+  [1500, 'a small car'],
+  [400, 'a grand piano'],
+];
+
+export function tonnageComparison(totalKg) {
+  const [weightKg, thing] =
+    TONNAGE_COMPARISONS.find(([kg]) => totalKg >= kg * 1.5) || TONNAGE_COMPARISONS[TONNAGE_COMPARISONS.length - 1];
+  return { weightKg, thing, count: Math.max(1, Math.round(totalKg / weightKg)) };
+}
+
 function tonnageCard(state) {
   const unit = state.settings.unit;
   const logs = alive(state.logs);
@@ -951,22 +967,14 @@ function tonnageCard(state) {
   }
   if (!total) return '<div class="card"><p style="margin:0">Nothing logged yet.</p></div>';
 
-  const comparisons = [
-    [500000, 'a fully loaded articulated lorry'],
-    [180000, 'a blue whale'],
-    [80000, 'a house'],
-    [12000, 'an African elephant'],
-    [1500, 'a small car'],
-    [400, 'a grand piano'],
-  ];
-  const [weight, thing] = comparisons.find(([kg]) => total >= kg * 1.5) || comparisons[comparisons.length - 1];
+  const comparison = tonnageComparison(total);
 
   return `<div class="card">
     <p style="margin:0 0 4px;font-size:30px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums">${
       Math.round(total / 1000)
     } tonnes</p>
     <p style="margin:0">lifted across ${logs.length} sessions and ${reps.toLocaleString('en-GB')} reps — about
-    <b>${escape(String(Math.max(1, Math.round(total / weight))))} × ${escape(thing)}</b>.</p>
+    <b>${escape(String(comparison.count))} × ${escape(comparison.thing)}</b>.</p>
     <p class="hint">Bodyweight counts on pull-ups, chin-ups and dips, because you lifted it.</p></div>`;
 }
 

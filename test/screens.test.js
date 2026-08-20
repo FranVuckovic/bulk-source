@@ -74,6 +74,14 @@ test('the Plan screen counts rotations, not a week field the blocks do not have'
   assert.doesNotMatch(html, /width:NaN/);
 });
 
+test('the tonnage comparison uses a real 44-tonne articulated lorry', () => {
+  assert.deepEqual(progressScreen.tonnageComparison(960000), {
+    weightKg: 44000,
+    thing: 'a fully laden articulated lorry',
+    count: 22,
+  });
+});
+
 test('every screen survives a rotation at each block boundary', () => {
   for (const block of PLAN.blocks) {
     for (const sequence of [block.from, block.to]) {
