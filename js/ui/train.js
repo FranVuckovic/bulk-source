@@ -893,7 +893,7 @@ export const actions = {
     await setExerciseNote(ctx, Number(data.si), '');
   },
 
-  'add-set'(ctx, data) {
+  async 'add-set'(ctx, data) {
     const slotIndex = Number(data.si);
     const planned = ctx.state.plan.sessions.find((s) => s.id === ctx.state.trainSessionId)?.slots || [];
     if (slotIndex < planned.length) {
@@ -902,11 +902,11 @@ export const actions = {
       ctx.state.deviations.extras[slotIndex - planned.length].sets += 1;
     }
     ctx.state.exOpen.add(String(slotIndex));
-    if (ctx.state.activeLog || ctx.state.trainSessionId !== CUSTOM_SESSION_ID) ctx.saveDeviations();
+    if (ctx.state.activeLog || ctx.state.trainSessionId !== CUSTOM_SESSION_ID) await ctx.saveDeviations();
     ctx.render();
   },
 
-  'remove-added'(ctx, data) {
+  async 'remove-added'(ctx, data) {
     const { state } = ctx;
     const slotIndex = Number(data.si);
     const wouldReindexLogged = [...state.loggedSets.keys()].some((key) => Number(key.split(':')[0]) >= slotIndex);
@@ -919,7 +919,7 @@ export const actions = {
     const plannedLength = state.plan.sessions.find((s) => s.id === state.trainSessionId)?.slots.length || 0;
     state.deviations.extras.splice(slotIndex - plannedLength, 1);
     state.exOpen = new Set(['0']);
-    if (state.activeLog) ctx.saveDeviations();
+    if (state.activeLog) await ctx.saveDeviations();
     ctx.render();
   },
 
@@ -1117,12 +1117,12 @@ export const actions = {
       <button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
   },
 
-  'set-grip'(ctx, data) {
+  async 'set-grip'(ctx, data) {
     const { state } = ctx;
     const slot = slotsFor(state)[Number(data.si)];
     const grip = state.plan.exercises[slot.ex].grips[Number(data.gi)];
     state.grips[`${state.trainSessionId}-${data.si}`] = grip;
-    ctx.saveDeviations();
+    await ctx.saveDeviations();
     closeSheet();
     ctx.render();
   },
@@ -1143,7 +1143,7 @@ export const actions = {
       .join('')}</div><button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
   },
 
-  'do-add'(ctx, data) {
+  async 'do-add'(ctx, data) {
     const { state } = ctx;
     const exercise = state.plan.exercises[data.id];
     state.deviations.extras.push({
@@ -1162,7 +1162,7 @@ export const actions = {
     state.exOpen.add(String(slotsFor(state).length - 1));
     // Building a custom workout is not starting it. The in-memory draft is
     // persisted with the session when Start or the first set is logged.
-    if (state.activeLog || state.trainSessionId !== CUSTOM_SESSION_ID) ctx.saveDeviations();
+    if (state.activeLog || state.trainSessionId !== CUSTOM_SESSION_ID) await ctx.saveDeviations();
     closeSheet();
     ctx.render();
   },
@@ -1193,10 +1193,10 @@ export const actions = {
       <button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
   },
 
-  'do-swap'(ctx, data) {
+  async 'do-swap'(ctx, data) {
     ctx.state.deviations.swaps[Number(data.si)] = data.id;
     ctx.state.exOpen.add(String(data.si));
-    ctx.saveDeviations();
+    await ctx.saveDeviations();
     closeSheet();
     ctx.render();
   },
@@ -1232,12 +1232,12 @@ export const actions = {
       return;
     }
 
-    ctx.finishSession();
+    return ctx.finishSession();
   },
 
   'do-finish'(ctx) {
     closeSheet();
-    ctx.finishSession();
+    return ctx.finishSession();
   },
 
   /** Start the clock without logging anything. */
