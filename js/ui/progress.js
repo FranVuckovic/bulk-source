@@ -694,6 +694,14 @@ function recordsCard(state, m, unit) {
   }
 
   const history = recordHistory(m.sets, { exercises: m.exercises, logs: m.logs });
+  const liftStats = new Map();
+  for (const set of m.sets) {
+    if (set.deletedAtISO || !set.reps) continue;
+    const current = liftStats.get(set.exerciseId) || { reps: 0, sets: 0 };
+    current.reps += set.reps;
+    current.sets += 1;
+    liftStats.set(set.exerciseId, current);
+  }
 
   /**
    * The staircase behind a record.
@@ -716,7 +724,9 @@ function recordsCard(state, m, unit) {
         const isCurrent = i === 0;
         return `<div class="rec-step${isCurrent ? ' now' : ''}">
           <span class="d">${escape(step.dateISO)}</span>
-          <span class="v">${fmtLoad(step.value, unit)} ${escape(unit)}</span>
+          <span class="v">${fmtLoad(step.value, unit)} ${escape(unit)}${
+            step.rpe == null ? '' : ` @${fmtNum(step.rpe, 1)}`
+          }</span>
           <span class="g">${
             step.gain == null
               ? 'first'
@@ -748,6 +758,12 @@ function recordsCard(state, m, unit) {
     const bodyweight = state.settings.bodyweight;
     return `+${fmtLoad(r.load, unit)} × ${r.reps}, ${fmtLoad(systemLoad(r.load, bodyweight), unit)} ${unit} with bodyweight`;
   };
+  const evidenceLine = (r) => {
+    const totals = liftStats.get(r.exerciseId) || { reps: 0, sets: 0 };
+    return `${r.rpe == null ? 'RPE not recorded' : `RPE ${fmtNum(r.rpe, 1)}`} · ${totals.reps.toLocaleString(
+      'en-GB'
+    )} total reps in ${totals.sets.toLocaleString('en-GB')} logged sets`;
+  };
 
   return `<div class="card">
     ${estimated.length ? '<p class="hint" style="margin:0 0 8px">Best estimated max</p>' : ''}
@@ -755,7 +771,7 @@ function recordsCard(state, m, unit) {
       .map((r) =>
         row(
           state.plan.exercises[r.exerciseId].name.split(' (')[0],
-          `${setLine(r)} on ${r.dateISO}`,
+          `${setLine(r)} @ ${evidenceLine(r)} · ${r.dateISO}`,
           fmtLoad(r.value, unit),
           unit,
           progression('estimated', r.exerciseId)
@@ -769,7 +785,7 @@ function recordsCard(state, m, unit) {
           state.plan.exercises[r.exerciseId].name.split(' (')[0],
           `${state.plan.exercises[r.exerciseId].bodyweightLoaded ? 'added, ' : ''}for ${r.reps} rep${
             r.reps === 1 ? '' : 's'
-          } on ${r.dateISO}`,
+          } · ${evidenceLine(r)} · ${r.dateISO}`,
           fmtLoad(r.load, unit),
           unit,
           progression('heaviest', r.exerciseId)

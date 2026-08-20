@@ -245,6 +245,7 @@ test('records are concrete categories, and isolation e1RM is not one of them', (
 
   const bench = result.estimated.find((r) => r.exerciseId === 'benchComp');
   assert.equal(bench.load, 110, 'the best estimate comes from the heavier set');
+  assert.equal(bench.rpe, 8, 'the record keeps the effort of the set that produced it');
   assert.equal(result.estimated.some((r) => r.exerciseId === 'lateral'), false, 'no estimated max on a lateral raise');
 
   // Heaviest-load records apply to everything, including isolation.

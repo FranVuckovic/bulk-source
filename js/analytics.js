@@ -699,7 +699,7 @@ export function recordHistory(sets, { exercises, logs }) {
     const heavyList = heaviest.get(set.exerciseId);
     const bestLoad = heavyList ? heavyList[heavyList.length - 1].value : -Infinity;
     if (set.load > bestLoad) {
-      push(heaviest, set.exerciseId, { dateISO, value: set.load, load: set.load, reps: set.reps });
+      push(heaviest, set.exerciseId, { dateISO, value: set.load, load: set.load, reps: set.reps, rpe: set.rpe ?? null });
     }
 
     if (set.isIndexSet && exercise.maxConf === 'high') {
@@ -708,7 +708,13 @@ export function recordHistory(sets, { exercises, logs }) {
         const list = estimated.get(set.exerciseId);
         const best = list ? list[list.length - 1].value : -Infinity;
         if (estimate.value > best) {
-          push(estimated, set.exerciseId, { dateISO, value: estimate.value, load: set.load, reps: set.reps });
+          push(estimated, set.exerciseId, {
+            dateISO,
+            value: estimate.value,
+            load: set.load,
+            reps: set.reps,
+            rpe: set.rpe ?? null,
+          });
         }
       }
     }
@@ -737,7 +743,14 @@ export function records(sets, { exercises, logs }) {
     // Heaviest load ever handled, for any rep count. True of every exercise.
     const heavy = heaviest.get(set.exerciseId);
     if (!heavy || set.load > heavy.load) {
-      heaviest.set(set.exerciseId, { exerciseId: set.exerciseId, name: exercise.name, load: set.load, reps: set.reps, dateISO });
+      heaviest.set(set.exerciseId, {
+        exerciseId: set.exerciseId,
+        name: exercise.name,
+        load: set.load,
+        reps: set.reps,
+        rpe: set.rpe ?? null,
+        dateISO,
+      });
     }
 
     // Estimated max, only where the estimate means something.
@@ -748,7 +761,7 @@ export function records(sets, { exercises, logs }) {
         if (!best || estimate.value > best.value) {
           bestEstimate.set(set.exerciseId, {
             exerciseId: set.exerciseId, name: exercise.name, value: estimate.value,
-            load: set.load, reps: set.reps, dateISO,
+            load: set.load, reps: set.reps, rpe: set.rpe ?? null, dateISO,
           });
         }
       }
