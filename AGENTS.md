@@ -21,8 +21,8 @@ older build brief and decision log provide history, not current verification.
 ## Current state
 
 - Working branch: `codex/v2.5-product-hardening`
-- Current shell: `v2.5.5`
-- Test command: `npm test` (248 passing at this handoff)
+- Current shell: `v2.5.6`
+- Test command: `npm test` (249 passing at this handoff)
 - Local app: `npm run serve`, then `http://localhost:8123/`
 - Demo: Settings → Demo data → Explore the demo. Demo and personal data use
   separate IndexedDB databases.
@@ -45,4 +45,3 @@ Preferred release sequence:
 3. Publish a preview or the Pages build only after the owner approves.
 4. Verify update, offline launch, real-data isolation, and one full workout path
    on the phone before merging/tagging the release.
-

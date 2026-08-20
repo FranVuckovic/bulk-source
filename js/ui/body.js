@@ -486,13 +486,19 @@ export const actions = {
         <button class="big mt" data-act="sheet-close">Close</button>`);
       return;
     }
-    await ctx.saveNiggle({
+    const row = {
       dateISO: draft.dateISO,
       site: draft.niggleSite,
       severity: Number(draft.niggleSeverity || 1),
       context: draft.niggleContext || null,
       note: null,
-    });
+    };
+    await ctx.saveNiggle(row);
+    savedSheet('Niggle logged', [
+      row.site,
+      `severity ${row.severity} of 3`,
+      row.context,
+    ]);
   },
 
   'confirm-body-save'(ctx) {
@@ -598,8 +604,10 @@ export const actions = {
   async 'save-formcheck'(ctx) {
     const fileRef = document.getElementById('fc-file')?.value?.trim();
     const note = document.getElementById('fc-note')?.value?.trim();
-    closeSheet();
-    if (!fileRef && !note) return;
+    if (!fileRef && !note) {
+      closeSheet();
+      return;
+    }
     await ctx.saveMedia({
       dateISO: ctx.state.bodyDraft.dateISO,
       kind: 'formcheck',
@@ -610,6 +618,7 @@ export const actions = {
       fileRef: fileRef || null,
       imageBlob: null,
     });
+    savedSheet('Form check referenced', [note, fileRef]);
   },
 };
 

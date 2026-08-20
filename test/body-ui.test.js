@@ -60,3 +60,46 @@ test('a failed niggle save is returned to the central action error handler', asy
 
   await assert.rejects(actions['save-niggle'](ctx), failure);
 });
+
+test('a successful niggle save visibly confirms what was logged', async () => {
+  const previousDocument = globalThis.document;
+  const panel = { innerHTML: '' };
+  const classes = new Set();
+  globalThis.document = {
+    getElementById(id) {
+      if (id === 'pan') return panel;
+      if (id === 'sheet') {
+        return {
+          classList: {
+            add: (name) => classes.add(name),
+            remove: (name) => classes.delete(name),
+            contains: (name) => classes.has(name),
+          },
+        };
+      }
+      return null;
+    },
+  };
+
+  try {
+    const ctx = {
+      state: {
+        bodyDraft: {
+          dateISO: '2026-08-20',
+          niggleSite: 'Left elbow',
+          niggleSeverity: 2,
+          niggleContext: 'Pressing',
+        },
+      },
+      saveNiggle: async () => {},
+    };
+
+    await actions['save-niggle'](ctx);
+    assert.match(panel.innerHTML, /Niggle logged/);
+    assert.match(panel.innerHTML, /Left elbow/);
+    assert.match(panel.innerHTML, /severity 2 of 3/);
+    assert.equal(classes.has('on'), true);
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});

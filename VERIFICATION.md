@@ -1,8 +1,8 @@
 # Bulk v2 — verification
 
-**Current build:** `sw.js` VERSION `v2.5.5` · database v3 · plan format 3 · plan
+**Current build:** `sw.js` VERSION `v2.5.6` · database v3 · plan format 3 · plan
 `fopip-v2`
-**Automated verification:** 20 August 2026 · 248 passing, 0 failing
+**Automated verification:** 20 August 2026 · 249 passing, 0 failing
 **Current visual/interactive verification:** pending
 
 The v2.5 changes have been tested through domain, database, rendering, wiring,
@@ -10,7 +10,7 @@ failure-propagation and performance tests. They have **not** yet completed a
 fresh real-browser/mobile acceptance pass. The Codex browser controller could
 not attach to the open local tabs, so claiming visual verification would be
 false. The detailed browser observations later in this file are retained as
-historical evidence for v2.1.3, not proof for v2.5.5.
+historical evidence for v2.1.3, not proof for v2.5.6.
 
 v1 is archived at `archive/v1/` and tagged `v1.0`. It still runs and still
 reads a v1 export.
@@ -44,7 +44,7 @@ version bump. To exercise the update path itself, open `http://localhost:8123/?s
 
 ## Current automated evidence
 
-The 248 tests cover calculations, plan compilation, rotations, volume,
+The 249 tests cover calculations, plan compilation, rotations, volume,
 analytics, IndexedDB migrations and transactions, export/import, recovery,
 performance, service-worker integrity, all-screen rendering, and action wiring.
 New v2.5 regressions include demo isolation/visibility, recoverable session
@@ -107,7 +107,7 @@ and once with a fresh disposable personal database.
   session is active, reload once, and still open offline.
 - Check the console for exceptions and CSP/service-worker errors throughout.
 
-Until this list passes, v2.5.5 is a tested development candidate, not a
+Until this list passes, v2.5.6 is a tested development candidate, not a
 published release.
 
 ---

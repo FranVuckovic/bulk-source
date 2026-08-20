@@ -1,8 +1,8 @@
 # Bulk v2.5 product audit
 
-**Date:** 20 August 2026  
-**Branch:** `codex/v2.5-product-hardening`  
-**Shell:** `v2.5.5`  
+**Date:** 20 August 2026
+**Branch:** `codex/v2.5-product-hardening`
+**Shell:** `v2.5.6`
 **Training content changed:** no
 
 ## Executive judgement
@@ -39,7 +39,7 @@ browser automation controller could not attach to the open local browser.
 | Summary is a stack of unrelated boxes | Primary evidence grouped; secondary evidence collapses | Implemented + render tested |
 | 960 tonnes compared to two lorries | Uses a 44-tonne articulated-lorry payload equivalent | Corrected + tested |
 | Relative strength could do more | Nearby bodyweight matching and an honest ratio trend added | Implemented + tested |
-| Save can silently fail | UI write promises are awaited/returned to the central error handler | Fixed + failure tested |
+| Save can silently fail or look inert | UI write promises reach the central error handler; niggle and form-check saves confirm success | Fixed + failure tested |
 
 ## Training-volume finding
 
@@ -100,10 +100,9 @@ product/data decision the owner should explicitly approve.
 
 1. Export the phone's current data and verify the archive before updating.
 2. Push this branch to `bulk-source` and review it before merging.
-3. Tag the accepted source commit (for example `v2.5.5`).
+3. Tag the accepted source commit (for example `v2.5.6`).
 4. Run `npm test`, complete the acceptance checklist, then publish `bulk` only
    with explicit approval.
 5. If the release is worse, publish the prior tagged source shell again. The
    database schema remains v3, so this v2.5 UI pass does not require a data
    downgrade.
-

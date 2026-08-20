@@ -2,7 +2,7 @@
 
 **Against:** `Bulk-v2-update-kit`, 62 requirements
 **Updated:** 20 August 2026
-**Verification:** [`VERIFICATION.md`](../VERIFICATION.md) — 248 tests, 0 failing;
+**Verification:** [`VERIFICATION.md`](../VERIFICATION.md) — 249 tests, 0 failing;
 current v2.5 interactive acceptance pending
 
 v1 is archived at `archive/v1/` and tagged `v1.0`. It still runs and still reads
