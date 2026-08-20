@@ -84,6 +84,15 @@ test('the Plan workout cards stay closed when the user minimizes the next workou
   assert.match(html, /subnav plan-tabs/, 'all Plan destinations use the dedicated wrapping navigation');
 });
 
+test('the Plan stimulus view distinguishes small overages and can be collapsed by group', () => {
+  const html = planScreen.view({ state: emptyState({ sequence: 3 }), render() {} });
+  assert.match(html, /target bands are guardrails, not pass\/fail boundaries/i);
+  assert.match(html, /slightly above/);
+  assert.match(html, /materially above/);
+  assert.match(html, /class="card stimulus-group"/);
+  assert.match(html, /specialisation volume; additional returns are likely smaller/);
+});
+
 test('the tonnage comparison uses a real 44-tonne articulated lorry', () => {
   assert.deepEqual(progressScreen.tonnageComparison(960000), {
     weightKg: 44000,
