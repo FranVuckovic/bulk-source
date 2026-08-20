@@ -62,31 +62,36 @@ The database version is also unchanged — `DB_VERSION = 3` before and after —
 
 ## Your phone will not update itself
 
-This was tested end to end, simulating exactly what happens when you push:
+This was tested end to end on 20 August 2026, against the bytes now live,
+simulating exactly what happens when you push:
 
-1. A browser installed **v2.1.3** from the live site, and a set was logged
-   (1 set, 1 session in IndexedDB).
-2. The site was replaced with **v2.4.0** — the same thing pushing to GitHub
+1. A browser installed **v2.4.0** from the published files, and a set was
+   logged (1 set, 1 session in IndexedDB).
+2. The site was replaced with **v2.7.0** — the same thing pushing to GitHub
    Pages does.
 3. The app checked for updates. Result, **with no tap at all**:
    - new build downloaded and **waiting**: `true`
    - still running the old one: `true`
-   - bottom tabs still the old four: `Train, Body, Progress, Plan`
+   - the header read `v2.4.0 → v2.7.0`
    - data: **1 set, 1 session — unchanged**
-4. Only after approving did it become v2.4.0, five tabs — and the data was
-   **still 1 set, 1 session**.
+4. Tapping it asked first, because a session was open: *"You have a session
+   open. Updating reloads the app and anything not yet logged is lost. Update
+   anyway?"*
+5. After confirming: **v2.7.0**, the old cache cleaned up so only
+   `bulk-v2.7.0` remains — and the data was **still 1 set, 1 session**.
 
 That is the design. `sw.js` never calls `skipWaiting()` on its own; the new
 build sits in the wings until the app asks for it, because losing a set to a
 reload mid-session is worse than running yesterday's build for another hour.
 
-**One wrinkle on this first update only.** The banner you will see is the *old*
-one — "A new version of Bulk is ready" — because the page drawing it is still
-v2.1.3. It still waits for your tap. From v2.4.0 onward the banner names both
-versions, and the running version sits next to the title on every screen.
+If your phone is still on **v2.1.3** — you never accepted the v2.4.0 update —
+the banner you see will be the old one, "A new version of Bulk is ready",
+because the page drawing it is that build. It still waits for your tap. From
+v2.4.0 onward the banner names both versions, and the running version sits next
+to the title on every screen.
 
 **When it does not wait:** a browser with no service worker yet — a new phone, a
-different browser, a cleared site — gets v2.4.0 straight away. That is a first
+different browser, a cleared site — gets v2.7.0 straight away. That is a first
 install, not an update, and there is nothing of yours there to preserve.
 
 ---
@@ -102,7 +107,7 @@ Nothing is required. But:
 3. On the phone, open the app. The banner appears. **Tap it when you are not
    mid-session** — applying an update reloads the page, and an unlogged set
    would be lost. The app warns you if a session is open.
-4. Check the version next to the title reads `v2.4.0`. If it does not, the
+4. Check the version next to the title reads `v2.7.0`. If it does not, the
    update has not reached that device: close every tab and reopen.
 
 ---
@@ -160,11 +165,11 @@ Three things worth knowing about a rollback:
 
 - **Your phone will not roll itself back either.** It sees the changed `sw.js`,
   downloads v2.1.3, and waits for your tap — the same as any other update.
-- **Data logged on v2.4.0 survives it.** The database version never changed, so
-  the two builds share one schema. The newer fields — which scale a weigh-in
-  was on, when the tape was read, the exercise notes, whether a session's
-  timing is real — are simply not displayed by v2.1.3. Nothing is deleted, and
-  they reappear if you go forward again.
+- **Data logged on a newer build survives a rollback.** The database version
+  has never changed, so every build since v2.1.3 shares one schema. Newer
+  fields — which scale a weigh-in was on, when the tape was read, the exercise
+  notes, whether a session's timing is real — are simply not displayed by an
+  older build. Nothing is deleted, and they reappear if you go forward again.
 - **The public repo's history is replaced every publish** (`git init` then
   `push -f`), so the rollback is a re-publish from source, not a `git revert`
   on the public repo. That is why the two commits above matter, and why they
