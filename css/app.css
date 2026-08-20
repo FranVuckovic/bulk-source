@@ -118,6 +118,8 @@ nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.9;st
 .subnav::-webkit-scrollbar{display:none}
 .subnav .pill{font-size:12.5px;padding:7px 13px;min-width:0}
 .subnav .pill .n{margin-left:5px;opacity:.7;font-weight:600}
+.subnav.plan-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));overflow:visible}
+.subnav.plan-tabs .pill{width:100%;padding-left:6px;padding-right:6px}
 
 /* session picker — the demo carried these inline */
 .picker{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;-webkit-overflow-scrolling:touch}

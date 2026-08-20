@@ -32,7 +32,7 @@ const SECTIONS = (state) => [
 export function view(ctx) {
   const { state } = ctx;
   const current = state.planSection || 'overview';
-  const tabs = subnav(SECTIONS(state), current, 'plan-section');
+  const tabs = subnav(SECTIONS(state), current, 'plan-section', 'plan-tabs');
 
   if (current === 'exercises') return tabs + exercisesView(state);
   if (current === 'workouts') return tabs + workoutsView(state);
@@ -308,7 +308,9 @@ function exercisesView(state) {
  */
 function workoutsView(state) {
   const next = state.position.nextSessionId;
-  const open = state.planOpenSession ?? next;
+  // Undefined means the screen has not been visited and should helpfully open
+  // the next session. Null is deliberate: the user tapped that card shut.
+  const open = state.planOpenSession === undefined ? next : state.planOpenSession;
 
   return `<h3 style="margin-top:0">Workouts</h3>
   <p style="margin:0 2px 12px">Run in order: <b>${state.plan.meta.rotationOrder.join(

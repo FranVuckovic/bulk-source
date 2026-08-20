@@ -74,6 +74,16 @@ test('the Plan screen counts rotations, not a week field the blocks do not have'
   assert.doesNotMatch(html, /width:NaN/);
 });
 
+test('the Plan workout cards stay closed when the user minimizes the next workout', () => {
+  const state = emptyState();
+  state.planSection = 'workouts';
+  state.planOpenSession = null;
+
+  const html = planScreen.view({ state, render() {} });
+  assert.doesNotMatch(html, /card wo open/, 'null is an intentional closed state, not a missing default');
+  assert.match(html, /subnav plan-tabs/, 'all Plan destinations use the dedicated wrapping navigation');
+});
+
 test('the tonnage comparison uses a real 44-tonne articulated lorry', () => {
   assert.deepEqual(progressScreen.tonnageComparison(960000), {
     weightKg: 44000,

@@ -268,8 +268,8 @@ export function section(id, title, count, body, shut) {
  * It is sticky under the header, so moving between parts never requires
  * scrolling back up first.
  */
-export const subnav = (items, current, action) =>
-  `<div class="subnav">${items
+export const subnav = (items, current, action, className = '') =>
+  `<div class="subnav${className ? ` ${escape(className)}` : ''}">${items
     .map(
       ([id, label, count]) =>
         `<button class="pill ${id === current ? 'on' : ''}" data-act="${escape(action)}" data-id="${escape(id)}">${escape(
