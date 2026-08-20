@@ -80,3 +80,36 @@ test('every dated store behaves the same way', async () => {
     );
   }
 });
+
+/*
+ * The two tests above hold the property. This one holds the *code*, because
+ * the property was re-broken in a place the property tests could not see.
+ *
+ * `loadEverything` filters through `alive()`. Two other places in app.js also
+ * refill `state.sets` — after a set is logged, and after one is removed — and
+ * both re-read the raw store. Logging a set therefore put every set you had
+ * ever deleted back into the charts, the volume count and the records until
+ * the next full reload. Identical defect, different store, found only by
+ * reading the file. So the file is what is asserted.
+ */
+test('every reload of a store into state goes through alive()', async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+
+  const stores = ['sets', 'logs', 'daily', 'measurements', 'niggles', 'media'];
+  const unfiltered = [];
+  for (const line of source.split('\n')) {
+    const assignment = line.match(/state\.(\w+)\s*=\s*(.+)$/);
+    if (!assignment) continue;
+    const [, name, right] = assignment;
+    if (!stores.includes(name)) continue;
+    if (!right.includes('getAll(')) continue;
+    if (!right.includes('alive(')) unfiltered.push(line.trim());
+  }
+
+  assert.deepEqual(
+    unfiltered,
+    [],
+    'a store was re-read into state without alive(); deleted rows will reappear until the next reload'
+  );
+});

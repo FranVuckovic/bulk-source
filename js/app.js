@@ -440,7 +440,11 @@ async function saveSet(slotIndex, setIndex, values) {
     operationId: values.operationId ?? `${record.logicalKey}-${record.timestampISO}`,
   });
   state.loggedSets.set(key, written);
-  state.sets = await getAll(state.db, 'sets');
+  // `alive` is not optional here. Reloading the raw store puts every set you
+  // have ever deleted back into the charts, the volume count and the records
+  // until the next full reload quietly removes them again — the same defect
+  // that was fixed for the dated stores and missed here.
+  state.sets = alive(await getAll(state.db, 'sets'));
   render();
 
   if (beaten) celebrate(beaten);
@@ -494,7 +498,7 @@ async function removeSet(slotIndex, setIndex) {
   if (existing) {
     await remove(state.db, 'sets', existing.id);
     state.loggedSets.delete(key);
-    state.sets = await getAll(state.db, 'sets');
+    state.sets = alive(await getAll(state.db, 'sets'));
   }
   render();
 }
@@ -1675,7 +1679,7 @@ const globalActions = {
       <p style="text-align:center;margin:14px 0 6px;font-size:14px;color:var(--ink)">Move this session and its <b>${
         state.loggedSets.size
       } logged set${state.loggedSets.size === 1 ? '' : 's'}</b> to Recently deleted?</p>
-      <p style="text-align:center;font-size:13px">The clock will stop. Nothing is permanently erased: you can restore the session from Settings until you empty the bin.</p>
+      <p style="text-align:center;font-size:13px">The clock will stop. Nothing is permanently erased: you can restore the session from Log → Bin until you empty it.</p>
       <button class="big danger mt" data-act="confirm-discard-session"${
         next ? ` data-next="${escape(next)}"` : ''
       }>Move to Recently deleted</button>
@@ -1775,7 +1779,7 @@ function showFailure(error) {
   console.error(error);
   openSheet(`<div class="ttl">That did not save</div>
     <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">${escape(error.message || String(error))}</p>
-    <p style="text-align:center;font-size:13px">Nothing else has been changed. If this keeps happening, export your data from Settings before carrying on.</p>
+    <p style="text-align:center;font-size:13px">Nothing else has been changed. If this keeps happening, export your data from Log → Backups before carrying on.</p>
     <button class="big mt" data-act="sheet-close">Close</button>`);
 }
 
