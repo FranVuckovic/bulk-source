@@ -34,10 +34,14 @@ downloads those files and then reads your data out of its own local storage.
 
 The two never meet. GitHub has no idea you exist as a lifter.
 
-**Checked, not assumed.** Searched every published file for your name, for
-`prvi trening`, for `2026-08-19` and `2026-08-20`, and for stored bodyweights.
-The only hit is `bodyweight: 90` in `js/app.js`, which is the hard-coded
-*default* setting shipped to anyone who opens the app — not a reading of yours.
+**Checked, not assumed.** Searched every published file for the owner's name,
+for the text of a logged session note, for the dates of logged sessions, and
+for stored bodyweights. The only hit is `bodyweight: 90` in `js/app.js`, which
+is the hard-coded *default* setting shipped to anyone who opens the app — not a
+reading of anyone's.
+
+`test/shell.test.js` holds this down permanently: it asserts that no published
+file names the owner, so it is a failing test rather than a thing to remember.
 
 ---
 
