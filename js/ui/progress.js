@@ -904,13 +904,24 @@ function measurementsCard(state) {
     .map(([id, label]) => {
       const points = state.measurements
         .filter((m) => Number.isFinite(m[id]))
-        .map((m) => ({ dateISO: m.dateISO, value: m[id] }));
+        .map((m) => ({ dateISO: m.dateISO, value: m[id] }))
+        .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
       if (points.length < 2) return null;
 
-      const first = points[0].value;
-      const last = points[points.length - 1].value;
+      const firstPoint = points[0];
+      const lastPoint = points[points.length - 1];
       const rate = trend(points, { label });
-      return { label, first, last, change: last - first, rate: rate.ok ? rate.perWeek : null };
+      return {
+        id,
+        label,
+        points,
+        first: firstPoint.value,
+        firstDate: firstPoint.dateISO,
+        last: lastPoint.value,
+        lastDate: lastPoint.dateISO,
+        change: lastPoint.value - firstPoint.value,
+        rate: rate.ok ? rate.perWeek : null,
+      };
     })
     .filter(Boolean);
 
@@ -918,24 +929,73 @@ function measurementsCard(state) {
     return '<div class="card"><p style="margin:0">Two sets of measurements and this fills in. Waist at the navel is the one that matters most — it is what separates a lean bulk from a fat one.</p></div>';
   }
 
-  const bodyweight = state.daily.filter((d) => Number.isFinite(d.bodyweight)).map((d) => ({ dateISO: d.dateISO, value: d.bodyweight }));
-  const bwChange = bodyweight.length >= 2 ? bodyweight[bodyweight.length - 1].value - bodyweight[0].value : null;
+  const requestedFocus = state.measurementFocus || 'chest';
+  const focus = rows.find((row) => row.id === requestedFocus) || rows[0];
+  const bodyweight = state.daily
+    .filter((d) => Number.isFinite(d.bodyweight))
+    .map((d) => ({ dateISO: d.dateISO, value: d.bodyweight }))
+    .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+  const weightByDate = new Map(bodyweight.map((point) => [point.dateISO, point.value]));
+  const comparison = focus.points.map((point) => {
+    let weight = weightByDate.get(point.dateISO) ?? null;
+    for (let offset = 1; weight == null && offset <= 3; offset++) {
+      weight = weightByDate.get(addDays(point.dateISO, -offset)) ?? weightByDate.get(addDays(point.dateISO, offset)) ?? null;
+    }
+    return { dateISO: point.dateISO, a: point.value, b: weight };
+  });
+  const firstWeight = comparison.find((row) => row.b != null)?.b ?? null;
+  const lastWeight = [...comparison].reverse().find((row) => row.b != null)?.b ?? null;
+  const bwChange = firstWeight != null && lastWeight != null && firstWeight !== lastWeight ? lastWeight - firstWeight : null;
+  const direction = focus.change === 0 ? 'held steady' : `${focus.change > 0 ? 'rose' : 'fell'} ${fmtNum(Math.abs(focus.change), 1)} cm`;
 
   return `<div class="card">
-    <table><thead><tr><th>Site</th><th>Then</th><th>Now</th><th>Change</th><th>Per week</th></tr></thead><tbody>
+    <div class="measure-picks">${rows
+      .map(
+        (row) => `<button class="pill ${row.id === focus.id ? 'on' : ''}" data-act="measurement-focus" data-id="${row.id}">${escape(
+          row.label
+        )}</button>`
+      )
+      .join('')}</div>
+    <p class="chart-title">${escape(focus.label)} · ${escape(focus.firstDate)} to ${escape(focus.lastDate)}</p>
+    ${timeChart(focus.points, {
+      color: 'var(--s3)',
+      unit: ' cm',
+      label: (point) => `${point.dateISO} · ${fmtNum(point.value, 1)} cm`,
+    })}
+    <p class="measure-readout"><b>${escape(focus.label)} ${direction}</b> across ${focus.points.length} readings.${
+      focus.rate == null ? '' : ` The fitted rate is ${focus.rate >= 0 ? '+' : ''}${fmtNum(focus.rate, 2)} cm/week.`
+    }${
+      bwChange == null
+        ? ''
+        : ` Over matched dates, bodyweight changed <b>${bwChange >= 0 ? '+' : ''}${fmtLoad(bwChange, unit)} ${unit}</b>.`
+    }</p>
+    <details class="measure-compare"><summary>Compare ${escape(focus.label.toLowerCase())} with bodyweight</summary><div class="c">
+      ${indexedByDate(comparison, {
+        names: { a: focus.label, b: 'Bodyweight' },
+        colors: { a: 'var(--s3)', b: 'var(--s2)' },
+      })}
+      <p class="hint">Both lines start at 100, so their directions can be compared despite using centimetres and ${escape(
+        unit
+      )}. A weigh-in may match a tape date by up to three days; no farther date is substituted.</p>
+    </div></details>
+    <table class="measure-table"><thead><tr><th>Site</th><th>First</th><th>Latest</th><th>Change</th></tr></thead><tbody>
       ${rows
         .map(
-          (row) => `<tr><td>${escape(row.label)}</td><td>${fmtNum(row.first, 1)}</td><td>${fmtNum(row.last, 1)}</td>
-          <td style="color:${row.change > 0 ? 'var(--goodtx)' : 'var(--ink2)'};font-weight:650">${row.change >= 0 ? '+' : ''}${fmtNum(row.change, 1)}</td>
-          <td>${row.rate == null ? '—' : `${row.rate >= 0 ? '+' : ''}${fmtNum(row.rate, 2)}`}</td></tr>`
+          (row) => `<tr><td>${escape(row.label)}${
+            row.rate == null
+              ? ''
+              : `<small>${row.rate >= 0 ? '+' : ''}${fmtNum(row.rate, 2)} cm/wk</small>`
+          }</td><td>${fmtNum(row.first, 1)}<small>${escape(row.firstDate)}</small></td><td>${fmtNum(row.last, 1)}<small>${escape(
+            row.lastDate
+          )}</small></td>
+          <td style="color:${row.change > 0 ? 'var(--goodtx)' : 'var(--ink2)'};font-weight:650">${row.change >= 0 ? '+' : ''}${fmtNum(
+            row.change,
+            1
+          )}</td></tr>`
         )
         .join('')}
     </tbody></table>
-    <p class="hint">${
-      bwChange == null
-        ? 'All in centimetres. A per-week rate appears once there are three readings over a fortnight.'
-        : `Over the same stretch bodyweight moved <b>${bwChange >= 0 ? '+' : ''}${fmtLoad(bwChange, unit)} ${unit}</b>. On a bulk you want the arms, chest and shoulders climbing faster than the waist; on a cut you want the waist falling faster than everything else. That comparison is the entire point of measuring.`
-    }</p></div>`;
+    <p class="hint">All tape values are centimetres. A rate needs at least three readings across fourteen days. Tape changes describe circumference, not body composition: repeat the same landmarks and tension before treating a difference as real.</p></div>`;
 }
 
 /** Total weight moved — useless for programming, oddly compelling at 6am. */
@@ -1115,6 +1175,11 @@ export const actions = {
 
   'focus-lift'(ctx, data) {
     ctx.state.progressLift = data.id;
+    ctx.render();
+  },
+
+  'measurement-focus'(ctx, data) {
+    ctx.state.measurementFocus = data.id;
     ctx.render();
   },
 

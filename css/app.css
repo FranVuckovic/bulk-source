@@ -120,6 +120,12 @@ nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.9;st
 .subnav .pill .n{margin-left:5px;opacity:.7;font-weight:600}
 .subnav.plan-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));overflow:visible}
 .subnav.plan-tabs .pill{width:100%;padding-left:6px;padding-right:6px}
+.measure-picks{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-bottom:10px}
+.measure-picks .pill{width:100%;padding:7px 3px;font-size:10.5px}
+.chart-title{margin:0 0 4px;font-size:12px;font-weight:700;color:var(--ink2)}
+.measure-readout{font-size:12.5px;color:var(--ink2);line-height:1.45;margin:8px 0 10px}
+.measure-compare{border-top:1px solid var(--grid);border-bottom:1px solid var(--grid);margin:8px 0 12px}
+.measure-table td small{display:block;color:var(--muted);font-size:9px;font-weight:500;margin-top:2px}
 
 /* session picker — the demo carried these inline */
 .picker{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;-webkit-overflow-scrolling:touch}

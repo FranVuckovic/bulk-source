@@ -92,6 +92,27 @@ test('the tonnage comparison uses a real 44-tonne articulated lorry', () => {
   });
 });
 
+test('measurement history shows real dates, a selectable chart and a bodyweight comparison', () => {
+  const state = emptyState();
+  state.progressSection = 'body';
+  state.measurements = [
+    { dateISO: '2026-08-01', chest: 105, waist: 90 },
+    { dateISO: '2026-06-01', chest: 101, waist: 88 },
+    { dateISO: '2026-07-01', chest: 103, waist: 89 },
+  ];
+  state.daily = [
+    { dateISO: '2026-06-01', bodyweight: 88 },
+    { dateISO: '2026-07-01', bodyweight: 89 },
+    { dateISO: '2026-08-01', bodyweight: 90 },
+  ];
+
+  const html = progressScreen.view({ state, render() {} });
+  assert.match(html, /Chest · 2026-06-01 to 2026-08-01/, 'readings are sorted and their interval is explicit');
+  assert.match(html, /data-act="measurement-focus"/, 'a tape site can be selected without adding every chart to the page');
+  assert.match(html, /Compare chest with bodyweight/);
+  assert.match(html, /Tape changes describe circumference, not body composition/);
+});
+
 test('every screen survives a rotation at each block boundary', () => {
   for (const block of PLAN.blocks) {
     for (const sequence of [block.from, block.to]) {
