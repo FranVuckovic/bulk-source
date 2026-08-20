@@ -492,13 +492,27 @@ function celebrate(pr) {
     <button class="big mt" data-act="sheet-close">Back to it</button>`);
 }
 
+/**
+ * "Remove this set" in the set editor.
+ *
+ * This used to call `remove` — a hard delete, no audit entry, nothing in the
+ * bin. It was the only place in the app that destroyed a logged set, and it
+ * disagreed with the Log, where deleting the same set is recoverable. Two
+ * meanings for one action, and the destructive one was the one reachable
+ * mid-session with a mistyped weight still on screen.
+ *
+ * It is a soft delete now, like everything else. Logging that slot again
+ * overwrites the same row through `logicalKey` and clears `deletedAtISO`, so an
+ * unlog-then-relog leaves nothing behind in the bin.
+ */
 async function removeSet(slotIndex, setIndex) {
   const key = `${slotIndex}:${setIndex}`;
   const existing = state.loggedSets.get(key);
   if (existing) {
-    await remove(state.db, 'sets', existing.id);
+    await softDeleteRow(state.db, 'sets', existing.id, { reason: 'removed from the set editor' });
     state.loggedSets.delete(key);
     state.sets = alive(await getAll(state.db, 'sets'));
+    state.deleted = await deletedRecords(state.db);
   }
   render();
 }

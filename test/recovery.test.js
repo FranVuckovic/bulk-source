@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { createFakeEnv } from './helpers/fake-indexeddb.js';
 import {
   openDatabase,
+  putSetIdempotent,
   put,
   getAll,
   softDeleteRow,
@@ -156,4 +157,77 @@ test('an unrecoverable store is refused rather than silently ignored', async () 
 test('restoring something that is gone says so', async () => {
   const db = await openFresh();
   await assert.rejects(() => restoreRow(db, 'daily', 999), /no longer exists/);
+});
+
+/*
+ * "Remove this set" in the set editor called `remove` — a hard delete, no audit
+ * entry, nothing in the bin. It was the only place in the app that destroyed a
+ * logged set, and it disagreed with the Log, where deleting the same set is
+ * recoverable. Two meanings for one action, and the destructive one was the one
+ * you reached mid-session.
+ *
+ * The rule now: exactly one `remove` call survives in app.js, and it is the one
+ * behind emptying the bin.
+ */
+test('nothing in the app hard-deletes except emptying the bin', async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+
+  const lines = source.split('\n');
+  const hardDeletes = lines
+    .map((line, i) => ({ line: line.trim(), i }))
+    .filter(({ line }) => /\bawait remove\(state\.db/.test(line));
+
+  assert.equal(hardDeletes.length, 1, `expected one hard delete, found ${hardDeletes.length}`);
+
+  // And it is the one inside the empty-the-bin loop.
+  const context = lines.slice(Math.max(0, hardDeletes[0].i - 12), hardDeletes[0].i).join('\n');
+  assert.match(context, /bin|purge|destroy/i, 'the surviving hard delete is not the bin');
+});
+
+test('removing a set from the editor puts it in the bin rather than destroying it', async () => {
+  const db = await openFresh();
+  const { sessionLogId } = await saveSession(
+    db,
+    { dateISO: '2026-08-20', sessionId: 'A', status: 'active' },
+    [{ exerciseId: 'benchComp', slotIndex: 0, setIndex: 0, load: 100, reps: 5, rpe: 8 }]
+  );
+  const set = (await getAll(db, 'sets')).find((row) => row.sessionLogId === sessionLogId);
+
+  await softDeleteRow(db, 'sets', set.id, { reason: 'removed from the set editor' });
+  assert.equal(alive(await getAll(db, 'sets')).length, 0, 'gone from the session');
+  assert.deepEqual((await deletedRecords(db)).map((e) => e.store), ['sets'], 'and waiting in the bin');
+
+  await restoreRow(db, 'sets', set.id);
+  assert.equal(alive(await getAll(db, 'sets'))[0].load, 100, 'with its load intact');
+});
+
+test('removing a set and logging it again leaves nothing in the bin', async () => {
+  // The reason it was a hard delete: an unlog is usually immediately followed
+  // by logging the same slot with the right weight. If the removed row stayed
+  // in the bin, every corrected set would leave litter behind. It does not —
+  // `logicalKey` puts the new value in the same row and clears the deletion.
+  const db = await openFresh();
+  const { sessionLogId } = await saveSession(db, { dateISO: '2026-08-20', sessionId: 'A', status: 'active' }, []);
+  const record = {
+    sessionLogId,
+    exerciseId: 'benchComp',
+    slotIndex: 0,
+    setIndex: 0,
+    load: 100,
+    reps: 5,
+    rpe: 8,
+    logicalKey: `${sessionLogId}-0-0`,
+    timestampISO: '2026-08-20T10:00:00.000Z',
+  };
+
+  const { set } = await putSetIdempotent(db, record, { operationId: 'op-1' });
+  await softDeleteRow(db, 'sets', set.id, { reason: 'removed from the set editor' });
+  assert.equal((await deletedRecords(db)).length, 1);
+
+  const { set: corrected } = await putSetIdempotent(db, { ...record, load: 105 }, { operationId: 'op-2' });
+  assert.equal(corrected.id, set.id, 'the same row, not a second one');
+  assert.equal(corrected.load, 105);
+  assert.equal(alive(await getAll(db, 'sets')).length, 1);
+  assert.equal((await deletedRecords(db)).length, 0, 'the correction cleared the bin entry');
 });

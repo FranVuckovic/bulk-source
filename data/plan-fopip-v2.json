@@ -106,7 +106,7 @@
    "grp": "Arms",
    "roll": "Biceps"
   },
-  "forearm": {
+  "forearm": { "whole": true,
    "label": "Forearms & brachialis",
    "lo": 8,
    "hi": 12,
@@ -141,28 +141,28 @@
    "grp": "Core",
    "roll": "Core"
   },
-  "quads": {
+  "quads": { "whole": true,
    "label": "Quads",
    "lo": 10,
    "hi": 16,
    "grp": "Legs",
    "roll": null
   },
-  "hams": {
+  "hams": { "whole": true,
    "label": "Hamstrings",
    "lo": 8,
    "hi": 12,
    "grp": "Legs",
    "roll": null
   },
-  "calves": {
+  "calves": { "whole": true,
    "label": "Calves",
    "lo": 6,
    "hi": 10,
    "grp": "Legs",
    "roll": null
   },
-  "glutes": {
+  "glutes": { "whole": true,
    "label": "Glutes",
    "lo": 6,
    "hi": 14,
@@ -3522,12 +3522,12 @@
   {
    "s": "Cardio and life",
    "t": "Deloads",
-   "c": "<p><strong>Week 6 of every block.</strong> Keep all six sessions, cut volume 40\u201350%, drop top-end intensity about 10%, everything at 3+ RIR minimum.</p>\n<p><strong>Never take a full rest week.</strong> A controlled trial found complete cessation actually <em>impaired</em> strength relative to training through, and the cessation group reported <em>more</em> soreness and <em>less</em> motivation \u2014 the opposite of the intended effect.</p>\n<p><strong>Pull it forward if</strong> your top single drops more than 5% below your recent average at the same RPE for two sessions, or sleep goes under 7 hours for a week, or two niggles show up in one block.</p>"
+   "c": "<p><strong>Earned, not scheduled.</strong> There is no fixed deload week. Rotation 15 is a planned Recovery rotation, and beyond that the app offers a deload when two of your own triggers fire together \u2014 the readings it is already watching.</p>\n<p><strong>Taking one:</strong> keep all six sessions, cut volume 40\u201350%, drop top-end intensity about 10%, everything at 3+ RIR minimum.</p>\n<p><strong>Never take a full rest week.</strong> A controlled trial found complete cessation actually <em>impaired</em> strength relative to training through, and the cessation group reported <em>more</em> soreness and <em>less</em> motivation \u2014 the opposite of the intended effect.</p>\n<p><strong>The triggers</strong> are your top single dropping more than 5% below your recent average at the same RPE for two sessions, sleep under 7 hours for a week, or two niggles inside one block. Two of them together is the signal; one on its own is not.</p>"
   },
   {
    "s": "Cardio and life",
    "t": "When things go wrong",
-   "c": "<ul>\n<li><strong>Top single 5%+ below average, twice</strong> \u2192 pull the deload forward</li>\n<li><strong>Sleep under 7 h for a week</strong> \u2192 drop Session D, the cheapest to lose</li>\n<li><strong>Two or more niggles in a block</strong> \u2192 rotate the aggravating variation out, do not push through</li>\n<li><strong>Lower back flares</strong> \u2192 cut leg press range, drop jumps, keep reverse hypers, keep everything upper. Log what provoked it.</li>\n<li><strong>Shoulder aches on the overhead ladder</strong> \u2192 drop a rung immediately</li>\n<li><strong>Missed the AMRAP</strong> \u2192 move it to the next session. Never do two in one week to catch up.</li>\n<li><strong>e1RM flat 4 weeks while bodyweight rises</strong> \u2192 send the export. Recovery or programming, not food.</li>\n<li><strong>Sick or genuinely wrecked</strong> \u2192 skip. Resume at the next session. Nothing is lost.</li>\n<li><strong>Missed a whole week</strong> \u2192 come back at the same loads.</li>\n</ul>"
+   "c": "<ul>\n<li><strong>Top single 5%+ below average, twice</strong> \u2192 one deload trigger. Two together and the app offers one</li>\n<li><strong>Sleep under 7 h for a week</strong> \u2192 drop Session D, the cheapest to lose</li>\n<li><strong>Two or more niggles in a block</strong> \u2192 rotate the aggravating variation out, do not push through</li>\n<li><strong>Lower back flares</strong> \u2192 cut leg press range, drop jumps, keep reverse hypers, keep everything upper. Log what provoked it.</li>\n<li><strong>Shoulder aches on the overhead ladder</strong> \u2192 drop a rung immediately</li>\n<li><strong>Missed the AMRAP</strong> \u2192 move it to the next session. Never do two in one week to catch up.</li>\n<li><strong>e1RM flat 4 weeks while bodyweight rises</strong> \u2192 send the export. Recovery or programming, not food.</li>\n<li><strong>Sick or genuinely wrecked</strong> \u2192 skip. Resume at the next session. Nothing is lost.</li>\n<li><strong>Missed a whole week</strong> \u2192 come back at the same loads.</li>\n</ul>"
   },
   {
    "s": "Cardio and life",

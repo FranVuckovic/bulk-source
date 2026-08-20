@@ -761,7 +761,11 @@ function drawStepSheet(ctx) {
 
     <div class="sheet-actions">
       <button class="big" data-act="save-step">Log this set</button>
-      ${c.logged ? '<button class="big ghost mt" data-act="unlog-step">Remove this set</button>' : ''}
+      ${
+        c.logged
+          ? '<button class="big ghost mt" data-act="unlog-step">Remove this set</button><p class="hint" style="text-align:center;margin:6px 0 0">Recoverable from Log → Bin.</p>'
+          : ''
+      }
       <button class="big ghost mt" data-act="sheet-close">Cancel</button>
     </div>`);
 }

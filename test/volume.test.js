@@ -241,3 +241,22 @@ test('planned against completed is the comparison Progress should make', () => {
   // not a missing row — that absence is the point of the chart.
   for (const row of rows) assert.ok(row.completed >= 0);
 });
+
+test('a whole-muscle figure is judged against the range the research states', async () => {
+  // Volume landmarks are per muscle: MEV roughly 4–8 weekly sets, MAV roughly
+  // 10–20. Below the growth range is not a fault — an accessory held at 8 sets
+  // in a bench-focused plan is being maintained on purpose. Only below the
+  // maintenance floor is worth a warning.
+  const { rollUpStatus, WHOLE_MUSCLE_BAND, MAINTENANCE_SETS } = await import('../js/volume.js');
+
+  assert.equal(WHOLE_MUSCLE_BAND.lo, 10);
+  assert.equal(WHOLE_MUSCLE_BAND.hi, 20);
+  assert.equal(MAINTENANCE_SETS, 4);
+
+  assert.equal(rollUpStatus(3), 'under', 'glutes at 3 sets are below any published floor');
+  assert.equal(rollUpStatus(8), 'maintenance', 'calves at 8 are held, not deficient');
+  assert.equal(rollUpStatus(12.8), 'in');
+  assert.equal(rollUpStatus(20), 'in', 'the top of the range is inside it');
+  assert.equal(rollUpStatus(31.2), 'over', 'chest really is above what the evidence covers');
+  assert.equal(rollUpStatus(null), 'unknown');
+});

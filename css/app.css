@@ -361,13 +361,18 @@ nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.9;st
 /* volume bars */
 .vol{padding:9px 0;border-bottom:1px solid var(--grid)}
 .vol:last-child{border:0}
-.vol .r1{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;margin-bottom:5px}
+.vol .r1{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:12.5px;margin-bottom:5px}
+.vol .r1 em{text-align:right}
 .vol .r1 b{font-weight:600}
 .vol .r1 em{font-style:normal;font-variant-numeric:tabular-nums;color:var(--ink2);font-weight:650}
 .vol .r1 em .f{color:var(--muted);font-weight:500;font-size:11px}
 .track{position:relative;height:9px;background:var(--grid);border-radius:99px;overflow:hidden}
 .track .band{position:absolute;top:0;bottom:0;background:var(--axis);opacity:.5}
 .track .fill{position:absolute;top:0;bottom:0;left:0;border-radius:99px}
+/* Per-head bars are reported, not judged: dimmer, and set apart from the
+   whole-muscle bars above them so the colour above reads as the verdict. */
+.head-bars{margin-top:4px;padding-top:4px;border-top:1px solid var(--grid);opacity:.82}
+.head-bars .vol .r1 b{font-weight:500}
 .lg{display:flex;gap:14px;font-size:11px;color:var(--muted);margin:2px 0 10px;flex-wrap:wrap}
 .lg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px;font-style:normal}
 

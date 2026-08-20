@@ -6,12 +6,28 @@
  * which is why adding a second programme later is a file rather than a feature.
  */
 
-import { weeklyVolume, sessionVolume, rollUp, weeklyRollUp, bandStatus, DIMINISHING_RETURNS_SETS } from '../volume.js';
+import {
+  weeklyVolume,
+  sessionVolume,
+  rollUp,
+  weeklyRollUp,
+  rollUpStatus,
+  WHOLE_MUSCLE_BAND,
+  MAINTENANCE_SETS,
+  DIMINISHING_RETURNS_SETS,
+} from '../volume.js';
 import { resolveSession, toDisplaySession } from '../plan.js';
 import { escape, subnav } from './components.js';
 import { estimateMinutes } from './train.js';
 
 const VOLUME_SCALE = 24;
+
+/**
+ * Whole-muscle numbers run higher than any single head — chest sits near 30 —
+ * so they need their own axis or the bar pins at full width and stops meaning
+ * anything.
+ */
+const ROLLUP_SCALE = 36;
 
 /**
  * The Plan screen's parts, across the top.
@@ -100,10 +116,14 @@ function overview(state) {
   </div></details>
 
   <h3>Stimulus this rotation · all six sessions</h3>
-  <div class="lg"><span><i style="background:var(--s3)"></i>in range</span><span><i style="background:var(--warn)"></i>below</span><span><i style="background:var(--s1)"></i>slightly above</span><span><i style="background:var(--s2)"></i>materially above</span></div>
-  <p class="hint stimulus-intro">The target bands are guardrails, not pass/fail boundaries. A value up to 15% or two
-  fractional sets above its band is shown as <b>slightly above</b>; orange is reserved for a material overage. Neither
-  colour changes the programme on its own — performance, joints, soreness and recovery decide whether volume is too high.</p>
+  <div class="lg"><span><i style="background:var(--s3)"></i>in range</span><span><i style="background:var(--warn)"></i>below</span><span><i style="background:var(--s1)"></i>slightly above</span><span><i style="background:var(--s2)"></i>materially above</span><span><i style="background:var(--axis)"></i>at maintenance</span><span><i style="background:var(--ink2)"></i>per head — not judged</span></div>
+  <p class="hint stimulus-intro">The coloured bars are <b>whole-muscle</b> totals — largest head per set, the units the
+  familiar <b>~20 sets/week</b> figure uses — judged against the 10–20 weekly sets the research states. The grey bars
+  below them are per head: shown because the numbers are real, uncoloured because volume landmarks are published per
+  muscle and no study says a single head wants a particular number. Their pale marker is the plan's own reference range,
+  not a verdict. The target bands are guardrails, not pass/fail boundaries: up to 15% or two fractional sets above the
+  range reads <b>slightly above</b>, and orange is reserved for a material overage. Neither colour changes the programme
+  on its own — performance, joints, soreness and recovery decide whether volume is too high.</p>
   ${volumeBars(state, volume, frequency, wholeMuscle)}
   <p class="hint" style="margin:0 2px 14px">Fractional sets — a set where the muscle is the main mover counts 1.0, a meaningful supporting role counts 0.5, and anything under 0.3 is not counted at all. Speed bench counts <b>zero</b>: at RPE 5–6 it is motor-pattern practice, not a growth stimulus.</p>
 
@@ -173,6 +193,29 @@ function paceFlag(state, pace, totalRotations) {
   )} sessions per week. Blocks advance on sessions completed, so the calendar and your training are still in step.</span></div>`;
 }
 
+/**
+ * One bar. `band` is drawn as a reference marker behind the fill; `color` is
+ * the verdict, and is deliberately neutral for anything the app cannot
+ * honestly judge.
+ */
+function volumeBar(label, value, scale, band, color, note) {
+  return `<div class="vol"><div class="r1"><b>${escape(label)}</b>
+    <em>${value.toFixed(1)} sets <span class="f">· ${escape(note)}</span></em></div>
+    <div class="track"><div class="band" style="left:${(band.lo / scale) * 100}%;width:${
+      ((band.hi - band.lo) / scale) * 100
+    }%"></div><div class="fill" style="width:${Math.min(100, (value / scale) * 100)}%;background:${color}"></div></div></div>`;
+}
+
+/**
+ * The stimulus bars.
+ *
+ * The colour is on the WHOLE-MUSCLE roll-up, against the 10–20 weekly-set range
+ * the literature actually states. The per-head bars are shown because the
+ * numbers are real and useful, but they are drawn in one neutral colour with
+ * their band as a reference marker rather than a verdict: there is no published
+ * per-head landmark for the app to be judging them against. This is what
+ * `DIMINISHING_RETURNS_SETS`' own comment has always said the app should do.
+ */
 function volumeBars(state, volume, frequency, wholeMuscle = null) {
   const groups = [...new Set(Object.values(state.plan.muscles).map((m) => m.grp))];
 
@@ -188,64 +231,89 @@ function volumeBars(state, volume, frequency, wholeMuscle = null) {
             Object.fromEntries(ids.map((id) => [id, volume[id] || 0])),
             state.plan.muscles
           );
-      const rollText = Object.entries(rolls)
-        .map(
-          ([name, value]) =>
-            `<b>${escape(name)} ${value.toFixed(1)}</b>${
-              value >= DIMINISHING_RETURNS_SETS
-                ? ' — specialisation volume; additional returns are likely smaller'
-                : value >= 14
-                  ? ' — in the productive range'
-                  : ''
-            }`
-        )
-        .join(' · ');
 
-      const presentations = ids.map((id) => {
-        const muscle = state.plan.muscles[id];
-        const value = volume[id] || 0;
-        const status = bandStatus(value, muscle);
-        const allowance = Math.max(2, muscle.hi * 0.15);
-        const tone = status === 'over' && value - muscle.hi <= allowance ? 'slightly-over' : status;
-        return { id, muscle, value, status, tone };
+      /*
+       * A muscle marked `whole` is not a head of anything: forearms, quads,
+       * hamstrings, calves and glutes are counted as themselves. Its own figure
+       * is already a whole-muscle number, so it is judged like a roll-up. The
+       * three deltoid heads are heads, have no roll-up in this plan, and are
+       * therefore not judged at all — which is the honest answer, not an
+       * oversight.
+       */
+      const wholeRows = ids
+        .filter((id) => state.plan.muscles[id].whole)
+        .map((id) => [state.plan.muscles[id].label, volume[id] || 0]);
+
+      const rollRows = [...Object.entries(rolls), ...wholeRows].map(([name, value]) => {
+        const status = rollUpStatus(value);
+        const allowance = Math.max(2, WHOLE_MUSCLE_BAND.hi * 0.15);
+        const tone = status === 'over' && value - WHOLE_MUSCLE_BAND.hi <= allowance ? 'slightly-over' : status;
+        return { name, value, status, tone };
       });
-      const counts = presentations.reduce((result, row) => {
+
+      const counts = rollRows.reduce((result, row) => {
         result[row.tone] = (result[row.tone] || 0) + 1;
         return result;
       }, {});
       const summary = [
         counts.in ? `${counts.in} in range` : '',
+        counts.maintenance ? `${counts.maintenance} at maintenance` : '',
         counts['slightly-over'] ? `${counts['slightly-over']} slightly above` : '',
         counts.over ? `${counts.over} materially above` : '',
-        counts.under ? `${counts.under} below` : '',
+        counts.under ? `${counts.under} below the floor` : '',
       ]
         .filter(Boolean)
-        .join(' · ');
+        .join(' · ') || 'per head only — not judged';
 
-      const bars = presentations
-        .map((id) => {
-          const { muscle, value, status, tone } = id;
+      const rollBars = rollRows
+        .map(({ name, value, status, tone }) => {
           const color =
-            tone === 'under' ? 'var(--warn)' : tone === 'over' ? 'var(--s2)' : tone === 'slightly-over' ? 'var(--s1)' : 'var(--s3)';
-          const stateText =
+            tone === 'under'
+              ? 'var(--warn)'
+              : tone === 'over'
+                ? 'var(--s2)'
+                : tone === 'slightly-over'
+                  ? 'var(--s1)'
+                  : tone === 'maintenance'
+                    ? 'var(--axis)'
+                    : 'var(--s3)';
+          const note =
             status === 'under'
-              ? `${(muscle.lo - value).toFixed(1)} below`
-              : status === 'over'
-                ? `+${(value - muscle.hi).toFixed(1)} ${tone === 'slightly-over' ? 'slightly above' : 'above'}`
-                : 'in range';
-          return `<div class="vol"><div class="r1"><b>${escape(muscle.label)}</b>
-            <em>${value.toFixed(1)} sets <span class="f">· ${frequency[id.id] || 0}×/wk · ${stateText}</span></em></div>
-            <div class="track"><div class="band" style="left:${(muscle.lo / VOLUME_SCALE) * 100}%;width:${
-              ((muscle.hi - muscle.lo) / VOLUME_SCALE) * 100
-            }%"></div><div class="fill" style="width:${Math.min(100, (value / VOLUME_SCALE) * 100)}%;background:${color}"></div></div></div>`;
+              ? `below the ${MAINTENANCE_SETS}-set maintenance floor`
+              : status === 'maintenance'
+                ? `maintenance volume — under the ${WHOLE_MUSCLE_BAND.lo}–${WHOLE_MUSCLE_BAND.hi} growth range`
+                : status === 'over'
+                  ? `+${(value - WHOLE_MUSCLE_BAND.hi).toFixed(1)} ${
+                      tone === 'slightly-over' ? 'slightly above' : 'materially above'
+                    } ${WHOLE_MUSCLE_BAND.lo}–${WHOLE_MUSCLE_BAND.hi}`
+                  : `in the ${WHOLE_MUSCLE_BAND.lo}–${WHOLE_MUSCLE_BAND.hi} range`;
+          const tail =
+            value >= DIMINISHING_RETURNS_SETS ? ' · specialisation volume; additional returns are likely smaller' : '';
+          return volumeBar(name, value, ROLLUP_SCALE, WHOLE_MUSCLE_BAND, color, note + tail);
         })
         .join('');
 
-      return `<details class="card stimulus-group"><summary>${escape(group)} <span>${escape(summary)}</span></summary><div class="c">${bars}${
-        rollText
-          ? `<p class="hint" style="margin-top:11px">Counted the way the research does — whole muscle, not per head — that is ${rollText}. The familiar <b>~20 sets/week</b> figure uses those units, not the split ones above.</p>`
-          : ''
-      }</div></details>`;
+      const headBars = ids
+        .filter((id) => !state.plan.muscles[id].whole)
+        .map((id) => {
+          const muscle = state.plan.muscles[id];
+          const value = volume[id] || 0;
+          return volumeBar(
+            muscle.label,
+            value,
+            VOLUME_SCALE,
+            { lo: muscle.lo, hi: muscle.hi },
+            'var(--ink2)',
+            `${frequency[id] || 0}×/wk · plan reference ${muscle.lo}–${muscle.hi}`
+          );
+        })
+        .join('');
+
+      return `<details class="card stimulus-group"><summary>${escape(group)} <span>${escape(
+        summary
+      )}</span></summary><div class="c">${
+        rollBars || ''
+      }${headBars ? `<div class="head-bars">${headBars}</div>` : ''}</div></details>`;
     })
     .join('');
 }

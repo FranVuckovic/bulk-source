@@ -123,6 +123,29 @@ test('the Plan stimulus view distinguishes small overages and can be collapsed b
   assert.match(html, /specialisation volume; additional returns are likely smaller/);
 });
 
+test('only the whole-muscle roll-up is coloured; the heads are reported, not judged', () => {
+  // Volume landmarks are published PER MUSCLE. The screen used to colour each
+  // head against a band with no published basis, so the biceps short head read
+  // orange at 13.4 against a 6–12 band nobody had measured, while chest at 29
+  // against the 10–20 range the research does state was not coloured at all.
+  // The verdict now sits on the roll-up, where the evidence is.
+  const html = planScreen.view({ state: emptyState({ sequence: 12 }), render() {} });
+
+  assert.match(html, /in the 10–20 range/, 'the roll-up is judged against the stated range');
+  assert.match(html, /maintenance volume — under the 10–20 growth range/, 'below growth is not a warning');
+  assert.match(html, /per head only — not judged/, 'a group with no whole-muscle figure says so rather than showing nothing');
+  assert.match(html, /class="head-bars"/, 'the heads are set apart from the roll-up');
+  assert.match(html, /plan reference \d/, 'a head bar states its band as a reference, not a verdict');
+  assert.match(html, /per head — not judged/, 'the legend says so');
+
+  // No head bar may carry a verdict colour.
+  const heads = html.slice(html.indexOf('class="head-bars"'));
+  const headSection = heads.slice(0, heads.indexOf('</details>'));
+  for (const verdict of ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--warn)']) {
+    assert.ok(!headSection.includes(verdict), `a per-head bar was coloured ${verdict}`);
+  }
+});
+
 test('the tonnage comparison uses a real 44-tonne articulated lorry', () => {
   assert.deepEqual(progressScreen.tonnageComparison(960000), {
     weightKg: 44000,

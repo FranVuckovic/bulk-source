@@ -36,6 +36,42 @@ export const DIMINISHING_RETURNS_SETS = 20;
  */
 export const MYO_REP_SET_VALUE = 2;
 
+/**
+ * The only volume range the app is entitled to colour against.
+ *
+ * Volume landmarks in the literature — MEV roughly 4–8 weekly sets, MAV roughly
+ * 10–20 for a trained lifter — are stated PER MUSCLE. There is no published
+ * per-head landmark: no study says the biceps short head wants 6–12 sets a
+ * week. The per-head bands in the plan file are an extrapolation, and colouring
+ * a head bar against one makes a claim the evidence cannot support in either
+ * direction. So the heads are reported and the roll-up is judged.
+ */
+export const WHOLE_MUSCLE_BAND = Object.freeze({ lo: 10, hi: DIMINISHING_RETURNS_SETS });
+
+/**
+ * The published maintenance floor — MEV is roughly 4–8 weekly sets. Below the
+ * growth range is not the same as below the floor: a muscle at 8 sets is being
+ * maintained, which for an accessory in a bench-focused plan is the intent, not
+ * a shortfall. Only under this is worth a warning colour.
+ */
+export const MAINTENANCE_SETS = 4;
+
+/**
+ * Where a whole-muscle figure sits against the ranges the research states.
+ *
+ * 'under'       — below the maintenance floor
+ * 'maintenance' — enough to hold, below the 10–20 growth range
+ * 'in'          — inside 10–20
+ * 'over'        — above it
+ */
+export function rollUpStatus(sets) {
+  if (!Number.isFinite(sets)) return 'unknown';
+  if (sets < MAINTENANCE_SETS) return 'under';
+  if (sets < WHOLE_MUSCLE_BAND.lo) return 'maintenance';
+  if (sets > WHOLE_MUSCLE_BAND.hi) return 'over';
+  return 'in';
+}
+
 const countedEntries = (weights) =>
   Object.entries(weights || {}).filter(([, w]) => Number.isFinite(w) && w >= MIN_COUNTED_WEIGHT);
 
