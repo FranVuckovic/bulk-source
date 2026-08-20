@@ -14,6 +14,13 @@
 
 import {
   e1rm,
+  setDifficulty,
+  noEstimateReason,
+  roughE1rm,
+  roughConfidence,
+  sessionDuration,
+  SET_SETUP_SECONDS,
+  SECONDS_PER_REP,
   prescribedLoad,
   effectiveRpeDetail,
   roundToIncrement,
@@ -46,8 +53,14 @@ const setKey = (slotIndex, setIndex) => `${slotIndex}:${setIndex}`;
 const PAUSE_STYLES = ['paused', 'touch-and-go'];
 const tracksPause = (exerciseId) => exerciseId.startsWith('bench');
 
-/** Slots for the displayed session: the plan's, with swaps and additions. */
-export function slotsFor(state) {
+/**
+ * Slots for the displayed session: the plan's, with swaps and additions.
+ *
+ * `readinessOverride` asks what the session *would* look like at a different
+ * readiness, without changing anything. It exists so a readiness change can be
+ * checked for safety before it is applied.
+ */
+export function slotsFor(state, readinessOverride) {
   // Everything block-specific comes from the plan engine: the bench work for
   // this block, the failure permission for this rotation's effort mode, the
   // accessory multiplier, the static hold if one is offered, and any readiness
@@ -56,20 +69,66 @@ export function slotsFor(state) {
     resolveSession(state.plan, {
       rotation: state.cycle.sequence,
       sessionId: state.trainSessionId,
-      readiness: state.readiness || 'normal',
+      readiness: readinessOverride ?? state.readiness ?? 'normal',
     })
   );
   const planned = (resolved.slots || []).map((slot, i) => {
     const swappedTo = state.deviations.swaps[i];
     const extraSets = state.deviations.addedSets[i] || 0;
+
+    /*
+     * A slot never shows fewer rows than have already been logged against it.
+     *
+     * Anything that reshapes a session mid-way — switching to yellow, which
+     * removes the last work set — otherwise leaves a logged set with nowhere to
+     * render. It stays in the database and in every export, but the Train
+     * screen stops drawing it, stops counting it, and gives you no way to
+     * un-tick it. Three sets logged, "2 / 20 sets" on the header, and the third
+     * one still real. A set that exists is always shown; whether the plan still
+     * asks for it is a different question, answered by `beyondPlan`.
+     */
+    const prescribed = slot.sets + extraSets;
+    const loggedHere = highestLoggedIndex(state, i);
+    const sets = Math.max(prescribed, loggedHere + 1);
+
     return {
       ...slot,
       ex: swappedTo || slot.ex,
-      sets: slot.sets + extraSets,
+      sets,
+      prescribedSets: prescribed,
+      beyondPlan: sets > prescribed,
       swappedFrom: swappedTo ? slot.ex : null,
     };
   });
   return [...planned, ...state.deviations.extras];
+}
+
+/** The highest setIndex already logged against a slot, or -1 for none. */
+function highestLoggedIndex(state, slotIndex) {
+  let highest = -1;
+  for (const key of state.loggedSets.keys()) {
+    const [si, i] = key.split(':').map(Number);
+    if (si === slotIndex && i > highest) highest = i;
+  }
+  return highest;
+}
+
+/**
+ * Would moving to this readiness leave already-logged sets attached to the
+ * wrong exercise?
+ *
+ * Logged sets are keyed by position — `slotIndex:setIndex` — and readiness can
+ * remove a slot outright. On rotation 11 session A the static hold sits at
+ * index 0, so a red day shifts every slot up by one: the bench sets you logged
+ * become the static hold, the incline becomes the bench, and editing any of
+ * them rewrites the exercise in the database. Shrinking a slot is now
+ * survivable (see above); reindexing is not, so it is refused instead.
+ */
+export function readinessWouldReindex(state, nextReadiness) {
+  const current = slotsFor(state);
+  const next = slotsFor(state, nextReadiness);
+  if (current.length !== next.length) return true;
+  return current.some((slot, i) => slot.ex !== next[i].ex);
 }
 
 const workingMaxFor = (state, exerciseId) =>
@@ -187,7 +246,7 @@ export function view(ctx) {
     <div class="bar"><i style="width:${prescribedSets ? (doneSets / prescribedSets) * 100 : 0}%"></i></div>
     <div class="meta">
       <span>${doneSets} / ${prescribedSets} sets</span>
-      <span>~${estimateMinutes(state, slots)} min</span>
+      <span>~${Math.round(sessionClock(state, slots).totalSeconds / 60)} min incl. warm-ups</span>
       <span>Cycle ${state.cycle.sequence}/${state.plan.meta.rotations} · ${escape(state.block.name)}</span>
       <span>${state.cycleProgress.complete}/${state.plan.meta.rotationOrder.length} this rotation</span>
     </div>
@@ -206,9 +265,11 @@ export function view(ctx) {
       correct</button></div>
   </div>
 
+  ${sessionProgressCard(state, slots)}
+
   <div class="card flush">${slots.map((slot, si) => exerciseBlock(state, slot, si)).join('')}</div>
 
-  <div class="mini" style="margin:0 2px 12px"><button data-act="open-add">+ Add exercise</button></div>
+  <div class="mini" style="margin:0 2px 12px"><button data-act="open-add">+ Add exercise</button><button data-act="open-timer">Timer</button></div>
 
   <div class="card">
     <label for="session-note">Session note</label>
@@ -220,7 +281,118 @@ export function view(ctx) {
         <input id="session-rpe" type="number" inputmode="decimal" step="0.5" data-bind="sessionRpe" value="${escape(state.draft.sessionRpe)}"></div>
     </div>
     <p class="hint">Session RPE = how hard the <b>whole session</b> felt, 0–10, rated about 20 minutes after you finish. Multiplied by duration it gives a session load — the earliest warning sign that weekly fatigue is climbing, usually a week before you feel it.</p>
+    ${timingRow(state)}
+    ${
+      state.activeLog
+        ? ''
+        : `<button class="big ghost mt" data-act="start-session">Start session</button>
+           <p class="hint">Only starts the clock. You never have to press it — the session starts itself the moment
+           you tick your first set, and finishes fine either way. It is here for when you want the warm-up counted.</p>`
+    }
     <button class="big mt" data-act="finish">Finish session</button>
+  </div>`;
+}
+
+/**
+ * Is the clock telling the truth about this session?
+ *
+ * Every set has always stored the moment it was ticked, so rest and session
+ * length come free — but only when the ticks happened when the work did. Log
+ * the whole session from memory on the bus home and the timestamps are all
+ * within a minute of each other, which would report eight seconds of rest
+ * between working sets and look like a measurement rather than an artefact.
+ *
+ * So it is stated rather than assumed. The default is that it is real, because
+ * usually it is; this is the switch for the times it is not. Everything else
+ * about the session is unaffected either way — only the timing report is.
+ */
+function timingRow(state) {
+  const log = state.activeLog;
+  const reliable = log ? log.timingReliable !== false : true;
+  const started = log?.startedAt ? new Date(log.startedAt) : null;
+
+  return `<div class="timing-row mt">
+    <div>
+      <b>${reliable ? 'Timing is real' : 'Timing is not meaningful'}</b>
+      <span>${
+        reliable
+          ? started
+            ? `Running since ${started.getHours()}:${String(started.getMinutes()).padStart(2, '0')} — rest and session length will be recorded.`
+            : 'Rest and session length will be recorded from when you tick each set.'
+          : 'Logged after the fact, so rest and duration will not be reported for this session. Everything else is kept.'
+      }</span>
+    </div>
+    <button data-act="toggle-timing">${reliable ? 'Not really' : 'It is real'}</button>
+  </div>`;
+}
+
+/**
+ * The session's cost in seconds, warm-ups included, and how much of it is done.
+ *
+ * The prescribed loads have to be gathered first because the warm-up ramp is
+ * computed from the top load of each exercise — there is no ramp without a
+ * number to ramp to.
+ */
+export function sessionClock(state, slots) {
+  const prescribedLoads = {};
+  slots.forEach((slot, i) => {
+    const load = prescriptionFor(state, slot);
+    if (load != null) prescribedLoads[i] = load;
+  });
+
+  const completed = new Set();
+  slots.forEach((slot, i) => {
+    for (let j = 0; j < slot.sets; j++) if (state.loggedSets.has(setKey(i, j))) completed.add(`${i}:${j}`);
+  });
+
+  return sessionDuration(slots, {
+    exercises: state.plan.exercises,
+    bar: state.settings.barKg,
+    increment: state.settings.increment,
+    prescribedLoads,
+    completed,
+  });
+}
+
+const asClock = (seconds) => {
+  const value = Math.max(0, Math.round(seconds));
+  const h = Math.floor(value / 3600);
+  const m = Math.floor((value % 3600) / 60);
+  const sec = value % 60;
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+};
+
+/**
+ * Where you are in the session, in minutes rather than in sets.
+ *
+ * Three different numbers, and they answer three different questions. Elapsed
+ * is wall-clock since you started and is the only one that is measured — it
+ * ticks from `data-since` against Date.now(), never from counted intervals, for
+ * the reason the rest timer had to be rewritten. Done and left are the *plan*
+ * spent and owed: warm-up ramps plus every set plus the rest between them.
+ *
+ * They will not agree, and that is the useful part. Elapsed well past done
+ * means the rests are running long.
+ */
+function sessionProgressCard(state, slots) {
+  const clock = sessionClock(state, slots);
+  const started = state.activeLog?.startedAt || null;
+  const pct = clock.totalSeconds ? Math.min(100, (clock.doneSeconds / clock.totalSeconds) * 100) : 0;
+
+  return `<div class="card sess">
+    <div class="g3">
+      <div class="tstat"><b id="sess-elapsed" data-since="${escape(started || '')}">${
+        started ? asClock((Date.now() - Date.parse(started)) / 1000) : '—'
+      }</b><span>${started ? 'elapsed' : 'not started'}</span></div>
+      <div class="tstat"><b>${Math.round(clock.doneSeconds / 60)}<small> min</small></b><span>of plan done</span></div>
+      <div class="tstat"><b>${Math.round(clock.remainingSeconds / 60)}<small> min</small></b><span>left</span></div>
+    </div>
+    <div class="bar mt"><i style="width:${pct}%"></i></div>
+    <p class="hint" style="margin:8px 0 0">About <b>${Math.round(clock.totalSeconds / 60)} min</b> in total —
+    ${Math.round(clock.warmupSeconds / 60)} of warm-up ramps and ${Math.round(clock.workingSeconds / 60)} of work
+    and rest. Estimates, at ${SET_SETUP_SECONDS} s to get set and ${SECONDS_PER_REP} s a rep.${
+      started ? '' : ' <b>Start session</b> below begins the clock.'
+    }</p>
   </div>`;
 }
 
@@ -229,7 +401,7 @@ export function view(ctx) {
  * v1 carried hand-written minute ranges that went stale the moment the plan
  * changed. Roughly the rest between sets plus about 40 seconds of work each.
  */
-function estimateMinutes(state, slots) {
+export function estimateMinutes(state, slots) {
   const seconds = slots.reduce((total, slot) => {
     const rest = slot.restSec || state.plan.exercises[slot.ex]?.defaultRestSec || 90;
     return total + slot.sets * (rest + 40);
@@ -250,17 +422,23 @@ function readinessBar(state) {
     ['yellow', 'Yellow — poor sleep, slow warm-up'],
     ['red', 'Red — pain or illness'],
   ];
-  if (current === 'normal') {
-    return `<div class="picker" style="margin-bottom:4px">${options
-      .map(
-        ([id, label]) =>
-          `<button class="pill ${id === current ? 'on' : ''}" data-act="readiness" data-id="${id}">${escape(
-            id === 'normal' ? 'Normal' : label.split(' — ')[0]
-          )}</button>`
-      )
-      .join('')}</div>`;
-  }
-  return `<div class="flag f-warn" style="margin-bottom:10px"><i>!</i><span><b>${escape(
+  // The picker stays on screen whatever is selected. It used to be replaced by
+  // the warning once a day was flagged, which left "Back to normal" as the only
+  // move — you could not go from yellow to red without going through normal
+  // first, and on a day that is getting worse rather than better that is
+  // exactly the move you want.
+  const picker = `<div class="picker" style="margin-bottom:4px">${options
+    .map(
+      ([id, label]) =>
+        `<button class="pill ${id === current ? 'on' : ''}" data-act="readiness" data-id="${id}">${escape(
+          id === 'normal' ? 'Normal' : label.split(' — ')[0]
+        )}</button>`
+    )
+    .join('')}</div>`;
+
+  if (current === 'normal') return picker;
+
+  return `${picker}<div class="flag f-warn" style="margin-bottom:10px"><i>!</i><span><b>${escape(
     current === 'red' ? 'Red day' : 'Yellow day'
   )}.</b> ${
     current === 'red'
@@ -273,6 +451,17 @@ const calibrationCard = () => `<div class="card" style="border-color:var(--s2);b
   <div style="font-size:11px;color:var(--s2);text-transform:uppercase;letter-spacing:.07em;font-weight:800;margin-bottom:5px">Calibration week</div>
   <p style="margin-bottom:8px"><b style="color:var(--ink)">There is no separate test day.</b> This session runs normally — you just find your own weights instead of being given them.</p>
   <p style="margin-bottom:0;font-size:12.5px"><b style="color:var(--ink)">On lifts marked INDEX:</b> ramp up until a set at the target reps feels like the target RPE, then log it. <b style="color:var(--ink)">On everything else:</b> pick a weight, do the reps, log what happened. One full rotation and every exercise has a number.</p></div>`;
+
+/**
+ * A note about the exercise, not about one set of it.
+ *
+ * "Chest-supported row, machine, seat height 8" is true of every set you will
+ * ever do on that machine, and writing it against set 2 of 4 is the wrong
+ * shape — you would have to remember which set you put it on. Kept on the
+ * session log beside the swaps and grips, because it is a fact about how this
+ * session was performed rather than about the plan.
+ */
+const exerciseNote = (state, slotIndex) => state.deviations.exerciseNotes?.[String(slotIndex)] || '';
 
 function exerciseBlock(state, slot, slotIndex) {
   const exercise = state.plan.exercises[slot.ex];
@@ -344,6 +533,13 @@ function exerciseBlock(state, slot, slotIndex) {
           : ''
       }
       <div class="cue">${escape(exercise.how[0])}</div>
+      ${
+        exerciseNote(state, slotIndex)
+          ? `<div class="exnote" data-act="open-ex-note" data-si="${slotIndex}">${escape(
+              exerciseNote(state, slotIndex)
+            )}</div>`
+          : ''
+      }
       <div class="mini">
         ${previous ? `<button data-act="same-as-last" data-si="${slotIndex}">Same as last time</button>` : ''}
         ${prescribed != null && !state.plan.exercises[slot.ex].bodyweightLoaded ? `<button data-act="open-ramp" data-si="${slotIndex}">Warm-up</button>` : ''}
@@ -354,6 +550,9 @@ function exerciseBlock(state, slot, slotIndex) {
           state.cleared.has(String(slotIndex)) ? 'Restore prescribed' : 'Clear prescribed'
         }</button>
         <button data-act="about" data-id="${slot.ex}">About</button>
+        <button class="${exerciseNote(state, slotIndex) ? 'warn' : ''}" data-act="open-ex-note" data-si="${slotIndex}">${
+          exerciseNote(state, slotIndex) ? '\u2713 Note' : 'Note'
+        }</button>
         ${
           exercise.grips
             ? `<button data-act="open-grip" data-si="${slotIndex}">Grip: ${escape(
@@ -415,7 +614,14 @@ function setRow(state, slot, slotIndex, i) {
   const cls = logged ? '' : 'pres';
   const bodyweight = bodyweightFor(state, slot.ex);
   // e1RM is computed on what you actually lifted: bodyweight included.
-  const estimate = load != null && reps ? e1rm(systemLoad(load, bodyweight), reps, Math.min(10, rpe)) : null;
+  const total = load != null && reps ? systemLoad(load, bodyweight) : null;
+  const estimate = total != null ? e1rm(total, reps, Math.min(10, rpe)) : null;
+  // How big the set was, independent of how hard it felt. See setDifficulty.
+  const difficulty = total != null ? setDifficulty(total, reps) : null;
+  // A blank where a number usually sits reads as a broken app. Say which it is.
+  const why = total != null && estimate == null ? noEstimateReason(total, reps, Math.min(10, rpe), { short: true }) : null;
+  // Past the table's twelve reps, a weaker estimate rather than a blank.
+  const rough = estimate == null && total != null ? roughE1rm(total, reps, Math.min(10, rpe)) : null;
 
   return `<div class="setrow ${logged ? 'logged' : ''}">
       <div class="sn ${toFailure ? 'f' : ''}">${i + 1}</div>
@@ -430,8 +636,16 @@ function setRow(state, slot, slotIndex, i) {
       estimate
         ? `<div class="e1">e1RM <b>${fmtLoad(estimate, unit)} ${unit}</b>${
             bodyweight ? ` <span style="color:var(--muted)">(+${fmtLoad(estimate - bodyweight, unit)} added)</span>` : ''
+          }${
+            difficulty ? ` <span class="dif">difficulty <b>${fmtLoad(difficulty, unit)}</b></span>` : ''
           }</div>`
-        : ''
+        : rough
+          ? `<div class="e1 rough">~<b>${fmtLoad(rough, unit)} ${unit}</b> <span>${escape(
+              roughConfidence(reps)
+            )} \u00b7 ${reps} reps is past the RPE table</span></div>`
+          : why
+            ? `<div class="e1 none">no estimate \u2014 ${escape(why)}</div>`
+            : ''
     }`;
 }
 
@@ -439,54 +653,77 @@ function setRow(state, slot, slotIndex, i) {
    The set sheet
    ═══════════════════════════════════════════════════════════════════════ */
 
+/**
+ * The set editor: load, reps and RPE together.
+ *
+ * It used to open on one field at a time, so logging a set that differed from
+ * the prescription in two ways meant opening it twice. All three are here, each
+ * with its own steppers for thumbs and its own box for typing.
+ *
+ * `data-pick` marks a number box whose contents should be selected when it is
+ * focused, so typing replaces the value rather than appending to it — tapping a
+ * box reading 9 and typing 10 gave 910.
+ *
+ * The action bar is sticky at the foot of the sheet, and the sheet itself is
+ * lifted above the on-screen keyboard (see `keyboardInset` in app.js), because
+ * "Log this set" being hidden behind the keyboard means scrolling to save every
+ * single set of every session.
+ */
 function drawStepSheet(ctx) {
   const { state } = ctx;
   const c = state.sheetCtx;
   const exercise = state.plan.exercises[c.slot.ex];
   const unit = state.settings.unit;
   const workingMax = workingMaxFor(state, c.slot.ex);
-  const step = c.field === 'load' ? stepFor(unit, state.settings.increment) : c.field === 'rpe' ? 0.5 : 1;
-  const value =
-    c.field === 'load'
-      ? Math.round(toDisplay(c.load ?? 0, unit) * 10) / 10
-      : c.field === 'reps'
-        ? (c.reps ?? 0)
-        : c.rpe;
+  const bodyweight = bodyweightFor(state, c.slot.ex);
 
-  openSheet(`<div class="ttl">${escape(exercise.name)} · set ${c.i + 1} · ${
-    c.field === 'load' ? `Load (${unit})` : c.field === 'reps' ? 'Reps' : 'RPE'
-  }</div>
-    <div class="stp">
-      <button data-act="bump" data-d="-1" aria-label="Down">−</button>
-      <input id="stepIn" type="number" inputmode="decimal" value="${value}" step="${step}" data-act-input="step">
-      <button data-act="bump" data-d="1" aria-label="Up">+</button></div>
+  const field = (key, label, value, step) => `<div class="fcol">
+    <label for="in-${key}">${escape(label)}</label>
+    <input id="in-${key}" type="number" inputmode="decimal" step="${step}" value="${value}"
+      data-pick data-act-input="field-${key}">
+    <div class="fbtns">
+      <button data-act="bump" data-f="${key}" data-d="-1" aria-label="${escape(label)} down">\u2212</button>
+      <button data-act="bump" data-f="${key}" data-d="1" aria-label="${escape(label)} up">+</button>
+    </div></div>`;
+
+  openSheet(`<div class="ttl">${escape(exercise.name)} \u00b7 set ${c.i + 1}</div>
+
+    <div class="fields">
+      ${field('load', bodyweight ? `Added (${unit})` : `Load (${unit})`, Math.round(toDisplay(c.load ?? 0, unit) * 10) / 10, stepFor(unit, state.settings.increment))}
+      ${field('reps', 'Reps', c.reps ?? '', 1)}
+      ${field('rpe', 'RPE', c.rpe ?? '', 0.5)}
+    </div>
+
     <div class="eff" id="stepEff">${stepReadout(state, c, workingMax)}</div>
+
     <div class="mini" style="justify-content:center;margin-bottom:12px">
-      <button data-act="flag" data-flag="toFailure" class="${c.toFailure ? 'warn' : ''}">${c.toFailure ? '✓ ' : ''}To failure</button>
-      <button data-act="flag" data-flag="isAmrap" class="${c.isAmrap ? 'warn' : ''}">${c.isAmrap ? '✓ ' : ''}AMRAP</button>
-      <button data-act="flag" data-flag="isMyoRep" class="${c.isMyoRep ? 'warn' : ''}">${c.isMyoRep ? '✓ ' : ''}Myo-reps</button>
+      <button data-act="flag" data-flag="toFailure" class="${c.toFailure ? 'warn' : ''}">${c.toFailure ? '\u2713 ' : ''}To failure</button>
+      <button data-act="flag" data-flag="isAmrap" class="${c.isAmrap ? 'warn' : ''}">${c.isAmrap ? '\u2713 ' : ''}AMRAP</button>
+      <button data-act="flag" data-flag="isMyoRep" class="${c.isMyoRep ? 'warn' : ''}">${c.isMyoRep ? '\u2713 ' : ''}Myo-reps</button>
       ${
         tracksPause(c.slot.ex)
           ? PAUSE_STYLES.map(
               (style) =>
                 `<button data-act="pause-style" data-id="${style}" class="${c.pauseStyle === style ? 'warn' : ''}">${
-                  c.pauseStyle === style ? '✓ ' : ''
+                  c.pauseStyle === style ? '\u2713 ' : ''
                 }${style}</button>`
             ).join('')
           : ''
       }
     </div>
+
     <div class="g2">
       <div><label for="stepVel">Bar speed (m/s)</label>
-        <input id="stepVel" type="number" inputmode="decimal" step="0.01" value="${c.velocity ?? ''}" data-act-input="velocity"></div>
-      <div><label for="stepNote">Note</label>
+        <input id="stepVel" type="number" inputmode="decimal" step="0.01" value="${c.velocity ?? ''}" data-pick data-act-input="velocity"></div>
+      <div><label for="stepNote">Note for this set</label>
         <input id="stepNote" type="text" value="${escape(c.note ?? '')}" data-act-input="note"></div>
     </div>
-    <button class="big mt" data-act="save-step">Log this set</button>
-    ${c.logged ? '<button class="big ghost mt" data-act="unlog-step">Remove this set</button>' : ''}
-    <button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
 
-  document.getElementById('stepIn')?.focus();
+    <div class="sheet-actions">
+      <button class="big" data-act="save-step">Log this set</button>
+      ${c.logged ? '<button class="big ghost mt" data-act="unlog-step">Remove this set</button>' : ''}
+      <button class="big ghost mt" data-act="sheet-close">Cancel</button>
+    </div>`);
 }
 
 function stepReadout(state, c, workingMax) {
@@ -495,11 +732,14 @@ function stepReadout(state, c, workingMax) {
   const total = systemLoad(c.load, bodyweight);
   const estimate = e1rm(total, c.reps, Math.min(10, c.rpe));
   const detail = effectiveRpeDetail(c.load, workingMax, c.reps, { bodyweight });
-  const step = c.field === 'load' ? `${stepFor(unit, state.settings.increment)} ${unit}` : '1';
+  const difficulty = setDifficulty(total, c.reps);
+  const why = estimate == null ? noEstimateReason(total, c.reps, Math.min(10, c.rpe)) : null;
 
   return `${bodyweight ? '+' : ''}${fmtLoad(c.load, unit)} ${unit} × ${c.reps ?? '—'} @ RPE ${c.rpe}
     ${bodyweight ? `<br><span style="color:var(--muted)">${fmtLoad(total, unit)} ${unit} total with bodyweight</span>` : ''}
     ${estimate ? `<br>e1RM <b>${fmtLoad(estimate, unit)} ${unit}</b>` : ''}
+    ${difficulty ? ` · difficulty <b>${fmtLoad(difficulty, unit)} ${unit}</b>` : ''}
+    ${why ? `<br><span style="color:var(--muted)">No estimate — ${escape(why)}.</span>` : ''}
     ${
       detail
         ? ` · ${detail.percent.toFixed(1)}% of max · effective RPE <b>${
@@ -507,7 +747,7 @@ function stepReadout(state, c, workingMax) {
           }</b>`
         : ''
     }
-    <br><span style="color:var(--muted);font-size:11.5px">Type directly, or step by ${step}. Overrides are recorded as deviations, not errors.</span>`;
+    <br><span style="color:var(--muted);font-size:11.5px">Type directly, or use the buttons. Overrides are recorded as deviations, not errors.</span>`;
 }
 
 const repaintReadout = (ctx) => {
@@ -580,6 +820,39 @@ export const actions = {
     startRest(slot.restSec || state.plan.exercises[slot.ex].defaultRestSec);
   },
 
+  'open-ex-note'(ctx, data) {
+    const { state } = ctx;
+    const slotIndex = Number(data.si);
+    const slot = slotsFor(state)[slotIndex];
+    const exercise = state.plan.exercises[slot.ex];
+
+    openSheet(`<div class="ttl">Note \u00b7 ${escape(exercise.name)}</div>
+      <p style="font-size:13px;margin:12px 0 10px">About the exercise as you did it today \u2014 the machine, the seat
+      height, the pin, the handle. It stays against this exercise for the whole session rather than against one set
+      of it, and it travels into your history with the session.</p>
+      <input id="ex-note" type="text" value="${escape(exerciseNote(state, slotIndex))}"
+        placeholder="Machine chest-supported row, seat height 8" autocomplete="off">
+      <div class="sheet-actions">
+        <button class="big mt" data-act="save-ex-note" data-si="${slotIndex}">Save the note</button>
+        ${
+          exerciseNote(state, slotIndex)
+            ? `<button class="big ghost mt" data-act="clear-ex-note" data-si="${slotIndex}">Remove it</button>`
+            : ''
+        }
+        <button class="big ghost mt" data-act="sheet-close">Cancel</button>
+      </div>`);
+    requestAnimationFrame(() => document.getElementById('ex-note')?.focus());
+  },
+
+  async 'save-ex-note'(ctx, data) {
+    const value = document.getElementById('ex-note')?.value?.trim() || '';
+    await setExerciseNote(ctx, Number(data.si), value);
+  },
+
+  async 'clear-ex-note'(ctx, data) {
+    await setExerciseNote(ctx, Number(data.si), '');
+  },
+
   'add-set'(ctx, data) {
     const slotIndex = Number(data.si);
     const planned = ctx.state.plan.sessions.find((s) => s.id === ctx.state.trainSessionId).slots;
@@ -632,27 +905,26 @@ export const actions = {
     drawStepSheet(ctx);
   },
 
+  /** Steppers now say which of the three fields they move. */
   bump(ctx, data) {
     const c = ctx.state.sheetCtx;
     const direction = Number(data.d);
     const unit = ctx.state.settings.unit;
+    const field = data.f || c.field;
 
-    if (c.field === 'load') {
+    if (field === 'load') {
       const stepKg = fromDisplay(stepFor(unit, ctx.state.settings.increment), unit);
       c.load = Math.max(0, roundToIncrement((c.load || 0) + direction * stepKg, 0.01));
-    } else if (c.field === 'reps') {
+    } else if (field === 'reps') {
       c.reps = Math.max(1, (c.reps || 0) + direction);
     } else {
-      c.rpe = Math.min(10, Math.max(5, c.rpe + direction * 0.5));
+      c.rpe = Math.min(10, Math.max(5, (c.rpe ?? 8) + direction * 0.5));
     }
 
-    const input = document.getElementById('stepIn');
-    if (input) {
-      input.value =
-        c.field === 'load' ? Math.round(toDisplay(c.load, unit) * 10) / 10 : c.field === 'reps' ? c.reps : c.rpe;
-    }
+    repaintFields(ctx);
     repaintReadout(ctx);
   },
+
 
   /** Today's ramp, calculated from today's top set. The ramp is not training. */
   'open-ramp'(ctx, data) {
@@ -906,19 +1178,73 @@ export const actions = {
     closeSheet();
     ctx.finishSession();
   },
+
+  /** Start the clock without logging anything. */
+  async 'start-session'(ctx) {
+    await ctx.startSession();
+  },
+
+  async 'toggle-timing'(ctx) {
+    await ctx.setTimingReliable(ctx.state.activeLog?.timingReliable === false);
+  },
 };
 
 /** Inputs inside the set sheet, which must not trigger a re-render. */
+/**
+ * Write the three boxes from state.
+ *
+ * Called by the steppers and by nothing else: a box being typed into must never
+ * have its own text replaced under the cursor, which is why the input handlers
+ * below update state and the readout but not the box they came from.
+ */
+function repaintFields(ctx) {
+  const c = ctx.state.sheetCtx;
+  const unit = ctx.state.settings.unit;
+  const set = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.value = value;
+  };
+  set('in-load', Math.round(toDisplay(c.load ?? 0, unit) * 10) / 10);
+  set('in-reps', c.reps ?? '');
+  set('in-rpe', c.rpe ?? '');
+}
+
+/*
+ * Notes live in `deviations`, which is already the record of how a session
+ * departed from the plan, and already persisted by `saveDeviations`. A note is
+ * exactly that kind of fact.
+ */
+async function setExerciseNote(ctx, slotIndex, value) {
+  const { state } = ctx;
+  const notes = { ...(state.deviations.exerciseNotes || {}) };
+  if (value) notes[String(slotIndex)] = value;
+  else delete notes[String(slotIndex)];
+
+  state.deviations = { ...state.deviations, exerciseNotes: notes };
+  await ctx.saveDeviations();
+  closeSheet();
+  ctx.render();
+}
+
 export const inputs = {
-  step(ctx, value) {
-    const c = ctx.state.sheetCtx;
+  'field-load'(ctx, value) {
+    const parsed = parseNumber(value);
+    // An empty box is mid-edit, not a zero. Leave the last good value alone
+    // until something parses, or clearing the box to retype would log a 0 kg set.
+    if (parsed == null) return;
+    ctx.state.sheetCtx.load = fromDisplay(parsed, ctx.state.settings.unit);
+    repaintReadout(ctx);
+  },
+  'field-reps'(ctx, value) {
     const parsed = parseNumber(value);
     if (parsed == null) return;
-
-    if (c.field === 'load') c.load = fromDisplay(parsed, ctx.state.settings.unit);
-    else if (c.field === 'reps') c.reps = Math.max(1, Math.round(parsed));
-    else c.rpe = Math.min(10, Math.max(5, parsed));
-
+    ctx.state.sheetCtx.reps = Math.max(1, Math.round(parsed));
+    repaintReadout(ctx);
+  },
+  'field-rpe'(ctx, value) {
+    const parsed = parseNumber(value);
+    if (parsed == null) return;
+    ctx.state.sheetCtx.rpe = Math.min(10, Math.max(5, parsed));
     repaintReadout(ctx);
   },
   velocity(ctx, value) {

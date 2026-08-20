@@ -112,6 +112,140 @@ export function rpeFor(ratio, reps) {
  * estimate stops being meaningful, and a number that looks precise and is not
  * is worse than no number.
  */
+/* ═══════════════════════════════════════════════════════════════════════
+   The rough estimate, past the RPE table
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The furthest a rough estimate is offered at all.
+ *
+ * Mayhew was developed and validated to about 15 reps. Past that this is
+ * extrapolation and is labelled as such; past 25 it is not worth printing in
+ * any words, so nothing is.
+ */
+export const MAX_ROUGH_REPS = 25;
+
+/** Past this the estimate is extrapolated beyond where Mayhew was validated. */
+const MAYHEW_VALIDATED_REPS = 15;
+
+/**
+ * A rough one-rep max for sets the RPE table will not touch.
+ *
+ * The table stops at 12 reps and returns nothing past it, on the reasoning that
+ * a number which looks precise and is not is worse than no number. That is
+ * still true — but a real log came back with 15 of 27 sets blank, and "nothing"
+ * turned out to communicate "broken" rather than "unknowable".
+ *
+ * So: a second, weaker estimate, using Mayhew — 1RM = 100w / (52.2 + 41.9
+ * e^-0.055r). Mayhew and Wathen are the two exponential equations, and the
+ * validation literature consistently puts them among the lowest-error formulas
+ * and specifically better than Epley or Brzycki above ten reps, where the
+ * linear and hyperbolic forms break down. Mayhew's exponential form is reported
+ * as effective from 2 to about 15 reps.
+ *
+ * Two things it is not, and both are enforced elsewhere rather than trusted to
+ * be remembered:
+ *
+ *   It is not the e1RM. It never feeds a record, a working-max proposal, an
+ *   index set or a strength chart — those all go through `e1rm`, which is
+ *   unchanged and still refuses past 12 reps. This is a reading for the set in
+ *   front of you, not a claim about your strength.
+ *
+ *   It is not precise. Above ten reps the published equations diverge from
+ *   measured maxes by something like 15-20%, and the number is shown with that
+ *   said rather than implied.
+ *
+ * Sets short of failure are handled the way the RPE table handles them: the
+ * reps you left behind are added to the reps you did, because a set of 15 at
+ * RPE 8 is a set of 17 you stopped early.
+ */
+/** Mayhew's denominator. The whole rep-dependence of the equation lives here. */
+const mayhewDenominator = (reps) => 52.2 + 41.9 * Math.exp(-0.055 * reps);
+
+export function roughE1rm(load, reps, rpe = 10) {
+  if (!load || !reps) return null;
+  if (reps <= MAX_ESTIMABLE_REPS) return null; // the table is better; use it
+  if (reps > MAX_ROUGH_REPS) return null;
+
+  /*
+   * Anchored to the table at its own edge, rather than used raw.
+   *
+   * Mayhew calibrated against a different population on a different lift, and
+   * its absolute values sit systematically below this table's: at twelve reps
+   * to failure the table says 68% of max and Mayhew says about 74%. Used raw,
+   * a thirteen-rep set would have estimated ~10 kg LOWER than a twelve-rep set
+   * at the same weight — one more rep making you look weaker, which reads as a
+   * broken app and would be one.
+   *
+   * So the table supplies the calibration and Mayhew supplies only the shape of
+   * the curve past where the table stops. The two agree exactly at twelve reps
+   * and the estimate rises from there, which is the only behaviour that is not
+   * obviously wrong.
+   */
+  const anchor = e1rm(load, MAX_ESTIMABLE_REPS, 10);
+  if (anchor == null) return null;
+
+  const repsToFailure = reps + Math.max(0, 10 - (rpe ?? 10));
+  return anchor * (mayhewDenominator(MAX_ESTIMABLE_REPS) / mayhewDenominator(repsToFailure));
+}
+
+/**
+ * How much to trust it, in a word the screen can print.
+ *
+ * `rough` inside the range Mayhew was validated over, `very rough` past it.
+ * Never `good` — that word belongs to the RPE table.
+ */
+export function roughConfidence(reps) {
+  if (!reps || reps <= MAX_ESTIMABLE_REPS || reps > MAX_ROUGH_REPS) return null;
+  return reps <= MAYHEW_VALIDATED_REPS ? 'rough' : 'very rough';
+}
+
+/**
+ * How hard the set was, in kilograms.
+ *
+ * The same estimate, recomputed as though the set had been taken to RPE 10 —
+ * that is, the one-rep max this set would imply if it had been all you had.
+ * It rises with load and with reps, so it is a single number you can compare
+ * two sets by without holding their RPEs in your head: 100 x 5 @8 and
+ * 100 x 8 @8 are obviously different amounts of work, and this says by how
+ * much.
+ *
+ * It is not a max and must never be shown as one — a set at RPE 7 produces a
+ * difficulty well below your real max, which is the point. `e1rm` is the
+ * estimate of what you could lift; this is the size of what you did.
+ */
+export function setDifficulty(load, reps) {
+  return e1rm(load, reps, 10);
+}
+
+/**
+ * Why an estimate could not be made, in words, or null when one could.
+ *
+ * Returning nothing at all is defensible — an estimate that cannot be justified
+ * should not be shown — but a blank space where a number usually sits reads as
+ * a broken app rather than a deliberate silence. It cost a gym session's worth
+ * of doubt to find that out: fifteen of twenty-seven sets in a real log came
+ * back empty, and the obvious explanation was the wrong one.
+ */
+export function noEstimateReason(load, reps, rpe, { short = false } = {}) {
+  if (!load) return 'no load recorded';
+  if (!reps) return 'no reps recorded';
+  if (reps > MAX_ESTIMABLE_REPS) {
+    // Repeated against every high-rep set in a session list, the full sentence
+    // is noise; said once beside the set you are logging, it is the answer.
+    if (reps <= MAX_ROUGH_REPS) {
+      return short
+        ? `over ${MAX_ESTIMABLE_REPS} reps — rough only`
+        : `over ${MAX_ESTIMABLE_REPS} reps, so the RPE table cannot be used — the rough figure beside it is a different, weaker estimate`;
+    }
+    return short
+      ? `over ${MAX_ROUGH_REPS} reps`
+      : `over ${MAX_ROUGH_REPS} reps — no formula is worth trusting this far out`;
+  }
+  if (pct(reps, rpe) == null) return `RPE ${rpe} is off the table`;
+  return null;
+}
+
 export function e1rm(load, reps, rpe) {
   if (!load || !reps || reps > MAX_ESTIMABLE_REPS) return null;
   const percentage = pct(reps, rpe);
@@ -487,6 +621,87 @@ export function proposeWorkingMax(currentMax, observations, { atBlockBoundary = 
  *
  * Returns [{ load, reps, restSec }] with the working set last.
  */
+/* ═══════════════════════════════════════════════════════════════════════
+   How long a session takes
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/*
+ * Rough but honest. A rep under control with a pause is about three seconds;
+ * getting into position, unracking and settling is about twenty. These are
+ * estimates and are labelled as such wherever they are shown — the point is not
+ * to predict the minute you finish, it is to answer "how much is left" with
+ * something better than a set count.
+ */
+export const SECONDS_PER_REP = 3;
+export const SET_SETUP_SECONDS = 20;
+const FALLBACK_REST_SECONDS = 120;
+
+/** Seconds a single set costs: getting set, doing the reps, then resting. */
+const setSeconds = (reps, restSec) =>
+  SET_SETUP_SECONDS + (reps || 8) * SECONDS_PER_REP + (restSec ?? FALLBACK_REST_SECONDS);
+
+/**
+ * What the session costs in seconds, warm-ups included.
+ *
+ * The estimate on the Train screen counted work sets only, which is why it read
+ * short: warming up to a heavy single is six ramp sets and the better part of
+ * ten minutes, and none of it was in the number.
+ *
+ * A ramp is charged once per exercise rather than once per slot — the bench
+ * top single and its back-offs are one warm-up between them, not two — and
+ * never for a bodyweight lift, which has no bar to build up.
+ *
+ * `completed` is a set of `slotIndex:setIndex` keys. Anything in it is counted
+ * towards `doneSeconds`, so the remainder is what is genuinely still owed. The
+ * first work set of an exercise carries its warm-up, because that is when the
+ * warm-up actually happens.
+ */
+export function sessionDuration(slots, { exercises = {}, bar = 20, increment = DEFAULT_INCREMENT, prescribedLoads = {}, completed = new Set() } = {}) {
+  const warmedUp = new Set();
+  let total = 0;
+  let done = 0;
+  let warmup = 0;
+  let working = 0;
+
+  (slots || []).forEach((slot, slotIndex) => {
+    const exercise = exercises[slot.ex] || {};
+    const rest = slot.restSec ?? exercise.defaultRestSec ?? FALLBACK_REST_SECONDS;
+    const reps = slot.repsHigh ?? slot.reps ?? 8;
+
+    let rampSeconds = 0;
+    const top = prescribedLoads[slotIndex];
+    if (!exercise.bodyweightLoaded && top != null && !warmedUp.has(slot.ex)) {
+      warmedUp.add(slot.ex);
+      for (const step of warmupRamp(top, { bar, increment })) {
+        if (!step.isWarmup) continue;
+        rampSeconds += SET_SETUP_SECONDS + (step.reps || 0) * SECONDS_PER_REP + (step.restSec || 0);
+      }
+    }
+
+    total += rampSeconds;
+    warmup += rampSeconds;
+
+    for (let i = 0; i < slot.sets; i++) {
+      const cost = setSeconds(reps, rest);
+      total += cost;
+      working += cost;
+      if (completed.has(`${slotIndex}:${i}`)) {
+        done += cost;
+        // The warm-up is spent the moment the first work set of the exercise is.
+        if (i === 0) done += rampSeconds;
+      }
+    }
+  });
+
+  return {
+    totalSeconds: Math.round(total),
+    doneSeconds: Math.round(Math.min(done, total)),
+    remainingSeconds: Math.round(Math.max(0, total - done)),
+    warmupSeconds: Math.round(warmup),
+    workingSeconds: Math.round(working),
+  };
+}
+
 export function warmupRamp(topLoad, { bar = 20, increment = DEFAULT_INCREMENT } = {}) {
   if (!topLoad || topLoad <= bar) return [];
 

@@ -8,6 +8,8 @@
 
 import {
   openDatabase,
+  blockWrites,
+  allowWrites,
   readSettings,
   writeSetting,
   getAll,
@@ -62,9 +64,16 @@ import {
   escape,
   fmtLoad,
   fmtNum,
+  flag,
+  deviceIsolationNote,
   openSheet,
   closeSheet,
+  sheetIsOpen,
+  setSheetHooks,
   stopRest,
+  toggleTimer,
+  resetTimer,
+  openStopwatch,
   fromDisplay,
   toDisplay,
   parseNumber,
@@ -75,9 +84,13 @@ import * as progress from './ui/progress.js';
 import * as plan from './ui/plan.js';
 import * as settings from './ui/settings.js';
 import * as history from './ui/history.js';
+import { demoModeOn, setDemoMode, openDemoDatabase, seedDemoData, DEMO_ROTATIONS } from './demo.js';
 
 const PLAN_URL = './data/plan-fopip-v2.json';
-const TABS = { train: 'Bulk', body: 'Body', prog: 'Progress', plan: 'Plan', set: 'Settings' };
+const TABS = { train: 'Bulk', body: 'Body', prog: 'Progress', plan: 'Plan', log: 'Log', set: 'Settings' };
+
+/** The bottom sections, in order. Settings is reached from the gear. */
+const BOTTOM_TABS = ['train', 'body', 'prog', 'plan', 'log'];
 
 const state = {
   db: null,
@@ -86,6 +99,9 @@ const state = {
   storage: { supported: false, persisted: false },
   integrity: null,
   buildVersion: null,
+  updateVersion: null,
+  shellReport: null,
+  demo: false,
 
   logs: [],
   sets: [],
@@ -117,7 +133,7 @@ const state = {
   exOpen: new Set(['0']),
   cleared: new Set(),
   grips: {},
-  deviations: { swaps: {}, extras: [], addedSets: {} },
+  deviations: { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {} },
   draft: { note: '', bodyweight: '', sessionRpe: '' },
   sheetCtx: null,
 
@@ -250,7 +266,10 @@ async function restoreActiveSession() {
 
   state.activeLog = active;
   state.trainSessionId = active.sessionId;
-  state.deviations = active.deviations || { swaps: {}, extras: [], addedSets: {} };
+  // Restored from the log, not reset to normal. A session opened on a yellow
+  // day used to un-trim itself the moment the app was reopened.
+  state.readiness = active.readiness || 'normal';
+  state.deviations = active.deviations || { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {} };
   state.grips = active.grips || {};
   // Stored values are kilograms; the draft is labelled with the display unit.
   // v1 copied the raw kg straight into a field labelled lb, so a 90 kg session
@@ -268,6 +287,30 @@ async function restoreActiveSession() {
       .map((set) => [`${set.slotIndex}:${set.setIndex}`, set])
   );
   for (const key of state.loggedSets.keys()) state.exOpen.add(key.split(':')[0]);
+}
+
+/**
+ * Re-read one dated store after writing to it.
+ *
+ * Every one of these used to inline its own `getAll(...).sort(...)`, and all
+ * four had drifted from the one in `loadEverything` by dropping the `alive()`
+ * filter. So deleting a weigh-in put it in the bin correctly, and then saving
+ * *any* weigh-in reloaded the store raw and brought the deleted one back — into
+ * History, into the charts, and into the averages — until the next full reload
+ * quietly removed it again. The database was right the whole time; only what
+ * the app was holding was wrong, which is the hardest kind of wrong to notice.
+ *
+ * The fix is not the filter. The fix is that there is one of these now, so it
+ * cannot be applied in one place and forgotten in another.
+ */
+async function reloadDated(store) {
+  const rows = alive(await getAll(state.db, store)).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+  state[store] = rows;
+  // The bin has to be re-read too: saving over a soft-deleted row at the same
+  // date replaces it, and the recovery list would go on offering it back.
+  state.deleted = await deletedRecords(state.db);
+  buildHistory();
+  render();
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -313,6 +356,9 @@ async function ensureActiveLog() {
         blockId: state.block.idx,
         effortMode: state.effortMode,
         readiness: state.readiness || 'normal',
+        // Real until said otherwise: a session logged as it happens is the
+        // normal case, and the switch beside Finish is for the times it is not.
+        timingReliable: true,
         rotationIndex: state.plan.meta.rotationOrder.indexOf(state.trainSessionId),
         bodyweight: null,
         sessionRpe: null,
@@ -492,7 +538,7 @@ async function finishSession() {
   state.loggedSets = new Map();
   state.cleared = new Set();
   state.grips = {};
-  state.deviations = { swaps: {}, extras: [], addedSets: {} };
+  state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {} };
   state.draft = { note: '', bodyweight: '', sessionRpe: '' };
   state.exOpen = new Set(['0']);
   stopRest();
@@ -544,6 +590,10 @@ function resetBodyDraft() {
     steps: daily.steps == null ? '' : String(daily.steps),
     mood: daily.mood == null ? '' : String(daily.mood),
     caffeine: daily.caffeine || '',
+    // No default: blank means "not recorded", and guessing "home" would put a
+    // fact in the database that nobody stated.
+    scale: daily.scale || '',
+    scaleNote: daily.scaleNote || '',
     note: daily.note || '',
     niggleSite: '',
     niggleSeverity: '1',
@@ -552,6 +602,12 @@ function resetBodyDraft() {
   for (const [id] of body.MEASUREMENT_SITES) {
     state.bodyDraft[`m-${id}`] = measurement[id] == null ? '' : String(measurement[id]);
   }
+  // Today's stored choice if there is one, otherwise the default. A row saved
+  // before this field existed has no time against it, and reopening it must not
+  // invent one — but a fresh entry starts on waking, which is the reading that
+  // is actually repeatable.
+  state.bodyDraft.measureTime = measurement.timeOfDay || body.DEFAULT_MEASUREMENT_TIME;
+  state.bodyDraft.measureTimeNote = measurement.timeOfDayNote || '';
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -561,8 +617,9 @@ function resetBodyDraft() {
 function screenFor(tab) {
   if (tab === 'train') return train.view(ctx);
   if (tab === 'body') return body.view(ctx);
-  if (tab === 'prog') return state.progressSection === 'history' ? history.view(ctx) : progress.view(ctx);
+  if (tab === 'prog') return progress.view(ctx);
   if (tab === 'plan') return plan.view(ctx);
+  if (tab === 'log') return history.view(ctx);
   return settings.view(ctx);
 }
 
@@ -587,29 +644,70 @@ function staleBanner() {
   </span></div>`;
 }
 
+/**
+ * The update banner names both versions.
+ *
+ * "A new version is ready" does not tell you what you are moving from, what you
+ * are moving to, or whether it landed. Both numbers are stated here and the
+ * header carries the same pair, so after the reload you can see at a glance
+ * whether the update actually took.
+ */
 function updateBanner() {
   if (!state.updateReady) return '';
   const mid = !!state.activeLog;
+  const from = state.buildVersion || 'the current build';
+  const to = state.updateVersion;
+
   return `<div class="flag f-${mid ? 'warn' : 'info'}" style="margin:0 0 12px"><i>${mid ? '!' : 'i'}</i><span>
-    <b>A new version of Bulk is ready.</b> ${
+    <b>Update ready${to ? `: ${escape(from)} → ${escape(to)}` : ''}.</b> ${
+      to
+        ? ''
+        : `You are on <b>${escape(from)}</b>. `
+    }${
       mid
         ? 'You are part-way through a session — finish it first. Applying an update reloads the app, and an unlogged set would be lost.'
-        : 'It is downloaded and waiting. Applying it reloads the app; your data is untouched.'
+        : 'It is downloaded and waiting. Applying it reloads the app; <b>your training data is untouched</b> — the update replaces code only and never opens the database.'
     }
-    <button data-act="apply-update" style="display:block;margin-top:6px;background:none;border:0;color:var(--s1);font:inherit;font-weight:650;padding:0;cursor:pointer">Update now</button>
+    <button data-act="apply-update" style="display:block;margin-top:6px;background:none;border:0;color:var(--s1);font:inherit;font-weight:650;padding:0;cursor:pointer">Update now${
+      to ? ` — take ${escape(to)}` : ''
+    }</button>
   </span></div>`;
+}
+
+/**
+ * What build is this, in the two words that answer it.
+ *
+ * `not cached` is the honest answer on a development machine, where the offline
+ * shell is deliberately off and there is no worker to ask. With an update
+ * waiting it reads `v2.1.3 → v2.1.4`, because "which version am I moving from
+ * and to" is the question an update banner has to answer and the old one did
+ * not.
+ */
+function versionLabel() {
+  const from = state.buildVersion;
+  const to = state.updateVersion;
+  if (!from) return 'not cached';
+  return to && to !== from ? `${from} → ${to}` : from;
 }
 
 function render() {
   document.getElementById('ttl').textContent = TABS[state.tab];
-  document.getElementById('chip').textContent =
-    state.tab === 'train'
-      ? `Session ${state.trainSessionId}`
-      : `Rotation ${state.cycle.sequence}/${state.plan.meta.rotations}`;
+
+  document.body.classList.toggle('demo', state.demo);
+  document.getElementById('demostrip').hidden = !state.demo;
+
+  const version = document.getElementById('ver');
+  version.textContent = versionLabel();
+  version.classList.toggle('up', !!state.updateVersion && state.updateVersion !== state.buildVersion);
+
+  // Always the rotation, on every screen, and always tappable. The session
+  // letter used to live here and duplicated the session header directly below
+  // it; where you are in 33 rotations is the thing worth carrying everywhere.
+  document.getElementById('chip').textContent = `Rotation ${state.cycle.sequence}/${state.plan.meta.rotations}`;
   document.getElementById('view').innerHTML = staleBanner() + updateBanner() + screenFor(state.tab);
 
-  for (const key of ['train', 'body', 'prog', 'plan']) {
-    document.getElementById(`n-${key === 'prog' ? 'prog' : key}`).classList.toggle('on', key === state.tab);
+  for (const key of BOTTOM_TABS) {
+    document.getElementById(`n-${key}`).classList.toggle('on', key === state.tab);
   }
 }
 
@@ -620,6 +718,7 @@ function render() {
 const ctx = {
   state,
   render,
+  goTo,
   saveSet,
   removeSet,
   saveDeviations,
@@ -645,33 +744,31 @@ const ctx = {
 
   async saveDaily(row) {
     await put(state.db, 'daily', row);
-    state.daily = (await getAll(state.db, 'daily')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-    render();
+    await reloadDated('daily');
   },
 
   async saveMeasurements(row) {
     await put(state.db, 'measurements', row);
-    state.measurements = (await getAll(state.db, 'measurements')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-    render();
+    await reloadDated('measurements');
   },
 
   async saveNiggle(row) {
     await put(state.db, 'niggles', row);
-    state.niggles = (await getAll(state.db, 'niggles')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
     state.bodyDraft.niggleSite = '';
     state.bodyDraft.niggleContext = '';
-    render();
+    await reloadDated('niggles');
   },
 
   async deleteMedia(id, { reason = null } = {}) {
     await softDeleteRow(state.db, 'media', id, { reason });
     await loadEverything();
+    buildHistory();
+    render();
   },
 
   async saveMedia(row) {
     await put(state.db, 'media', row);
-    state.media = (await getAll(state.db, 'media')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-    render();
+    await reloadDated('media');
   },
 
   /** Confirming a working max writes it and appends to the audit history. */
@@ -757,11 +854,28 @@ const ctx = {
    * Selective by date range and by content type.
    */
   async exportZip(options = {}) {
+    /*
+     * `lastBackupISO` is written BEFORE the snapshot, so the archive contains
+     * the same settings the database does.
+     *
+     * Written after, it was a setting the database had and the backup did not,
+     * which meant every export failed the app's own "verify a backup restores"
+     * check the moment it was taken — *settings: 4 records in the backup
+     * against 5 stored*. A verifier that cries wolf on a good backup is worse
+     * than no verifier: it teaches you to ignore the one time it is right.
+     * Importing that archive then rolled the setting back, so a restore quietly
+     * forgot when you last backed up.
+     *
+     * The cost of this order is that a failed export leaves the date optimistic
+     * by one attempt — and a failure is loud, because every write path in the
+     * app reports.
+     */
+    await writeSetting(state.db, 'lastBackupISO', todayISO());
+    state.settings.lastBackupISO = todayISO();
+
     const payload = await snapshot(state.db);
     const { zip, meta } = buildExport(payload, state.plan, options);
     downloadBytes(zip, `bulk-export-${todayISO()}.zip`, 'application/zip');
-    await writeSetting(state.db, 'lastBackupISO', todayISO());
-    state.settings.lastBackupISO = todayISO();
     return meta;
   },
 
@@ -822,9 +936,225 @@ const ctx = {
     return { ok: true };
   },
 
-  /** Today's readiness. Applied to the resolved session, never stored as plan. */
-  setReadiness(value) {
+  /**
+   * Start the clock, without logging anything.
+   *
+   * The session has always started itself on the first tick, and still does —
+   * this is not a step you have to take, and nothing refuses to work without
+   * it. It exists so the warm-up can be inside the recorded session rather than
+   * before it, which is the difference between "68 minutes" and "68 minutes
+   * plus however long I was on the bike".
+   */
+  async startSession() {
+    if (state.activeLog) return state.activeLog;
+    const log = await ensureActiveLog();
+    render();
+    return log;
+  },
+
+  /**
+   * Say whether this session's timestamps mean anything.
+   *
+   * Stored on the log, so it travels with the session and applies to it alone.
+   * Everything except the timing report is unaffected either way.
+   */
+  async setTimingReliable(reliable) {
+    if (!state.activeLog) return;
+    const from = state.activeLog.timingReliable !== false;
+    state.activeLog = { ...state.activeLog, timingReliable: !!reliable };
+    await put(state.db, 'sessionLogs', state.activeLog);
+    await put(state.db, 'auditLog', {
+      atISO: nowISO(), entity: 'sessionLog', entityId: state.activeLog.id, action: 'edit',
+      field: 'timingReliable', from, to: !!reliable,
+    });
+    render();
+  },
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     Repairs
+     ═══════════════════════════════════════════════════════════════════════ */
+
+  /*
+   * Deleting has been recoverable since v2. Editing was not recoverable and,
+   * mostly, was not possible: a session logged on the wrong day stayed on the
+   * wrong day, a set logged against the wrong exercise stayed there, and a
+   * session finished by a mis-tap was finished. The only repair was to delete
+   * the whole thing and log it again from memory.
+   *
+   * Every repair below writes an audit entry naming the field, the old value
+   * and the new one. Nothing about what you did changes without a record of the
+   * change — the same rule the plan position has always been held to.
+   */
+
+  /** Move a session to a different date, taking its sets with it. */
+  async repairSessionDate(logId, dateISO) {
+    const log = state.logs.find((row) => row.id === logId);
+    if (!log) throw new Error('that session no longer exists');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateISO || '')) throw new Error('that is not a date');
+    const from = (log.dateISO || '').slice(0, 10);
+    if (from === dateISO) return { moved: false };
+
+    // The sets carry their own local date, which every per-day figure reads. A
+    // session moved without them would sit on one day while its work sat on
+    // another, and nothing would look wrong until a chart disagreed with a list.
+    const sets = state.sets.filter((set) => set.sessionLogId === logId);
+    await put(state.db, 'sessionLogs', { ...log, dateISO, localDate: dateISO });
+    for (const set of sets) await put(state.db, 'sets', { ...set, localDate: dateISO });
+    await put(state.db, 'auditLog', {
+      atISO: nowISO(), entity: 'sessionLog', entityId: logId, action: 'edit',
+      field: 'dateISO', from, to: dateISO, movedSets: sets.length,
+    });
+
+    await loadEverything();
+    await restoreActiveSession();
+    render();
+    return { moved: true, from, to: dateISO, sets: sets.length };
+  },
+
+  /**
+   * Move a session's start to its first set.
+   *
+   * For the log opened by a tap that was then undone: un-ticking deletes the
+   * set but not the session, so the start instant can sit hours before any work
+   * happened and every duration derived from it is wrong.
+   */
+  async repairSessionStart(logId) {
+    const log = state.logs.find((row) => row.id === logId);
+    if (!log) throw new Error('that session no longer exists');
+
+    const stamps = state.sets
+      .filter((set) => set.sessionLogId === logId && set.timestampISO)
+      .map((set) => set.timestampISO)
+      .sort();
+    if (!stamps.length) return { moved: false };
+
+    const from = log.startedAt;
+    const to = stamps[0];
+    const end = log.endedAt || stamps[stamps.length - 1];
+
+    await put(state.db, 'sessionLogs', { ...log, startedAt: to });
+    await put(state.db, 'auditLog', {
+      atISO: nowISO(), entity: 'sessionLog', entityId: logId, action: 'edit', field: 'startedAt', from, to,
+    });
+
+    await loadEverything();
+    await restoreActiveSession();
+    buildHistory();
+    render();
+    return {
+      moved: true,
+      wasSeconds: from ? Math.round((Date.parse(end) - Date.parse(from)) / 1000) : null,
+      spanSeconds: Math.round((Date.parse(end) - Date.parse(to)) / 1000),
+    };
+  },
+
+  /**
+   * Reopen a finished session so it can be carried on.
+   *
+   * For the session ended by a mis-tap with half the work still to do. Refused
+   * while another session is open, because two active sessions is the state
+   * `startSessionAtomic` exists to prevent.
+   */
+  async reopenSession(logId) {
+    if (state.activeLog) {
+      return { ok: false, reason: `Session ${state.activeLog.sessionId} is already open. Finish that one first.` };
+    }
+    const log = state.logs.find((row) => row.id === logId);
+    if (!log) return { ok: false, reason: 'that session no longer exists' };
+
+    await put(state.db, 'sessionLogs', {
+      ...log, endedAt: null, localEndDate: null, status: 'active', isPartial: false,
+    });
+    await writeSetting(state.db, 'activeSessionLogId', logId);
+    await put(state.db, 'auditLog', {
+      atISO: nowISO(), entity: 'sessionLog', entityId: logId, action: 'reopen', from: log.endedAt, to: null,
+    });
+
+    await loadEverything();
+    await restoreActiveSession();
+    buildHistory();
+    state.tab = 'train';
+    render();
+    return { ok: true, sessionId: log.sessionId };
+  },
+
+  /** Correct one stored set: its numbers, its note, or which exercise it was. */
+  async repairSet(setId, patch) {
+    const set = state.sets.find((row) => row.id === setId);
+    if (!set) throw new Error('that set no longer exists');
+
+    const changed = Object.entries(patch).filter(([key, value]) => (set[key] ?? null) !== (value ?? null));
+    if (!changed.length) return { changed: 0 };
+
+    // The estimate is recomputed from the stored numbers on every read, so
+    // nothing derived has to be corrected alongside them. That is the whole
+    // reason nothing derived is ever stored.
+    await put(state.db, 'sets', { ...set, ...patch });
+    for (const [field, to] of changed) {
+      await put(state.db, 'auditLog', {
+        atISO: nowISO(), entity: 'set', entityId: setId, action: 'edit', field, from: set[field] ?? null, to: to ?? null,
+      });
+    }
+
+    await loadEverything();
+    buildHistory();
+    render();
+    return { changed: changed.length };
+  },
+
+  /** Remove one set, recoverably. */
+  async deleteSet(setId, { reason = null } = {}) {
+    await softDeleteRow(state.db, 'sets', setId, { reason });
+    await loadEverything();
+    buildHistory();
+    render();
+  },
+
+  /**
+   * Today's readiness. Applied to the resolved session, never stored as plan.
+   *
+   * Three things had to be true here and only the first one was.
+   *
+   * It is stored on the session log, and updated when it changes. The log used
+   * to stamp whatever readiness was showing when the *first set* was saved and
+   * never look again, so training a yellow day that you flagged after your
+   * first set was filed in history as a normal one.
+   *
+   * It survives a reload, restored from that log. It used to reset to normal
+   * while the session stayed open, which silently un-trimmed the session you
+   * were half way through.
+   *
+   * And it refuses a change that would reattribute work you have already
+   * logged. See `readinessWouldReindex`.
+   */
+  async setReadiness(value) {
+    const from = state.readiness || 'normal';
+    if (value === from) return;
+
+    if (state.loggedSets.size && train.readinessWouldReindex(state, value)) {
+      openSheet(`<div class="ttl">Not changed</div>
+        <p style="text-align:center;margin:14px 0 6px;font-size:14px;color:var(--ink)">You have <b>${
+          state.loggedSets.size
+        } set${state.loggedSets.size === 1 ? '' : 's'}</b> logged, and a <b>${escape(
+          value
+        )}</b> day removes an exercise from this session.</p>
+        <p style="text-align:center;font-size:13px">Sets are stored against their position in the session, so dropping
+        an exercise would shift every set after it onto the wrong lift. Nothing has been changed.</p>
+        <p style="text-align:center;font-size:13px">If today really is a ${escape(
+          value
+        )} day, finish this session and log the rest as a fresh one — or delete it from History and start again.</p>
+        <button class="big mt" data-act="sheet-close">Leave it on ${escape(from)}</button>`);
+      return;
+    }
+
     state.readiness = value;
+    if (state.activeLog) {
+      state.activeLog = { ...state.activeLog, readiness: value };
+      await put(state.db, 'sessionLogs', state.activeLog);
+      await put(state.db, 'auditLog', {
+        atISO: nowISO(), entity: 'sessionLog', action: 'readiness', id: state.activeLog.id, from, to: value,
+      });
+    }
     render();
   },
 
@@ -895,7 +1225,7 @@ const ctx = {
     await writeSetting(state.db, 'activeSessionLogId', null);
     state.activeLog = null;
     state.loggedSets = new Map();
-    state.deviations = { swaps: {}, extras: [], addedSets: {} };
+    state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {} };
     state.grips = {};
     state.draft = { note: '', bodyweight: '', sessionRpe: '' };
     await loadEverything();
@@ -923,9 +1253,303 @@ const ctx = {
   },
 };
 
+/* ═══════════════════════════════════════════════════════════════════════
+   Where you are, and how back works
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/*
+ * Android's back button is a system gesture, and an installed PWA that ignores
+ * it closes instead of going back — which, four levels into the Plan screen, is
+ * the difference between a step backwards and losing your place entirely.
+ *
+ * Every move between screens pushes a history entry describing where you are.
+ * Back pops it and the app re-renders from what popped, so the browser's own
+ * stack is the source of truth rather than a second one kept alongside it. An
+ * open sheet is a level too: back closes the sheet before it changes screen,
+ * because that is what the gesture means when something is covering the page.
+ */
+const VIEW_KEYS = ['tab', 'progressSection', 'planSection', 'logSection', 'bodySection', 'historyFilter', 'historyStatus', 'logSessionId'];
+
+const currentView = () => Object.fromEntries(VIEW_KEYS.map((key) => [key, state[key] ?? null]));
+
+function applyView(view) {
+  for (const key of VIEW_KEYS) state[key] = view?.[key] ?? null;
+  state.historyFilter = state.historyFilter || 'all';
+  state.historyStatus = state.historyStatus || 'active';
+  state.tab = state.tab || 'train';
+}
+
+/** Move to a screen, recording it so back can return here. */
+function goTo(patch, { replace = false } = {}) {
+  const next = { ...currentView(), ...patch };
+
+  // Moving to a different bottom section starts that section at its own top.
+  if (patch.tab && patch.tab !== state.tab) {
+    next.progressSection = patch.progressSection ?? null;
+    next.planSection = patch.planSection ?? null;
+    next.logSection = patch.logSection ?? null;
+    next.bodySection = patch.bodySection ?? null;
+  }
+
+  applyView(next);
+  closeSheet();
+  try {
+    // `window.` is not decoration here: this module imports the History *screen*
+    // as `history`, which shadows the global. Without the prefix this reads as
+    // ui/history.js and throws "history.replaceState is not a function" during
+    // boot, which takes the whole app down.
+    if (replace) window.history.replaceState({ view: next }, '');
+    else window.history.pushState({ view: next }, '');
+  } catch {
+    // A browser that refuses the history entry still navigates; it just cannot
+    // offer back. Never a reason to fail the tap itself.
+  }
+  render();
+  window.scrollTo(0, 0);
+}
+
+/*
+ * A covering sheet is a level of its own.
+ *
+ * It gets a real history entry when it opens, because back with something over
+ * the page has to mean "close that", and it can only mean that if there is an
+ * entry to spend. Without one — on the first screen, before any navigation —
+ * the back gesture went straight past the app, which on an installed PWA means
+ * closing it with a set editor open.
+ *
+ * Closing a sheet by tapping spends the entry too, so the stack does not grow
+ * a stale level per sheet. `poppingBack` stops that from recursing: when the
+ * close was itself caused by a back press, the entry is already gone.
+ */
+let sheetEntry = false;
+let ignoreNextPop = false;
+
+function onSheetOpen() {
+  if (sheetEntry) return;
+  sheetEntry = true;
+  try {
+    window.history.pushState({ sheet: true, view: currentView() }, '');
+  } catch {
+    sheetEntry = false;
+  }
+}
+
+function onSheetClose({ fromBack }) {
+  if (!sheetEntry) return;
+  sheetEntry = false;
+  if (fromBack) return;
+  ignoreNextPop = true;
+  try {
+    window.history.back();
+  } catch {
+    ignoreNextPop = false;
+  }
+}
+
+/*
+ * Two things the on-screen keyboard breaks, and neither can be fixed in CSS
+ * alone.
+ *
+ * The sheet is anchored to the bottom of the *layout* viewport, which the
+ * keyboard covers rather than shrinks — so "Log this set" ended up behind it
+ * and every single set needed a scroll before it could be saved. visualViewport
+ * reports how much is actually visible; the difference is the keyboard, and the
+ * sheet is lifted by exactly that. Browsers without visualViewport keep the old
+ * behaviour rather than getting a guess.
+ *
+ * And a number box that already holds 9 appends when you type 10, giving 910 or
+ * 109 depending on where the caret landed. Selecting the contents on focus
+ * makes the first keystroke replace them, which is what typing into a field
+ * showing a current value is universally taken to mean. Deferred a frame
+ * because Android Chrome moves the caret itself after focus.
+ */
+/*
+ * The elapsed clock on the Train screen.
+ *
+ * Same rule as the rest timer, for the same reason: the element carries the
+ * instant the session started and every repaint subtracts it from Date.now().
+ * Nothing accumulates, so a throttled or suspended interval costs a late
+ * redraw and never a wrong number. The element is rewritten by every render,
+ * which is why this reads it from the DOM each time rather than holding a
+ * reference to it.
+ */
+function paintSessionClock() {
+  const el = document.getElementById('sess-elapsed');
+  const since = el?.dataset.since;
+  if (!el || !since) return;
+  const seconds = Math.max(0, (Date.now() - Date.parse(since)) / 1000);
+  const value = Math.round(seconds);
+  const h = Math.floor(value / 3600);
+  const m = Math.floor((value % 3600) / 60);
+  const sec = value % 60;
+  el.textContent = h
+    ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+    : `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+function wireSessionClock() {
+  setInterval(paintSessionClock, 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) paintSessionClock();
+  });
+  window.addEventListener('focus', paintSessionClock);
+}
+
+function wireKeyboardHandling() {
+  const viewport = window.visualViewport;
+  if (viewport) {
+    const fit = () => {
+      const covered = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+      // Ignore the few pixels a URL bar contributes; only a keyboard is worth moving for.
+      document.documentElement.style.setProperty('--kb', `${covered > 120 ? covered : 0}px`);
+    };
+    viewport.addEventListener('resize', fit);
+    viewport.addEventListener('scroll', fit);
+    fit();
+  }
+
+  document.addEventListener('focusin', (event) => {
+    const el = event.target;
+    if (!(el instanceof HTMLInputElement)) return;
+    if (el.dataset.pick === undefined) return;
+    requestAnimationFrame(() => {
+      try {
+        el.select();
+      } catch {
+        // Some browsers refuse select() on a number input. Not worth failing a tap over.
+      }
+    });
+  });
+}
+
+function wireBackButton() {
+  setSheetHooks({ onOpen: onSheetOpen, onClose: onSheetClose });
+  window.history.replaceState({ view: currentView() }, '');
+
+  window.addEventListener('popstate', (event) => {
+    // Our own doing: a sheet was closed by a tap and gave its entry back.
+    if (ignoreNextPop) {
+      ignoreNextPop = false;
+      return;
+    }
+    if (sheetIsOpen()) {
+      sheetEntry = false;
+      closeSheet({ fromBack: true });
+      render();
+      return;
+    }
+    if (event.state?.view) {
+      applyView(event.state.view);
+      render();
+      window.scrollTo(0, 0);
+    }
+  });
+}
+
 const globalActions = {
   'reload-app'() {
     location.reload();
+  },
+
+  /**
+   * Which build is this, and is it whole?
+   *
+   * Reached from the version in the header. Everything here answers a question
+   * that used to need a developer: what am I running, is an update waiting,
+   * are all the offline files actually present, and where does this data live.
+   */
+  'about-build'() {
+    const from = state.buildVersion;
+    const to = state.updateVersion;
+    const shell = state.shellReport;
+
+    openSheet(`<div class="ttl">This build</div>
+      <p style="text-align:center;font-size:30px;font-weight:800;margin:14px 0 2px;letter-spacing:-.02em;font-variant-numeric:tabular-nums">${escape(
+        from || 'not cached'
+      )}</p>
+      <p style="text-align:center;font-size:13px;margin:0 0 12px">${
+        from
+          ? 'the version running on this device right now'
+          : 'served straight from a development machine, with the offline shell switched off so every edit is visible'
+      }</p>
+      ${
+        to && to !== from
+          ? `<div class="flag f-info"><i>i</i><span><b>${escape(from)} → ${escape(to)}</b> is downloaded and waiting.
+              Applying it reloads the app. It replaces code only — the update path never opens your database.</span></div>
+             <button class="big mt" data-act="apply-update">Update now — take ${escape(to)}</button>`
+          : from
+            ? flag('ok', '✓', '<b>This is the newest build this device has seen.</b> The app checks for a new one every time it starts.')
+            : ''
+      }
+      ${
+        shell
+          ? flag(
+              shell.offline ? 'warn' : 'ok',
+              shell.offline ? '!' : '✓',
+              shell.offline
+                ? `<b>Offline shell not verified.</b> There was no connection to check against. The app still runs on what is already cached.`
+                : `<b>Offline shell complete — ${shell.checked} files.</b>${
+                    shell.restored ? ` ${shell.restored} were missing and have been put back.` : ' Nothing was missing.'
+                  } This is what lets the app run with no signal, and with the website gone.`
+            )
+          : ''
+      }
+      <h3>Where this data lives</h3>
+      ${deviceIsolationNote()}
+      <p class="hint">Plan <b>${escape(state.plan.meta.id)}</b> · plan format ${state.plan.format} ·
+        database v${state.integrity?.formatVersion ?? '—'}</p>
+      <button class="big ghost mt" data-act="sheet-close">Close</button>`);
+  },
+
+  /**
+   * Into and out of demo mode.
+   *
+   * Both directions reload. The database handle, the write lock and every
+   * derived thing in `state` are decided during boot, and re-deriving them in
+   * place would be a second code path doing the same job as the first — the
+   * kind that works until the day it does not. A reload has one path, and it is
+   * the one that runs every time the app starts.
+   */
+  'demo-on'() {
+    openSheet(`<div class="ttl">Turn on demo mode</div>
+      <p style="text-align:center;font-size:13.5px;margin:14px 0 10px;color:var(--ink)">Every screen and chart fills
+      with <b>twelve rotations of invented training</b>, so you can see what the app looks like with a history behind it.</p>
+      ${flag('ok', '✓', `<b>Your real data is not at risk, by construction.</b> Demo data lives in a separate database. While
+        demo mode is on the app does not open your real log at all — so there is nothing for it to damage, and turning
+        demo mode off gives it back exactly as it is now.`)}
+      ${flag('ok', '✓', `<b>Nothing can be logged.</b> Writing is switched off at the database, not hidden in the screens.
+        A save button that still works would fail loudly rather than quietly succeed.`)}
+      ${flag('info', 'i', `<b>It is unmistakable.</b> An orange band sits in the header on every screen until you turn it off.`)}
+      <button class="big mt" data-act="demo-on-confirm">Show me the demo</button>
+      <button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
+  },
+
+  'demo-on-confirm'() {
+    if (!setDemoMode(true)) {
+      openSheet(`<div class="ttl">Could not switch</div>
+        <p style="text-align:center;font-size:13.5px;margin:14px 0">This browser will not let the app remember the
+        setting, so demo mode cannot be turned on. Your data is untouched.</p>
+        <button class="big mt" data-act="sheet-close">Close</button>`);
+      return;
+    }
+    location.reload();
+  },
+
+  'demo-off'() {
+    setDemoMode(false);
+    location.reload();
+  },
+
+  /** The rotation chip goes where the rotation is explained. */
+  'chip-tap'() {
+    state.tab = 'plan';
+    state.planSection = null;
+    closeSheet();
+    render();
+    // After the render, or the anchor does not exist yet.
+    requestAnimationFrame(() => {
+      document.getElementById('periodisation')?.scrollIntoView({ block: 'start' });
+    });
   },
 
   /**
@@ -1002,20 +1626,14 @@ const globalActions = {
   },
 
   readiness(ctx, data) {
-    ctx.setReadiness(data.id);
+    return ctx.setReadiness(data.id);
   },
 
   tab(_ctx, data) {
-    state.tab = data.tab;
-    if (data.tab !== 'prog') state.progressSection = null;
-    closeSheet();
-    render();
-    window.scrollTo(0, 0);
+    goTo({ tab: data.tab });
   },
   settings() {
-    state.tab = 'set';
-    render();
-    window.scrollTo(0, 0);
+    goTo({ tab: 'set' });
   },
   'sheet-close'() {
     closeSheet();
@@ -1023,6 +1641,15 @@ const globalActions = {
   },
   'rest-skip'() {
     stopRest();
+  },
+  'rest-toggle'() {
+    toggleTimer();
+  },
+  'rest-reset'() {
+    resetTimer();
+  },
+  'open-timer'() {
+    openStopwatch();
   },
   async unit(_ctx, data) {
     const from = state.settings.unit;
@@ -1075,6 +1702,22 @@ function downloadBytes(data, filename, type) {
 }
 
 function showFailure(error) {
+  /*
+   * A refusal is not a failure. In demo mode every write is turned away at the
+   * database on purpose, and reporting that as "that did not save" would read
+   * as a bug in the app rather than the guarantee it actually is.
+   */
+  if (state.demo) {
+    openSheet(`<div class="ttl">Nothing saves in demo mode</div>
+      <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">That is the point of it — writing is
+      switched off at the database, so it is not possible rather than merely discouraged.</p>
+      <p style="text-align:center;font-size:13px">Your real training log is in a different database and has not been
+      opened since demo mode came on. Turn demo mode off and it is exactly as you left it.</p>
+      <button class="big mt" data-act="demo-off">Back to my data</button>
+      <button class="big ghost mt" data-act="sheet-close">Keep looking around</button>`);
+    return;
+  }
+
   console.error(error);
   openSheet(`<div class="ttl">That did not save</div>
     <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">${escape(error.message || String(error))}</p>
@@ -1120,11 +1763,23 @@ function wireEvents() {
     slot.classList.add('on');
   });
 
+  /*
+   * Typing and changing a field write too, and until now only *clicking*
+   * reported a failure. `persistDraft` saves the session note and bodyweight on
+   * every keystroke, and `changeHandlers` writes the unit, the increment and
+   * the bodyweight — all three returned promises nobody was watching, so a
+   * write that failed produced an unhandled rejection in the console and
+   * nothing at all on screen.
+   *
+   * Silence is the one outcome this app is not allowed to have: it is how a
+   * session goes unrecorded without anyone noticing. Every path that can write
+   * now ends at `showFailure`, the same as a tap does.
+   */
   document.addEventListener('input', (event) => {
     const el = event.target;
     if (el.dataset.bind) {
       state.draft[el.dataset.bind] = el.value;
-      persistDraft();
+      Promise.resolve(persistDraft()).catch(showFailure);
       return;
     }
     if (el.dataset.bodyField) {
@@ -1132,12 +1787,14 @@ function wireEvents() {
       return;
     }
     const input = el.dataset.actInput;
-    if (input) (train.inputs[input] || plan.inputs[input])?.(ctx, el.value);
+    if (input) {
+      Promise.resolve((train.inputs[input] || plan.inputs[input])?.(ctx, el.value)).catch(showFailure);
+    }
   });
 
   document.addEventListener('change', (event) => {
     const name = event.target.dataset.actChange;
-    if (name) changeHandlers[name]?.(event.target.value);
+    if (name) Promise.resolve(changeHandlers[name]?.(event.target.value)).catch(showFailure);
 
     const fileAction = event.target.dataset.actFile;
     if (fileAction && event.target.files?.length) {
@@ -1166,7 +1823,31 @@ async function boot() {
   const response = await fetch(PLAN_URL);
   if (!response.ok) throw new Error(`Could not load the plan (${response.status} ${response.statusText}).`);
   state.plan = await response.json();
-  state.db = await openDatabase();
+
+  /*
+   * Which database — and it is a decision made once, here, before anything else
+   * happens. In demo mode the app opens `bulk-demo` and never opens the real
+   * log at all, which is why turning demo mode off cannot have cost anything:
+   * there was no handle through which it could have.
+   *
+   * The seed runs with writes still allowed, because filling the demo database
+   * is a write. The lock goes on immediately afterwards and stays on for the
+   * whole session, so from the first render onwards nothing anywhere in the app
+   * can commit a readwrite transaction.
+   */
+  state.demo = demoModeOn();
+  if (state.demo) {
+    state.db = await openDemoDatabase();
+    if (!(await getAll(state.db, 'sessionLogs')).length) {
+      await seedDemoData(state.db, state.plan, { rotations: DEMO_ROTATIONS });
+    }
+    blockWrites(
+      'Demo mode is on, so nothing can be saved. Turn it off in Settings to get back to your own training log.'
+    );
+  } else {
+    allowWrites();
+    state.db = await openDatabase();
+  }
 
   const settings = await readSettings(state.db);
   state.settings = {
@@ -1200,6 +1881,9 @@ async function boot() {
   window.addEventListener('pagehide', () => state.tabLock?.release());
 
   wireEvents();
+  wireBackButton();
+  wireKeyboardHandling();
+  wireSessionClock();
   render();
 
   // Asked for after the first render, so the prompt never delays the screen.
@@ -1245,6 +1929,11 @@ function registerServiceWorker() {
         // update, not a first install. A first install has nothing to offer.
         if (worker && worker.state === 'installed' && navigator.serviceWorker.controller) {
           state.updateReady = true;
+          // Ask the waiting build what it calls itself, so the banner can name
+          // both ends of the move rather than only saying that one exists.
+          // A build older than v2.2.0 does not answer this and the banner
+          // falls back to naming the current version alone.
+          worker.postMessage('waiting-version');
           render();
         }
       };
@@ -1258,9 +1947,20 @@ function registerServiceWorker() {
       navigator.serviceWorker.addEventListener('message', (event) => {
         if (event.data?.version) {
           state.buildVersion = event.data.version;
-          if (state.tab === 'set') render();
+          render();
         }
-        if (event.data?.shell) state.shellReport = event.data.shell;
+        // Sent by the build that is waiting, not the one in control. Kept in a
+        // separate field precisely so the two can never be confused — showing
+        // the incoming version as the running one would be worse than showing
+        // nothing.
+        if (event.data?.waitingVersion) {
+          state.updateVersion = event.data.waitingVersion;
+          render();
+        }
+        if (event.data?.shell) {
+          state.shellReport = event.data.shell;
+          render();
+        }
       });
       navigator.serviceWorker.controller?.postMessage('version');
       // Ask the worker to top up anything missing from the offline shell. A

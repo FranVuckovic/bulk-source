@@ -7,7 +7,7 @@
  * rounding drift into a single stored number.
  */
 
-import { escape, fmtNum, toDisplay, flag, openSheet, closeSheet } from './components.js';
+import { escape, fmtNum, toDisplay, flag, deviceIsolationNote, openSheet, closeSheet } from './components.js';
 
 const bytes = (n) =>
   n == null ? '—' : n > 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n > 1e6 ? `${(n / 1e6).toFixed(0)} MB` : `${(n / 1e3).toFixed(0)} KB`;
@@ -115,10 +115,48 @@ export function view(ctx) {
     <button class="big danger mt" data-act="erase">Erase all data</button>
     <p class="hint">Requires typing ERASE. Everything logged goes: sessions, sets, weigh-ins, measurements, photos and maxes. The plan file is untouched.</p></div>
 
+  <h3>Demo mode</h3>
+  <div class="card">
+    ${
+      state.demo
+        ? `${flag('warn', '!', `<b>Demo mode is on.</b> Everything on every screen is invented — twelve rotations of
+             generated training. Nothing here is yours and nothing can be saved.`)}
+           <button class="big mt" data-act="demo-off">Turn it off and go back to my data</button>
+           <p class="hint">Your real log is in a different database and has not been opened since demo mode came on.
+           Turning it off gives it back exactly as it was.</p>`
+        : `<p style="margin:0 0 10px">Fills every screen and chart with twelve rotations of invented training, so you
+             can see what the app looks like with a history behind it${
+               state.logs.length ? '' : ' — useful before you have logged much'
+             }.</p>
+           ${flag('ok', '✓', `<b>Your real data cannot be touched by it.</b> The demo runs on a separate database and
+             writing is switched off entirely while it is on.`)}
+           <button class="big ghost" data-act="demo-on">Turn on demo mode</button>`
+    }
+  </div>
+
+  <h3>Where this data lives</h3>
+  <div class="card">
+    ${deviceIsolationNote()}
+  </div>
+
   <h3>About</h3>
-  <div class="card"><p style="margin:0">Bulk · build <b>${escape(state.buildVersion || 'not cached')}</b> ·
-    plan format ${state.plan.format} · database v${state.integrity?.formatVersion ?? '—'} ·
-    ${escape(state.plan.meta.id)}</p>
+  <div class="card">
+    <p style="margin:0 0 2px;font-size:22px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums">${escape(
+      state.buildVersion || 'not cached'
+    )}${
+      state.updateVersion && state.updateVersion !== state.buildVersion
+        ? ` <span style="color:var(--s1);font-size:15px;font-weight:700">→ ${escape(state.updateVersion)}</span>`
+        : ''
+    }</p>
+    <p style="margin:0 0 10px">${
+      state.updateVersion && state.updateVersion !== state.buildVersion
+        ? `You are running <b>${escape(state.buildVersion)}</b>. <b>${escape(
+            state.updateVersion
+          )}</b> is downloaded and waiting for you to take it.`
+        : 'The build running on this device. The same number is in the header on every screen.'
+    }</p>
+    <p style="margin:0">Plan format ${state.plan.format} · database v${state.integrity?.formatVersion ?? '—'} ·
+      ${escape(state.plan.meta.id)}</p>
     <p class="hint">The build number comes from the service worker's version. If you update the app and this does not
     change, the update has not reached this device — close every tab and reopen. It reads <b>not cached</b> when the
     app is being served from a development machine, where the offline shell is deliberately switched off so edits
@@ -299,12 +337,21 @@ export const actions = {
       <button class="big mt" data-act="sheet-close">Close</button>`);
   },
 
+  /*
+   * Erase offers the backup before it takes anything, the way deleting an entry
+   * and emptying the bin already did. It was the one destructive path in the
+   * app that told you a backup would have been a good idea instead of handing
+   * you one — and it is the destructive path that takes everything.
+   */
   erase(ctx) {
     openSheet(`<div class="ttl">Erase everything</div>
       <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">This deletes <b>${
         ctx.state.logs.length
       } sessions</b>, <b>${ctx.state.sets.length} sets</b> and every weigh-in, measurement, niggle and photo.</p>
-      <p style="text-align:center;font-size:13px">It cannot be undone and there is no backup unless you made one. Type <b>ERASE</b> to confirm.</p>
+      <p style="text-align:center;font-size:13px">It cannot be undone, and unlike deleting an entry it does not go to
+      the bin — it is gone. Take the backup first; it is one tap and it costs nothing.</p>
+      <button class="big mt" data-act="history-backup">Export a backup first</button>
+      <p style="text-align:center;font-size:13px;margin-top:14px">Then type <b>ERASE</b> to confirm.</p>
       <input id="erase-confirm" type="text" placeholder="ERASE" style="text-align:center;text-transform:uppercase" autocomplete="off">
       <button class="big danger mt" data-act="erase-confirm">Erase all data</button>
       <button class="big ghost mt" data-act="sheet-close">Cancel</button>`);

@@ -26,17 +26,23 @@
 <link rel="icon" href="./icons/icon-192-v2.png" type="image/png">
 </head>
 <body>
-<div class="top"><div class="row">
-  <h1 id="ttl">Bulk</h1>
-  <span class="chip" id="chip"></span>
+<div class="top" id="top"><div class="row">
+  <div class="idt"><h1 id="ttl">Bulk</h1><button class="ver" id="ver" data-act="about-build" aria-label="Which build is running"></button></div>
+  <button class="chip" id="chip" data-act="chip-tap"></button>
   <button class="gear" data-act="settings" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 7 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H1a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 2.6 7a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H7a1.7 1.7 0 0 0 1-1.5V1a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V7a1.7 1.7 0 0 0 1.5 1H23a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" transform="translate(0.5,0.5) scale(0.96)"/></svg></button>
-</div></div>
+</div>
+<div class="demostrip" id="demostrip" hidden><b>DEMO DATA</b> · nothing here is real<button data-act="demo-off">Back to my data</button></div>
+</div>
 
 <div class="wrap" id="view"></div>
 
 <div class="rest" id="rest">
-  <div><div class="l">Rest</div><div class="t" id="rt">3:00</div></div>
-  <button data-act="rest-skip">Skip</button>
+  <div><div class="l" id="rl">Rest</div><div class="t" id="rt">3:00</div></div>
+  <div class="rbtns">
+    <button id="rest-toggle" data-act="rest-toggle">Pause</button>
+    <button data-act="rest-reset">Reset</button>
+    <button data-act="rest-skip">Close</button>
+  </div>
 </div>
 
 <div class="sheet" id="sheet"><div class="bg" data-act="sheet-close"></div><div class="pan" id="pan"></div></div>
@@ -46,6 +52,7 @@
   <button id="n-body" data-act="tab" data-tab="body"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.6"/><path d="M12 7.6v7M12 14.6l-3 6.4M12 14.6l3 6.4M7 10.5l5-1 5 1"/></svg>Body</button>
   <button id="n-prog" data-act="tab" data-tab="prog"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M7.5 15l3.5-4.5 3 2.5L20 7"/></svg>Progress</button>
   <button id="n-plan" data-act="tab" data-tab="plan"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5zM9 8.5h6M9 12h6M9 15.5h4"/></svg>Plan</button>
+  <button id="n-log" data-act="tab" data-tab="log"><svg viewBox="0 0 24 24"><path d="M12 7v5l3.5 2"/><circle cx="12" cy="12" r="8.5"/></svg>Log</button>
 </nav>
 
 <script type="module" src="./js/app.js"></script>

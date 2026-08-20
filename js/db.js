@@ -12,6 +12,13 @@
 
 export const DB_NAME = 'bulk';
 
+/**
+ * Demo mode's database. A different name is a different database: IndexedDB
+ * gives no way for one to read, write or even see the other, so the real log is
+ * not protected by care taken here — it is out of reach.
+ */
+export const DEMO_DB_NAME = 'bulk-demo';
+
 /** Bump this and add a migration. Never edit an existing migration. */
 export const DB_VERSION = 3;
 
@@ -305,12 +312,48 @@ export function openDatabase({
   });
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   The write lock
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/*
+ * Every write in this app — a set, a setting, a soft delete, an import, a
+ * cascade — reaches IndexedDB through `withTransaction` and nothing else.
+ * `writeSetting` goes through `put`, `put` goes through here; there is exactly
+ * one `db.transaction(` call in the codebase and it is eleven lines below.
+ *
+ * That is what makes this lock worth having rather than decorative. Demo mode
+ * needs writing to be *impossible*, not hidden: a screen that merely stops
+ * drawing its save buttons is one forgotten button away from being wrong, and
+ * the thing on the other side of that mistake is months of training. Refusing
+ * at the only door means a write attempted from anywhere fails loudly, whether
+ * or not anyone remembered this feature existed.
+ *
+ * Demo mode also runs against a different database entirely, so this is the
+ * second of two independent guarantees rather than the only one.
+ */
+let writesBlocked = null;
+
+/** Refuse every write until `allowWrites()`. The reason is what the user sees. */
+export function blockWrites(reason) {
+  writesBlocked = reason || 'Writing is switched off.';
+}
+
+export function allowWrites() {
+  writesBlocked = null;
+}
+
+export const writesAreBlocked = () => writesBlocked;
+
 /**
  * Runs `body` inside one transaction and resolves when the transaction
  * completes — not when the last request succeeds. Anything that writes must
  * wait for the commit, or a reload straight after logging a set can lose it.
  */
 export function withTransaction(db, storeNames, mode, body) {
+  if (mode === 'readwrite' && writesBlocked) {
+    return Promise.reject(new Error(writesBlocked));
+  }
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeNames, mode);
     let result;
@@ -701,7 +744,15 @@ export const alive = (rows) => (rows || []).filter((row) => !row.deletedAtISO);
    ═══════════════════════════════════════════════════════════════════════ */
 
 /** Stores whose rows can be soft-deleted and brought back. */
-export const RECOVERABLE_STORES = Object.freeze(['daily', 'measurements', 'niggles', 'media']);
+/*
+ * `sets` is recoverable too. Deleting one set out of a session — the duplicate
+ * you logged twice, the one you put on the wrong exercise — is a correction
+ * people make, and until it was reachable from the Log the only delete that
+ * touched a set was un-ticking it on the Train screen, which destroyed it
+ * outright. Everything the app removes should be somewhere you can get it back
+ * from.
+ */
+export const RECOVERABLE_STORES = Object.freeze(['daily', 'measurements', 'niggles', 'media', 'sets']);
 
 /*
  * Not every store is keyed by an autoincrementing id: a weigh-in is keyed by
@@ -759,11 +810,24 @@ export async function restoreRow(db, storeName, id) {
 /** Everything currently in the bin, newest deletion first. */
 export async function deletedRecords(db) {
   const out = [];
+
+  /*
+   * Deleting a session soft-deletes its sets with it, so every one of the
+   * twenty-seven would otherwise appear in the bin as its own restorable row,
+   * beside the session that already restores all of them. A set is listed here
+   * only when it was deleted on its own — the duplicate, the one logged against
+   * the wrong exercise. If its session is in the bin too, the session is the
+   * thing you put back.
+   */
+  const deletedLogs = new Set(
+    (await getAll(db, 'sessionLogs')).filter((log) => log.deletedAtISO).map((log) => log.id)
+  );
+
   for (const store of ['sessionLogs', ...RECOVERABLE_STORES]) {
     for (const row of await getAll(db, store)) {
-      if (row.deletedAtISO) {
-        out.push({ store, id: storeKeyOf(store, row), deletedAtISO: row.deletedAtISO, row });
-      }
+      if (!row.deletedAtISO) continue;
+      if (store === 'sets' && deletedLogs.has(row.sessionLogId)) continue;
+      out.push({ store, id: storeKeyOf(store, row), deletedAtISO: row.deletedAtISO, row });
     }
   }
   return out.sort((a, b) => b.deletedAtISO.localeCompare(a.deletedAtISO));

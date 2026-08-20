@@ -20,7 +20,7 @@
  * is obvious from inside the app whether an update actually landed.
  */
 
-const VERSION = 'v2.1.3';
+const VERSION = 'v2.4.0';
 const CACHE = `bulk-${VERSION}`;
 
 const SHELL = [
@@ -34,6 +34,7 @@ const SHELL = [
   './js/cycle.js',
   './js/dates.js',
   './js/db.js',
+  './js/demo.js',
   './js/export.js',
   './js/photos.js',
   './js/plan.js',
@@ -125,6 +126,13 @@ async function repairShell() {
 
 self.addEventListener('message', (event) => {
   if (event.data === 'version') event.source?.postMessage({ version: VERSION });
+
+  // Asked of the *waiting* worker, by a page the active worker is still
+  // serving. The reply is deliberately a different key from `version`: the page
+  // has one field for the build it is running and another for the build queued
+  // behind it, and an update banner that named the wrong one would be worse
+  // than one that named neither.
+  if (event.data === 'waiting-version') event.source?.postMessage({ waitingVersion: VERSION });
 
   // Sent only when the app has confirmed with the user that now is a safe
   // moment — no active session, nothing half-logged.

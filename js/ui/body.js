@@ -21,6 +21,91 @@ export const MEASUREMENT_SITES = [
   ['neck', 'Neck'],
 ];
 
+/**
+ * Exactly where and how, for every site.
+ *
+ * A tape measure is precise to a millimetre and repeatable to nothing at all
+ * unless the protocol is fixed. Half a centimetre of drift in where you put the
+ * tape is a fortnight of real arm growth, so an inconsistent measurement is not
+ * a slightly worse measurement — it is noise wearing the costume of a number.
+ *
+ * This is the protocol already in use: everything relaxed and unflexed, arms
+ * straight, taken at the midpoint of the muscle. It is written down here so it
+ * survives being forgotten, and so the first reading and the fortieth are
+ * comparable.
+ */
+export const MEASUREMENT_HOW = {
+  waist: 'At the navel, standing relaxed. Do not suck in and do not push out — breathe out normally and take it at the end of the breath. This is the single most important one: it is what separates a lean bulk from a fat one.',
+  chest: 'Around the widest part, under the armpits and across the nipples. Arms relaxed at your sides, not lifted. Breathe out normally first.',
+  shoulders: 'Around the widest point of the delts, arms hanging relaxed. Keep the tape level all the way round — this one drifts the most if you rush it.',
+  armL: 'Left arm hanging straight and relaxed, NOT flexed. Midway between shoulder and elbow.',
+  armR: 'Right arm hanging straight and relaxed, NOT flexed. Midway between shoulder and elbow. Expect it to differ from the left; that is normal.',
+  quadL: 'Left leg, standing with weight even on both feet. Midway between hip and knee.',
+  quadR: 'Right leg, standing with weight even on both feet. Midway between hip and knee.',
+  neck: 'Just below the Adam\u2019s apple, tape level. Relaxed, looking straight ahead.',
+};
+
+/** The rules that apply to every site, not just one. */
+export const MEASUREMENT_RULES = [
+  'Relaxed and unflexed, every time. A flexed arm and a relaxed arm are two different measurements and mixing them makes the trend meaningless.',
+  'Same time of day, every time \u2014 the field above records which. Waking, before food or water, is the one that repeats.',
+  'Tape snug against the skin but not compressing it. Pulled tight it reads smaller, and how tight you pull varies with your mood.',
+  'Same spot, every time. Midpoint of the muscle, and level all the way round.',
+  'Once a week is plenty. Judge on 2\u20133 week trends, never on one reading.',
+];
+
+/**
+ * When the tape was read.
+ *
+ * The plan asks for the waist at the navel, relaxed, *at the same time of day*,
+ * because that is the measurement that separates a lean bulk from a fat one and
+ * it moves by more than a week's real change between waking and bedtime. Two
+ * readings taken at different times are not comparable, and until now nothing
+ * recorded which was which.
+ *
+ * Waking is the default because it is the one that is reliably repeatable:
+ * before food, before water, before training.
+ */
+/**
+ * Which scale the weight came off.
+ *
+ * Two scales rarely agree, and a bulk is read from a trend of a few hundred
+ * grams a week — so a week logged on the gym scale next to a week logged at
+ * home can invent a gain or hide one. Recording which is what makes that
+ * visible instead of silent.
+ *
+ * Deliberately optional, with no default. Most weigh-ins are on the same scale
+ * and asking every morning would be noise; a blank means "not recorded", which
+ * is honest, rather than "home", which would be a guess.
+ */
+export const SCALES = [
+  ['home', 'Home scale'],
+  ['gym', 'Gym scale'],
+  ['other', 'Other'],
+];
+
+export const scaleLabel = (row) => {
+  if (!row?.scale) return null;
+  if (row.scale === 'other') return row.scaleNote || 'Other scale';
+  return (SCALES.find(([id]) => id === row.scale) || [])[1] || row.scale;
+};
+
+export const MEASUREMENT_TIMES = [
+  ['waking', 'After waking up'],
+  ['pre-gym', 'Before gym'],
+  ['post-gym', 'After gym'],
+  ['pre-sleep', 'Before sleep'],
+  ['other', 'Other'],
+];
+
+export const DEFAULT_MEASUREMENT_TIME = 'waking';
+
+export const measurementTimeLabel = (row) => {
+  if (!row?.timeOfDay) return null;
+  if (row.timeOfDay === 'other') return row.timeOfDayNote || 'Other time';
+  return (MEASUREMENT_TIMES.find(([id]) => id === row.timeOfDay) || [])[1] || row.timeOfDay;
+};
+
 export const NIGGLE_SITES = [
   'Left elbow',
   'Right elbow',
@@ -38,10 +123,12 @@ const shortDate = (iso) => {
   return `${Number(day)} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(month) - 1]}`;
 };
 
-const field = (id, label, value, { step = '0.1', type = 'number', placeholder = '—' } = {}) =>
-  `<div><label for="b-${id}">${escape(label)}</label>
+const field = (id, label, value, { step = '0.1', type = 'number', placeholder = '—', how = null } = {}) =>
+  `<div><label for="b-${id}">${escape(label)}${
+    how ? `<button class="howto" data-act="measure-how" data-id="${escape(how)}" aria-label="How to measure ${escape(label)}">?</button>` : ''
+  }</label>
     <input id="b-${id}" type="${type}" inputmode="decimal" step="${step}" placeholder="${escape(placeholder)}"
-      value="${value == null ? '' : escape(value)}" data-body-field="${id}"></div>`;
+      value="${value == null ? '' : escape(value)}" data-body-field="${id}" data-pick></div>`;
 
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -120,6 +207,28 @@ export function view(ctx) {
           <option value="no" ${draft.caffeine === 'no' ? 'selected' : ''}>No</option>
         </select></div>
     </div>
+    <div class="mt"><label>Which scale (optional)</label>
+      <div class="picker" style="padding-bottom:2px">${SCALES.map(
+        ([id, label]) =>
+          `<button class="pill ${draft.scale === id ? 'on' : ''}" data-act="daily-scale" data-id="${id}">${escape(
+            label
+          )}</button>`
+      ).join('')}${
+        draft.scale
+          ? `<button class="pill" data-act="daily-scale" data-id="">Clear</button>`
+          : ''
+      }</div>
+      ${
+        draft.scale === 'other'
+          ? `<input id="b-scaleNote" type="text" placeholder="Which scale?" value="${escape(
+              draft.scaleNote || ''
+            )}" data-body-field="scaleNote" style="margin-top:8px">`
+          : ''
+      }
+      <p class="hint">Leave it blank unless it changes. Two scales rarely agree, and this bulk is read from a trend
+      of a few hundred grams a week — so a stretch weighed at the gym next to a stretch weighed at home can invent a
+      gain or hide one.</p></div>
+
     <div class="mt"><label for="b-note">Note</label>
       <input id="b-note" type="text" value="${escape(draft.note ?? '')}" data-body-field="note" placeholder="Anything worth remembering…"></div>
     <p class="hint">${
@@ -138,14 +247,30 @@ export function view(ctx) {
     'This week · about a minute',
     '',
     `<div class="card"><div class="g3">
-      ${MEASUREMENT_SITES.slice(0, 3).map(([id, label]) => field(`m-${id}`, label, draft[`m-${id}`])).join('')}
+      ${MEASUREMENT_SITES.slice(0, 3).map(([id, label]) => field(`m-${id}`, label, draft[`m-${id}`], { how: id })).join('')}
     </div><div class="g3 mt">
-      ${MEASUREMENT_SITES.slice(3, 6).map(([id, label]) => field(`m-${id}`, label, draft[`m-${id}`])).join('')}
+      ${MEASUREMENT_SITES.slice(3, 6).map(([id, label]) => field(`m-${id}`, label, draft[`m-${id}`], { how: id })).join('')}
     </div><div class="g2 mt">
-      ${MEASUREMENT_SITES.slice(6).map(([id, label]) => field(`m-${id}`, label, draft[`m-${id}`])).join('')}
+      ${MEASUREMENT_SITES.slice(6).map(([id, label]) => field(`m-${id}`, label, draft[`m-${id}`], { how: id })).join('')}
+    </div>
+    <div class="mt"><label>When these were taken</label>
+      <div class="picker" style="padding-bottom:2px">${MEASUREMENT_TIMES.map(
+        ([id, label]) =>
+          `<button class="pill ${
+            (draft.measureTime || DEFAULT_MEASUREMENT_TIME) === id ? 'on' : ''
+          }" data-act="measure-time" data-id="${id}">${escape(label)}</button>`
+      ).join('')}</div>
+      ${
+        (draft.measureTime || DEFAULT_MEASUREMENT_TIME) === 'other'
+          ? `<input id="b-measureTimeNote" type="text" placeholder="When, exactly?" value="${escape(
+              draft.measureTimeNote || ''
+            )}" data-body-field="measureTimeNote" style="margin-top:8px">`
+          : ''
+      }
     </div>
     <button class="big mt" data-act="save-measurements">Save measurements</button>
-    <p class="hint">Leave anything blank. Empty is stored as empty, never as zero. Waist at the navel, relaxed, same time of day — it is the lean-bulk discriminator, so consistency matters more than precision.</p></div>`,
+    <button class="big ghost mt" data-act="measure-how" data-id="all">How to measure \u2014 read this once</button>
+    <p class="hint">Leave anything blank. Empty is stored as empty, never as zero. Waist at the navel, relaxed — it is the lean-bulk discriminator, so consistency matters more than precision. <b>Same time of day, every time</b>: the waist moves more between waking and bedtime than it does in a good week, so two readings taken at different times are not comparable. Anything recorded before this was added has no time against it and says so rather than guessing.</p></div>`,
     state.shut
   )}
 
@@ -261,19 +386,96 @@ export const actions = {
       steps: parse(draft.steps),
       mood: parse(draft.mood),
       caffeine: draft.caffeine || null,
+      scale: draft.scale || null,
+      scaleNote: draft.scale === 'other' ? draft.scaleNote?.trim() || null : null,
       note: draft.note || null,
     };
     const blanks = countBlanks([row.bodyweight, row.bodyfatPct, row.sleepHours]);
-    confirmBlanks(ctx, blanks, 'daily', () => ctx.saveDaily(row));
+    confirmBlanks(ctx, blanks, 'daily', async () => {
+      await ctx.saveDaily(row);
+      savedSheet('Weigh-in saved', [
+        row.bodyweight != null ? `${fmtNum(toDisplay(row.bodyweight, unit), 1)} ${unit}` : null,
+        row.bodyfatPct != null ? `${row.bodyfatPct}% body fat` : null,
+        row.sleepHours != null ? `${row.sleepHours} h sleep` : null,
+        scaleLabel(row),
+      ]);
+    });
+  },
+
+  /** How to take one measurement, or the rules that govern all of them. */
+  'measure-how'(ctx, data) {
+    if (data.id === 'all') {
+      openSheet(`<div class="ttl">How to measure</div>
+        <p style="font-size:13.5px;margin:12px 0 10px;color:var(--ink)">A tape is precise to a millimetre and
+        repeatable to nothing at all unless you fix the protocol. Half a centimetre of drift in where you put it is a
+        fortnight of real arm growth \u2014 so an inconsistent measurement is not a slightly worse one, it is noise
+        wearing the costume of a number.</p>
+        <ul style="font-size:13px;color:var(--ink2);line-height:1.65;padding-left:18px">${MEASUREMENT_RULES.map(
+          (rule) => `<li>${escape(rule)}</li>`
+        ).join('')}</ul>
+        <h3>Site by site</h3>
+        ${MEASUREMENT_SITES.map(
+          ([id, label]) =>
+            `<p style="font-size:13px;margin:0 0 9px"><b style="color:var(--ink)">${escape(label)}.</b> ${escape(
+              MEASUREMENT_HOW[id] || ''
+            )}</p>`
+        ).join('')}
+        <button class="big mt" data-act="sheet-close">Got it</button>`);
+      return;
+    }
+
+    const label = (MEASUREMENT_SITES.find(([id]) => id === data.id) || [])[1] || data.id;
+    openSheet(`<div class="ttl">${escape(label)}</div>
+      <p style="font-size:14px;margin:14px 0 12px;color:var(--ink)">${escape(MEASUREMENT_HOW[data.id] || '')}</p>
+      <p class="hint">Relaxed and unflexed, tape snug but not compressing, same spot and same time of day every time.</p>
+      <button class="big ghost mt" data-act="measure-how" data-id="all">All of them</button>
+      <button class="big mt" data-act="sheet-close">Close</button>`);
+  },
+
+  'daily-scale'(ctx, data) {
+    // Tapping the one already chosen clears it, because "not recorded" has to
+    // stay reachable once something has been picked.
+    ctx.state.bodyDraft.scale = ctx.state.bodyDraft.scale === data.id ? '' : data.id;
+    ctx.render();
+  },
+
+  'measure-time'(ctx, data) {
+    ctx.state.bodyDraft.measureTime = data.id;
+    ctx.render();
   },
 
   'save-measurements'(ctx) {
     const draft = ctx.state.bodyDraft;
-    const row = { dateISO: draft.dateISO };
+    const timeOfDay = draft.measureTime || DEFAULT_MEASUREMENT_TIME;
+    const row = {
+      dateISO: draft.dateISO,
+      timeOfDay,
+      // Only meaningful for "other", and stored as null otherwise rather than
+      // left holding whatever was typed before the choice changed.
+      timeOfDayNote: timeOfDay === 'other' ? draft.measureTimeNote?.trim() || null : null,
+    };
     for (const [id] of MEASUREMENT_SITES) row[id] = parse(draft[`m-${id}`]);
 
     const blanks = countBlanks(MEASUREMENT_SITES.map(([id]) => row[id]));
-    confirmBlanks(ctx, blanks, 'measurements', () => ctx.saveMeasurements(row));
+    const recorded = MEASUREMENT_SITES.filter(([id]) => row[id] != null);
+
+    confirmBlanks(ctx, blanks, 'measurements', async () => {
+      await ctx.saveMeasurements(row);
+      savedSheet(
+        'Measurements saved',
+        [
+          `${recorded.length} of ${MEASUREMENT_SITES.length} sites`,
+          row.waist != null ? `waist ${row.waist} cm` : null,
+          measurementTimeLabel(row),
+        ],
+        {
+          extra:
+            row.waist != null
+              ? '<p class="hint" style="text-align:center">Waist is the one that decides whether this is a lean bulk. Same spot, same time of day, relaxed.</p>'
+              : '',
+        }
+      );
+    });
   },
 
   'save-niggle'(ctx) {
@@ -410,6 +612,30 @@ export const actions = {
     });
   },
 };
+
+/**
+ * Confirmation that something was actually written.
+ *
+ * Saving a weigh-in or a set of measurements changed nothing you could see:
+ * the button did not move, no message appeared, and the entry went into a list
+ * on a different screen. So the only way to find out whether it had worked was
+ * to go and look, which is not a thing anyone should have to do after pressing
+ * Save.
+ *
+ * It names what landed rather than saying "saved", because the useful
+ * confirmation is the numbers you meant to record being read back to you.
+ */
+function savedSheet(title, lines, { extra = '' } = {}) {
+  openSheet(`<div class="ttl">${escape(title)}</div>
+    <p style="text-align:center;font-size:30px;margin:12px 0 2px">\u2713</p>
+    <p style="text-align:center;font-size:14px;color:var(--ink);margin:0 0 10px">${lines
+      .filter(Boolean)
+      .map(escape)
+      .join(' \u00b7 ')}</p>
+    ${extra}
+    <p class="hint" style="text-align:center">Stored on this device. It is in the Log now, and in your next backup.</p>
+    <button class="big mt" data-act="sheet-close">Done</button>`);
+}
 
 function confirmBlanks(ctx, blanks, what, save) {
   if (!blanks) {

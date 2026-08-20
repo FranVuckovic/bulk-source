@@ -53,14 +53,34 @@ export const escape = (text) =>
    Bottom sheet
    ═══════════════════════════════════════════════════════════════════════ */
 
-export function openSheet(html) {
-  document.getElementById('pan').innerHTML = html;
-  document.getElementById('sheet').classList.add('on');
+/*
+ * Every sheet in the app opens and closes through these two functions, which
+ * makes them the one place that can tell the router a sheet appeared. The
+ * router uses that to put the sheet on the browser's history stack, so the
+ * Android back gesture closes it instead of leaving the app.
+ *
+ * The hooks are registered rather than imported so this module stays ignorant
+ * of routing — it draws a panel, and something else decides what back means.
+ */
+let hooks = {};
+
+export function setSheetHooks(next) {
+  hooks = next || {};
 }
 
-export function closeSheet() {
+export function openSheet(html) {
+  const wasOpen = sheetIsOpen();
+  document.getElementById('pan').innerHTML = html;
+  document.getElementById('sheet').classList.add('on');
+  // Replacing the contents of an open sheet is not a new level to go back to.
+  if (!wasOpen) hooks.onOpen?.();
+}
+
+export function closeSheet({ fromBack = false } = {}) {
+  const wasOpen = sheetIsOpen();
   document.getElementById('sheet').classList.remove('on');
   document.getElementById('pan').innerHTML = '';
+  if (wasOpen) hooks.onClose?.({ fromBack });
 }
 
 export const sheetIsOpen = () => document.getElementById('sheet').classList.contains('on');
@@ -69,32 +89,159 @@ export const sheetIsOpen = () => document.getElementById('sheet').classList.cont
    Rest timer
    ═══════════════════════════════════════════════════════════════════════ */
 
-let restTimer = null;
-let restLeft = 0;
+/*
+ * One bar, two jobs.
+ *
+ * `rest` counts down from the exercise's own rest interval and starts itself
+ * when a set is ticked. `stopwatch` counts up and is driven by hand, for
+ * everything the automatic one cannot know about — a warm-up, a hold, a rack
+ * you are waiting for, a set someone else is using the bar for.
+ *
+ * They share the bar because two timers on screen at once would be two numbers
+ * that disagree, and the answer to "how long has it been" has to be one number.
+ */
+/*
+ * WALL-CLOCK, ALWAYS. Never count ticks.
+ *
+ * The first version did `restLeft -= 1` on a one-second setInterval, which is
+ * only correct while the page is in the foreground on an unthrottled tab.
+ * Background a phone browser and setInterval is throttled to about once a
+ * minute, or suspended outright — so a three-minute rest with two minutes spent
+ * on another app came back reading barely a minute gone. The clock was not
+ * slow; it was measuring how often the browser felt like calling us.
+ *
+ * So nothing here accumulates. Every reading is derived from `Date.now()`
+ * against an absolute instant fixed when the timer started, and the interval
+ * exists only to repaint. Throttle it, suspend it, miss a thousand ticks: the
+ * number is still right, because the number was never in the ticks.
+ */
+let paintHandle = null;
+let mode = 'rest';
+let running = false;
 
-const paintRest = () => {
-  const minutes = Math.floor(Math.max(0, restLeft) / 60);
-  const seconds = Math.max(0, restLeft) % 60;
-  document.getElementById('rt').textContent = `${minutes}:${String(seconds).padStart(2, '0')}`;
+/** Rest: the instant it finishes. Stopwatch: unused. */
+let endsAtMs = null;
+/** Stopwatch: when the current run began, and time banked from earlier runs. */
+let startedAtMs = null;
+let accumulatedMs = 0;
+
+/**
+ * The reading, from state and an instant. Pure, so the case that matters — a
+ * long gap with no ticks delivered — can be tested by moving `nowMs`.
+ */
+export function timerReading(state, nowMs) {
+  if (state.mode === 'rest') {
+    const remainingMs = (state.endsAtMs ?? nowMs) - nowMs;
+    return { seconds: Math.max(0, remainingMs / 1000), done: remainingMs <= 0 };
+  }
+  const elapsedMs = state.accumulatedMs + (state.running ? nowMs - state.startedAtMs : 0);
+  return { seconds: Math.max(0, elapsedMs / 1000), done: false };
+}
+
+const snapshot = () => ({ mode, running, endsAtMs, startedAtMs, accumulatedMs });
+
+const clock = (total) => {
+  const value = Math.max(0, Math.round(total));
+  return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
 };
+
+function paintRest() {
+  const bar = document.getElementById('rest');
+  if (!bar) return;
+  const reading = timerReading(snapshot(), Date.now());
+
+  document.getElementById('rt').textContent = clock(reading.seconds);
+  const label = document.getElementById('rl');
+  if (label) label.textContent = mode === 'rest' ? 'Rest' : running ? 'Timer' : 'Timer — paused';
+  const toggle = document.getElementById('rest-toggle');
+  if (toggle) toggle.textContent = running ? 'Pause' : 'Start';
+  bar.classList.toggle('stop', mode === 'stopwatch');
+
+  // A countdown ends by itself — including when it ended while the phone was in
+  // a pocket and this is the first repaint since.
+  if (mode === 'rest' && reading.done) stopRest();
+}
+
+const repaintEvery = (ms) => {
+  clearInterval(paintHandle);
+  paintHandle = setInterval(paintRest, ms);
+};
+
+/*
+ * Coming back to the app repaints immediately rather than waiting up to a
+ * second, so the first thing you see is the true number and not the stale one.
+ */
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) paintRest();
+  });
+  window.addEventListener('pageshow', paintRest);
+  window.addEventListener('focus', paintRest);
+}
 
 /** Rest comes from the exercise, not from a fixed three minutes. */
 export function startRest(seconds) {
-  restLeft = seconds;
+  mode = 'rest';
+  running = true;
+  endsAtMs = Date.now() + seconds * 1000;
+  document.getElementById('rest').classList.add('on');
+  repaintEvery(250);
+  paintRest();
+}
+
+/** The hand-driven one. Opening it does not start it. */
+export function openStopwatch() {
+  mode = 'stopwatch';
+  running = false;
+  startedAtMs = null;
+  accumulatedMs = 0;
+  clearInterval(paintHandle);
+  paintHandle = null;
   document.getElementById('rest').classList.add('on');
   paintRest();
-  clearInterval(restTimer);
-  restTimer = setInterval(() => {
-    restLeft -= 1;
-    paintRest();
-    if (restLeft <= 0) stopRest();
-  }, 1000);
+}
+
+export function toggleTimer() {
+  if (mode === 'rest') {
+    // Pausing a rest countdown is the same as not wanting it any more.
+    stopRest();
+    return;
+  }
+  if (running) {
+    // Bank what this run was worth, so the total survives the pause.
+    accumulatedMs += Date.now() - startedAtMs;
+    startedAtMs = null;
+    running = false;
+    clearInterval(paintHandle);
+    paintHandle = null;
+  } else {
+    startedAtMs = Date.now();
+    running = true;
+    repaintEvery(250);
+  }
+  paintRest();
+}
+
+export function resetTimer() {
+  if (mode !== 'stopwatch') {
+    stopRest();
+    return;
+  }
+  accumulatedMs = 0;
+  startedAtMs = running ? Date.now() : null;
+  paintRest();
 }
 
 export function stopRest() {
-  clearInterval(restTimer);
-  restTimer = null;
-  document.getElementById('rest').classList.remove('on');
+  clearInterval(paintHandle);
+  paintHandle = null;
+  running = false;
+  mode = 'rest';
+  endsAtMs = null;
+  startedAtMs = null;
+  accumulatedMs = 0;
+  const bar = document.getElementById('rest');
+  if (bar) bar.classList.remove('on', 'stop');
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -109,7 +256,67 @@ export function section(id, title, count, body, shut) {
   }</h3>${isShut ? '' : body}`;
 }
 
+/**
+ * The tabs across the top of a section.
+ *
+ * Every screen in this app had grown into one long column: Progress ran to
+ * twenty headings, the Plan screen hid its exercises and workouts behind a list
+ * you had to scroll to, and the only way to know what a section contained was
+ * to travel through all of it. A section's parts belong at its top, where they
+ * can be seen without reading.
+ *
+ * It is sticky under the header, so moving between parts never requires
+ * scrolling back up first.
+ */
+export const subnav = (items, current, action) =>
+  `<div class="subnav">${items
+    .map(
+      ([id, label, count]) =>
+        `<button class="pill ${id === current ? 'on' : ''}" data-act="${escape(action)}" data-id="${escape(id)}">${escape(
+          label
+        )}${count ? `<span class="n">${escape(count)}</span>` : ''}</button>`
+    )
+    .join('')}</div>`;
+
 export const flag = (kind, icon, html) =>
   `<div class="flag f-${kind}"><i>${icon}</i><span>${html}</span></div>`;
+
+/**
+ * Where this data lives, said out loud.
+ *
+ * IndexedDB is scoped to an origin *inside one browser profile on one device*.
+ * The phone and the laptop load the same address and get two entirely separate
+ * databases; nothing syncs between them, and no code in this app could make it,
+ * because there is no server to sync through.
+ *
+ * That is good news and bad news in the same sentence, and only the good half
+ * is obvious. The good half: the two copies cannot collide or overwrite each
+ * other. The bad half: log in both places and you quietly own two histories
+ * that disagree, and neither one is wrong. This is worth saying before it
+ * happens rather than after, which is why it appears wherever the question
+ * naturally comes up rather than once in a settings page.
+ */
+export const deviceIsolationNote = () => `
+  ${flag(
+    'ok',
+    '✓',
+    `<b>This device has its own database, and it is the only copy.</b> Storage belongs to this browser on this
+     device. Nothing syncs, because there is no server to sync through — so the app on your phone and the app in a
+     desktop browser can never collide or overwrite one another.`
+  )}
+  ${flag(
+    'warn',
+    '!',
+    `<b>They cannot share, either.</b> Log sessions in both places and you get <b>two separate histories that both
+     look correct</b>, diverging from the day you started. Pick one device as the real log. A different browser on
+     the same device counts as a different device, and a private window is a third one that is thrown away when it
+     closes.`
+  )}
+  ${flag(
+    'info',
+    'i',
+    `<b>The zip is the bridge.</b> Export from one, import into the other. That is the only way data moves between
+     devices, and it replaces rather than merges — so move in one direction, deliberately.`
+  )}`;
 
 export const card = (inner, cls = '') => `<div class="card ${cls}">${inner}</div>`;

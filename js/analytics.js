@@ -15,7 +15,7 @@
  * Pure: records in, metrics out.
  */
 
-import { estimateForSet, isHighConfidence } from './calc.js';
+import { estimateForSet, isHighConfidence, systemLoad, e1rm, setDifficulty } from './calc.js';
 import { daysBetween, weekStart } from './dates.js';
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -368,6 +368,356 @@ export function blockComparison(sets, { exercises, logs, lifts }) {
   }
 
   return rows.sort((a, b) => a.blockId - b.blockId || a.name.localeCompare(b.name));
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   One session, in full
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Everything about a single session that can be derived from what it stored.
+ *
+ * The Log could show you a session's sets and nothing else — not what it
+ * actually hit, not how it compared with the last time you did it, not where
+ * the work went. All of that is computable from rows already in the database.
+ *
+ * Nothing here estimates anything it cannot justify: tonnage is exact
+ * arithmetic on stored numbers, e1RM and difficulty come back null past the
+ * rep limit rather than guessing, and the comparison is omitted entirely when
+ * there is no earlier session of the same letter to compare with.
+ */
+export function sessionAnalysis(log, sets, { exercises = {}, logs = [], allSets = [] } = {}) {
+  const live = (sets || []).filter((set) => !set.deletedAtISO);
+
+  const byExercise = new Map();
+  let tonnage = 0;
+  let reps = 0;
+  let workingSets = 0;
+  let failureSets = 0;
+
+  for (const set of live) {
+    const exercise = exercises[set.exerciseId];
+    const bodyweight = set.bodyweightUsed || 0;
+    // Tonnage is what the muscles moved, so bodyweight counts on a pull-up.
+    const total = systemLoad(set.load ?? 0, bodyweight);
+    const setTonnage = total * (set.reps || 0);
+
+    tonnage += setTonnage;
+    reps += set.reps || 0;
+    workingSets += 1;
+    if (set.toFailure || set.isAmrap) failureSets += 1;
+
+    const entry = byExercise.get(set.exerciseId) || {
+      exerciseId: set.exerciseId,
+      name: exercise?.name || set.exerciseId,
+      sets: [],
+      tonnage: 0,
+      reps: 0,
+      topLoad: null,
+      bestEstimate: null,
+      bestDifficulty: null,
+    };
+    entry.sets.push(set);
+    entry.tonnage += setTonnage;
+    entry.reps += set.reps || 0;
+    if (entry.topLoad == null || total > entry.topLoad) entry.topLoad = total;
+
+    const estimate = e1rm(total, set.reps, Math.min(10, set.rpe ?? 8));
+    if (estimate != null && (entry.bestEstimate == null || estimate > entry.bestEstimate)) {
+      entry.bestEstimate = estimate;
+    }
+    const hard = setDifficulty(total, set.reps);
+    if (hard != null && (entry.bestDifficulty == null || hard > entry.bestDifficulty)) {
+      entry.bestDifficulty = hard;
+    }
+    byExercise.set(set.exerciseId, entry);
+  }
+
+  return {
+    tonnage,
+    reps,
+    workingSets,
+    failureSets,
+    exercises: [...byExercise.values()].sort((a, b) => b.tonnage - a.tonnage),
+    previous: previousSameSession(log, { logs, allSets, exercises }),
+  };
+}
+
+/**
+ * The last time this same session letter was trained, and what changed.
+ *
+ * Compared per exercise rather than in total, because a session's tonnage moves
+ * with the reps you happened to get as much as with the load — and per
+ * exercise, "same lift, more weight" is a fact rather than an impression.
+ * Returns null when there is nothing to compare against, which is the honest
+ * answer for a first session and the one v1 would have filled with a zero.
+ */
+function previousSameSession(log, { logs, allSets, exercises }) {
+  if (!log?.sessionId) return null;
+
+  const earlier = (logs || [])
+    .filter(
+      (row) =>
+        !row.deletedAtISO &&
+        row.id !== log.id &&
+        row.sessionId === log.sessionId &&
+        (row.dateISO || '') < (log.dateISO || '')
+    )
+    .sort((a, b) => (b.dateISO || '').localeCompare(a.dateISO || ''));
+
+  const previous = earlier[0];
+  if (!previous) return null;
+
+  const previousSets = (allSets || []).filter((set) => set.sessionLogId === previous.id && !set.deletedAtISO);
+  if (!previousSets.length) return null;
+
+  const summarise = (rows) => {
+    const map = new Map();
+    for (const set of rows) {
+      const total = systemLoad(set.load ?? 0, set.bodyweightUsed || 0);
+      const entry = map.get(set.exerciseId) || { tonnage: 0, topLoad: null, sets: 0 };
+      entry.tonnage += total * (set.reps || 0);
+      entry.sets += 1;
+      if (entry.topLoad == null || total > entry.topLoad) entry.topLoad = total;
+      map.set(set.exerciseId, entry);
+    }
+    return map;
+  };
+
+  const now = summarise((allSets || []).filter((set) => set.sessionLogId === log.id && !set.deletedAtISO));
+  const then = summarise(previousSets);
+
+  const rows = [];
+  for (const [exerciseId, current] of now) {
+    const before = then.get(exerciseId);
+    if (!before) continue;
+    rows.push({
+      exerciseId,
+      name: exercises[exerciseId]?.name || exerciseId,
+      topLoadChange: current.topLoad - before.topLoad,
+      tonnageChange: current.tonnage - before.tonnage,
+      topLoadNow: current.topLoad,
+      topLoadThen: before.topLoad,
+    });
+  }
+
+  return {
+    dateISO: (previous.dateISO || '').slice(0, 10),
+    daysBefore: Math.round(
+      (Date.parse(`${(log.dateISO || '').slice(0, 10)}T00:00:00Z`) -
+        Date.parse(`${(previous.dateISO || '').slice(0, 10)}T00:00:00Z`)) /
+        86400000
+    ),
+    rows: rows.sort((a, b) => b.topLoadChange - a.topLoadChange),
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Session timing
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Gaps shorter than this are not rest — they are two rows filled in together.
+ * Used to notice a session typed up afterwards rather than logged as it
+ * happened, so the app can say the timing is not meaningful instead of
+ * reporting eight seconds of rest between working sets.
+ */
+export const MIN_REAL_REST_SECONDS = 20;
+
+/**
+ * A gap longer than this is almost certainly not rest between sets — a phone
+ * call, a queue for a rack, or the session being picked up again later. Still
+ * reported, because it is real; just not counted into the typical rest.
+ */
+export const LONG_GAP_SECONDS = 20 * 60;
+
+/**
+ * A session start this much earlier than its first set did not begin then.
+ *
+ * From a real log: `startedAt` 11:14, first set 16:30, and the session reported
+ * as eight hours. The log is created by the first thing you do, and un-ticking
+ * a set deletes the set but leaves the log — so a tap in the morning that was
+ * undone still stamped the session five hours before the training happened.
+ * Reported rather than quietly corrected, with the working span offered beside
+ * it, because which of the two is right is a question only the owner can answer.
+ */
+export const IMPLAUSIBLE_START_SECONDS = 45 * 60;
+
+/**
+ * What actually happened, minute by minute, from the timestamps already stored.
+ *
+ * Every set has carried a `timestampISO` since the first version and nothing
+ * has ever read it. The times are therefore free — this derives rest between
+ * sets, working time and session length from data already in the database,
+ * including for sessions logged long before the report existed.
+ *
+ * The whole thing is conditional on the timing being real. A session typed up
+ * on the bus home has timestamps a few seconds apart, and reporting "8 s of
+ * rest" from them would be worse than reporting nothing: it looks like a
+ * measurement. `reliable` is false when the owner has said so, and
+ * `looksBulkEntered` is true when the gaps say so regardless of what anyone
+ * said, so a screen can decline to draw conclusions from it.
+ */
+export function sessionTiming(log, sets, { now = null } = {}) {
+  const ordered = (sets || [])
+    .filter((set) => !set.deletedAtISO && set.timestampISO)
+    .sort((a, b) => a.timestampISO.localeCompare(b.timestampISO));
+
+  const stated = log?.timingReliable;
+  const startedAt = log?.startedAt || ordered[0]?.timestampISO || null;
+  const endedAt = log?.endedAt || (log && !log.endedAt ? now : null) || ordered[ordered.length - 1]?.timestampISO || null;
+
+  const entries = ordered.map((set, i) => {
+    const at = Date.parse(set.timestampISO);
+    const previous = i ? Date.parse(ordered[i - 1].timestampISO) : startedAt ? Date.parse(startedAt) : null;
+    const gapSeconds = previous == null || !Number.isFinite(at) ? null : Math.max(0, Math.round((at - previous) / 1000));
+    return {
+      setId: set.id,
+      exerciseId: set.exerciseId,
+      slotIndex: set.slotIndex,
+      setIndex: set.setIndex,
+      atISO: set.timestampISO,
+      gapSeconds,
+      isFirst: i === 0,
+      isLongGap: gapSeconds != null && gapSeconds > LONG_GAP_SECONDS,
+    };
+  });
+
+  // Gaps between one set and the next — the first entry's gap is warm-up time
+  // from the session start, which is not rest between sets.
+  const gaps = entries.slice(1).map((entry) => entry.gapSeconds).filter((g) => g != null);
+  const restGaps = gaps.filter((g) => g >= MIN_REAL_REST_SECONDS && g <= LONG_GAP_SECONDS);
+
+  // More than half the gaps too short to be rest means the rows were filled in
+  // together, whatever the session log claims.
+  const tooShort = gaps.filter((g) => g < MIN_REAL_REST_SECONDS).length;
+  const looksBulkEntered = gaps.length >= 3 && tooShort / gaps.length > 0.5;
+
+  const totalSeconds =
+    startedAt && endedAt ? Math.max(0, Math.round((Date.parse(endedAt) - Date.parse(startedAt)) / 1000)) : null;
+
+  // First set to last: the span the work actually occupied, whatever the log
+  // says about when it opened.
+  const firstSetAt = ordered[0]?.timestampISO || null;
+  const lastSetAt = ordered[ordered.length - 1]?.timestampISO || null;
+  const workingSpanSeconds =
+    firstSetAt && lastSetAt ? Math.max(0, Math.round((Date.parse(lastSetAt) - Date.parse(firstSetAt)) / 1000)) : null;
+  const startedBeforeFirstSetSeconds =
+    startedAt && firstSetAt ? Math.round((Date.parse(firstSetAt) - Date.parse(startedAt)) / 1000) : null;
+  const startLooksWrong =
+    startedBeforeFirstSetSeconds != null && startedBeforeFirstSetSeconds > IMPLAUSIBLE_START_SECONDS;
+
+  const sorted = [...restGaps].sort((a, b) => a - b);
+  const reliable = stated === false ? false : !looksBulkEntered;
+
+  /*
+   * When the timing is not real, the derived figures are not merely hidden —
+   * they are not returned. A metric object that carries a median it has just
+   * said is meaningless is one screen away from printing it, and this file's
+   * whole reason for existing is that a view should not have to know which of
+   * the numbers it was handed are safe to show.
+   */
+  const derived = reliable
+    ? {
+        totalSeconds,
+        medianRestSeconds: sorted.length ? sorted[Math.floor(sorted.length / 2)] : null,
+        longestRestSeconds: restGaps.length ? Math.max(...restGaps) : null,
+        shortestRestSeconds: restGaps.length ? Math.min(...restGaps) : null,
+        countedRests: restGaps.length,
+      }
+    : {
+        totalSeconds: null,
+        medianRestSeconds: null,
+        longestRestSeconds: null,
+        shortestRestSeconds: null,
+        countedRests: 0,
+      };
+
+  return {
+    reliable,
+    statedUnreliable: stated === false,
+    looksBulkEntered,
+    startedAt,
+    endedAt,
+    firstSetAt,
+    lastSetAt,
+    workingSpanSeconds,
+    startedBeforeFirstSetSeconds,
+    startLooksWrong,
+    setCount: entries.length,
+    // The timeline itself is always returned: when each row was written is a
+    // fact either way, and it is what shows you *why* the timing is not real.
+    entries,
+    longGaps: entries.filter((entry) => entry.isLongGap && !entry.isFirst).length,
+    ...derived,
+  };
+}
+
+/**
+ * How a record got to where it is.
+ *
+ * The records card showed the current best and the date it was set, which
+ * answers "what is my best" and nothing else. It cannot tell you whether a
+ * record is three days old or four months old, how hard it was to beat, or
+ * whether it has been creeping up steadily or jumped once and stalled — which
+ * is the question you actually have when you look at it.
+ *
+ * This walks the sets in date order and emits an entry every time the running
+ * best is beaten, so what comes back is the staircase rather than the top step.
+ * Each rung carries what it gained on the one below and how long it took, both
+ * of which are facts about the pair rather than about either one.
+ */
+export function recordHistory(sets, { exercises, logs }) {
+  const byLog = new Map(logs.map((log) => [log.id, log]));
+
+  const dated = (sets || [])
+    .filter((set) => !set.deletedAtISO && set.load != null && set.reps)
+    .map((set) => ({ set, dateISO: (byLog.get(set.sessionLogId)?.localDate || byLog.get(set.sessionLogId)?.dateISO || '').slice(0, 10) }))
+    .filter((row) => row.dateISO)
+    .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+
+  const heaviest = new Map();
+  const estimated = new Map();
+
+  const push = (map, key, entry) => {
+    const list = map.get(key) || [];
+    const previous = list[list.length - 1];
+    if (previous) {
+      entry.gain = entry.value - previous.value;
+      entry.daysSince = Math.round(
+        (Date.parse(`${entry.dateISO}T00:00:00Z`) - Date.parse(`${previous.dateISO}T00:00:00Z`)) / 86400000
+      );
+    }
+    list.push(entry);
+    map.set(key, list);
+  };
+
+  for (const { set, dateISO } of dated) {
+    const exercise = exercises[set.exerciseId];
+    if (!exercise) continue;
+
+    const heavyList = heaviest.get(set.exerciseId);
+    const bestLoad = heavyList ? heavyList[heavyList.length - 1].value : -Infinity;
+    if (set.load > bestLoad) {
+      push(heaviest, set.exerciseId, { dateISO, value: set.load, load: set.load, reps: set.reps });
+    }
+
+    if (set.isIndexSet && exercise.maxConf === 'high') {
+      const estimate = estimateForSet(set);
+      if (isHighConfidence(estimate)) {
+        const list = estimated.get(set.exerciseId);
+        const best = list ? list[list.length - 1].value : -Infinity;
+        if (estimate.value > best) {
+          push(estimated, set.exerciseId, { dateISO, value: estimate.value, load: set.load, reps: set.reps });
+        }
+      }
+    }
+  }
+
+  return {
+    heaviest: Object.fromEntries(heaviest),
+    estimated: Object.fromEntries(estimated),
+  };
 }
 
 /** Records, by concrete category rather than a wall of derived e1RM dots. */
