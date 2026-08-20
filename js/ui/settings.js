@@ -39,8 +39,24 @@ export function view(ctx) {
   return `
   <button class="back" data-act="tab" data-tab="train">‹ Back</button>
 
-  <h3 style="margin-top:0">Units</h3>
-  <div class="card"><div class="seg">
+  <h3 style="margin-top:0">Demo data</h3>
+  <div class="card">
+    ${
+      state.demo
+        ? `${flag('warn', '!', `<b>Demo mode is on.</b> Everything on every screen is invented — twelve rotations of
+             generated training. Nothing here is yours and nothing can be saved.`)}
+           <button class="big mt" data-act="demo-off">Turn it off and go back to my data</button>
+           <p class="hint">Your real log is in a different database and has not been opened since demo mode came on.
+           Turning it off gives it back exactly as it was.</p>`
+        : `<p style="margin:0 0 10px">Explore every screen with twelve rotations of invented training. This is the
+             quickest way to learn the app before logging anything.</p>
+           ${flag('ok', '✓', `<b>Your real data cannot be touched by it.</b> The demo runs on a separate database and
+             writing is switched off entirely while it is on.`)}
+           <button class="big ghost" data-act="demo-on">Explore the demo</button>`
+    }
+  </div>
+
+  <details class="card settings-group" open><summary><span>Training &amp; display<small>Units, plates and bodyweight</small></span></summary><div class="c"><div class="seg">
     <button class="${unit === 'kg' ? 'on' : ''}" data-act="unit" data-id="kg">Kilograms</button>
     <button class="${unit === 'lb' ? 'on' : ''}" data-act="unit" data-id="lb">Pounds</button></div>
     <p class="hint">Changes every number in the app, everywhere, instantly. <b>Data is always stored in kg</b> — this is a display setting only, so switching back and forth can never corrupt anything or introduce rounding drift.</p>
@@ -64,10 +80,9 @@ export function view(ctx) {
         1
       )}" data-act-change="bodyweight">
       <p class="hint">Pull-ups, chin-ups and dips lift your bodyweight plus whatever is on the belt, so this is part of every percentage, RPE and e1RM on those lifts. It is one deliberate number rather than the daily weigh-in — otherwise a 0.4 kg fluctuation would move every prescription.</p></div>
-  </div>
+  </div></div></details>
 
-  <h3>Your data</h3>
-  <div class="card">
+  <details class="card settings-group"><summary><span>Data &amp; backups<small>${state.integrity?.ok ? 'Healthy' : 'Needs attention'} · ${state.logs.length} sessions · ${state.sets.length} sets</small></span></summary><div class="c">
     ${storage}
     ${integrity}
     ${backup}
@@ -86,10 +101,9 @@ export function view(ctx) {
     and your photos as real files. It is also how data moves between your phone and your laptop.</p>
     <p class="hint">Verify reads a backup and checks it against what is stored, without touching your data — so you
     find out a backup is broken <b>before</b> you need it, not after.</p>
-  </div>
+  </div></details>
 
-  <h3>Privacy &amp; permissions</h3>
-  <div class="card">
+  <details class="card settings-group"><summary><span>Privacy &amp; storage<small>Device-only data and permissions</small></span></summary><div class="c">
     ${flag('ok', '✓', '<b>No network access.</b> The app makes zero requests. It cannot phone home because there is nothing to phone.')}
     ${flag('ok', '✓', '<b>No account, no login, no analytics.</b> Your data never leaves the device unless you export it yourself.')}
     ${flag(
@@ -98,10 +112,13 @@ export function view(ctx) {
       '<b>No permissions requested.</b> Adding photos goes through the standard file picker, which grants access to the one file you pick and nothing else. No camera, no location, no contacts.'
     )}
     <p class="hint">If the app ever asks for a permission, something is wrong — that is a good rule to hold it to.</p>
-  </div>
+    <h3>Where this data lives</h3>
+    ${deviceIsolationNote()}
+  </div></details>
 
-  <h3>Danger zone</h3>
-  <div class="card">
+  <details class="card settings-group danger-settings"><summary><span>Deletion &amp; reset<small>${
+    state.deleted?.length ? `${state.deleted.length} recoverable in the bin` : 'Bin empty'
+  }</small></span></summary><div class="c">
     <button class="big ghost" data-act="empty-bin">Empty the bin${
       state.deleted?.length ? ` · ${state.deleted.length}` : ''
     }</button>
@@ -113,34 +130,12 @@ export function view(ctx) {
         : 'Nothing is waiting in the recovery list. Deleted entries land there first and can be put back until this is used.'
     }</p>
     <button class="big danger mt" data-act="erase">Erase all data</button>
-    <p class="hint">Requires typing ERASE. Everything logged goes: sessions, sets, weigh-ins, measurements, photos and maxes. The plan file is untouched.</p></div>
+    <p class="hint">Requires typing ERASE. Everything logged goes: sessions, sets, weigh-ins, measurements, photos and maxes. The plan file is untouched.</p>
+  </div></details>
 
-  <h3>Demo mode</h3>
-  <div class="card">
-    ${
-      state.demo
-        ? `${flag('warn', '!', `<b>Demo mode is on.</b> Everything on every screen is invented — twelve rotations of
-             generated training. Nothing here is yours and nothing can be saved.`)}
-           <button class="big mt" data-act="demo-off">Turn it off and go back to my data</button>
-           <p class="hint">Your real log is in a different database and has not been opened since demo mode came on.
-           Turning it off gives it back exactly as it was.</p>`
-        : `<p style="margin:0 0 10px">Fills every screen and chart with twelve rotations of invented training, so you
-             can see what the app looks like with a history behind it${
-               state.logs.length ? '' : ' — useful before you have logged much'
-             }.</p>
-           ${flag('ok', '✓', `<b>Your real data cannot be touched by it.</b> The demo runs on a separate database and
-             writing is switched off entirely while it is on.`)}
-           <button class="big ghost" data-act="demo-on">Turn on demo mode</button>`
-    }
-  </div>
-
-  <h3>Where this data lives</h3>
-  <div class="card">
-    ${deviceIsolationNote()}
-  </div>
-
-  <h3>About</h3>
-  <div class="card">
+  <details class="card settings-group"><summary><span>About this build<small>${escape(
+    state.buildVersion || 'development build'
+  )}</small></span></summary><div class="c">
     <p style="margin:0 0 2px;font-size:22px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums">${escape(
       state.buildVersion || 'not cached'
     )}${
@@ -160,7 +155,7 @@ export function view(ctx) {
     <p class="hint">The build number comes from the service worker's version. If you update the app and this does not
     change, the update has not reached this device — close every tab and reopen. It reads <b>not cached</b> when the
     app is being served from a development machine, where the offline shell is deliberately switched off so edits
-    are visible immediately.</p></div>`;
+    are visible immediately.</p></div></details>`;
 }
 
 /** File pickers, handled on change rather than click. */

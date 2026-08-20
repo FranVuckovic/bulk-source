@@ -32,7 +32,7 @@ const SECTIONS = (state) => [
 export function view(ctx) {
   const { state } = ctx;
   const current = state.planSection || 'overview';
-  const tabs = subnav(SECTIONS(state), current, 'plan-section');
+  const tabs = subnav(SECTIONS(state), current, 'plan-section', 'plan-tabs');
 
   if (current === 'exercises') return tabs + exercisesView(state);
   if (current === 'workouts') return tabs + workoutsView(state);
@@ -79,8 +79,7 @@ function overview(state) {
       ' → '
     )}</span></div></div>
 
-  <h3>Where you are</h3>
-  <div class="card">
+  <details class="card overview-fold" open><summary>Where you are <span>${done} / ${target} sessions</span></summary><div class="c">
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
       <b style="font-size:15px">${escape(state.block.name)}</b>
       <span style="font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums">${done} / ${target} sessions</span></div>
@@ -98,15 +97,17 @@ function overview(state) {
     </tbody></table>
     ${paceFlag(state, pace, totalRotations)}
     <p class="hint">Nothing advances silently. When you reach ${target} sessions the app opens a block review: your best lifts, the proposed working-max updates, and what changes next block. You confirm it.</p>
-  </div>
+  </div></details>
 
   <h3>Stimulus this rotation · all six sessions</h3>
-  <div class="lg"><span><i style="background:var(--s3)"></i>in range</span><span><i style="background:var(--warn)"></i>below target</span><span><i style="background:var(--s2)"></i>above target</span><span><i style="background:var(--axis);opacity:.5"></i>target band</span></div>
+  <div class="lg"><span><i style="background:var(--s3)"></i>in range</span><span><i style="background:var(--warn)"></i>below</span><span><i style="background:var(--s1)"></i>slightly above</span><span><i style="background:var(--s2)"></i>materially above</span></div>
+  <p class="hint stimulus-intro">The target bands are guardrails, not pass/fail boundaries. A value up to 15% or two
+  fractional sets above its band is shown as <b>slightly above</b>; orange is reserved for a material overage. Neither
+  colour changes the programme on its own — performance, joints, soreness and recovery decide whether volume is too high.</p>
   ${volumeBars(state, volume, frequency, wholeMuscle)}
   <p class="hint" style="margin:0 2px 14px">Fractional sets — a set where the muscle is the main mover counts 1.0, a meaningful supporting role counts 0.5, and anything under 0.3 is not counted at all. Speed bench counts <b>zero</b>: at RPE 5–6 it is motor-pattern practice, not a growth stimulus.</p>
 
-  <h3>If six sessions is not possible</h3>
-  <div class="card">
+  <details class="card overview-fold"><summary>If six sessions is not possible</summary><div class="c">
     <p style="margin:0 0 8px"><strong>Four days</strong> — you lose the speed day and session F. Bench drops to three exposures, volume by about 20%. Sustainable indefinitely.</p>
     ${state.plan.fallbacks.fourDay
       .map((d) => `<div class="big-row" style="cursor:default"><div class="ic">${d.n}</div><div class="m"><b>${escape(d.contents)}</b></div></div>`)
@@ -116,7 +117,7 @@ function overview(state) {
       .map((d) => `<div class="big-row" style="cursor:default"><div class="ic">${d.n}</div><div class="m"><b>${escape(d.contents)}</b></div></div>`)
       .join('')}
     <p class="hint">Only switch when you know in advance you will be limited for two weeks or more. A single missed day is not a decision — the rotation just slides.</p>
-  </div>`;
+  </div></details>`;
 }
 
 /**
@@ -192,7 +193,7 @@ function volumeBars(state, volume, frequency, wholeMuscle = null) {
           ([name, value]) =>
             `<b>${escape(name)} ${value.toFixed(1)}</b>${
               value >= DIMINISHING_RETURNS_SETS
-                ? ' — past the point where returns flatten'
+                ? ' — specialisation volume; additional returns are likely smaller'
                 : value >= 14
                   ? ' — in the productive range'
                   : ''
@@ -200,25 +201,51 @@ function volumeBars(state, volume, frequency, wholeMuscle = null) {
         )
         .join(' · ');
 
-      const bars = ids
+      const presentations = ids.map((id) => {
+        const muscle = state.plan.muscles[id];
+        const value = volume[id] || 0;
+        const status = bandStatus(value, muscle);
+        const allowance = Math.max(2, muscle.hi * 0.15);
+        const tone = status === 'over' && value - muscle.hi <= allowance ? 'slightly-over' : status;
+        return { id, muscle, value, status, tone };
+      });
+      const counts = presentations.reduce((result, row) => {
+        result[row.tone] = (result[row.tone] || 0) + 1;
+        return result;
+      }, {});
+      const summary = [
+        counts.in ? `${counts.in} in range` : '',
+        counts['slightly-over'] ? `${counts['slightly-over']} slightly above` : '',
+        counts.over ? `${counts.over} materially above` : '',
+        counts.under ? `${counts.under} below` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ');
+
+      const bars = presentations
         .map((id) => {
-          const muscle = state.plan.muscles[id];
-          const value = volume[id] || 0;
-          const status = bandStatus(value, muscle);
-          const color = status === 'under' ? 'var(--warn)' : status === 'over' ? 'var(--s2)' : 'var(--s3)';
+          const { muscle, value, status, tone } = id;
+          const color =
+            tone === 'under' ? 'var(--warn)' : tone === 'over' ? 'var(--s2)' : tone === 'slightly-over' ? 'var(--s1)' : 'var(--s3)';
+          const stateText =
+            status === 'under'
+              ? `${(muscle.lo - value).toFixed(1)} below`
+              : status === 'over'
+                ? `+${(value - muscle.hi).toFixed(1)} ${tone === 'slightly-over' ? 'slightly above' : 'above'}`
+                : 'in range';
           return `<div class="vol"><div class="r1"><b>${escape(muscle.label)}</b>
-            <em>${value.toFixed(1)} sets <span class="f">· ${frequency[id] || 0}×/wk</span></em></div>
+            <em>${value.toFixed(1)} sets <span class="f">· ${frequency[id.id] || 0}×/wk · ${stateText}</span></em></div>
             <div class="track"><div class="band" style="left:${(muscle.lo / VOLUME_SCALE) * 100}%;width:${
               ((muscle.hi - muscle.lo) / VOLUME_SCALE) * 100
             }%"></div><div class="fill" style="width:${Math.min(100, (value / VOLUME_SCALE) * 100)}%;background:${color}"></div></div></div>`;
         })
         .join('');
 
-      return `<h3>${escape(group)}</h3><div class="card">${bars}${
+      return `<details class="card stimulus-group"><summary>${escape(group)} <span>${escape(summary)}</span></summary><div class="c">${bars}${
         rollText
           ? `<p class="hint" style="margin-top:11px">Counted the way the research does — whole muscle, not per head — that is ${rollText}. The familiar <b>~20 sets/week</b> figure uses those units, not the split ones above.</p>`
           : ''
-      }</div>`;
+      }</div></details>`;
     })
     .join('');
 }
@@ -308,7 +335,9 @@ function exercisesView(state) {
  */
 function workoutsView(state) {
   const next = state.position.nextSessionId;
-  const open = state.planOpenSession ?? next;
+  // Undefined means the screen has not been visited and should helpfully open
+  // the next session. Null is deliberate: the user tapped that card shut.
+  const open = state.planOpenSession === undefined ? next : state.planOpenSession;
 
   return `<h3 style="margin-top:0">Workouts</h3>
   <p style="margin:0 2px 12px">Run in order: <b>${state.plan.meta.rotationOrder.join(

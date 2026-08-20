@@ -177,6 +177,7 @@ async function loadEverything() {
 
   state.cycles = alive(await getAll(state.db, 'cycles')).sort((a, b) => a.sequence - b.sequence);
   const finished = state.logs.filter((log) => log.endedAt);
+  const plannedFinished = finished.filter((log) => state.plan.meta.rotationOrder.includes(log.rotationPosition));
 
   // ── where the plan actually is ──
   const stored = await readSettings(state.db);
@@ -185,8 +186,8 @@ async function loadEverything() {
     state.cycles.find((c) => c.sequence === sequence) ||
     newCycle(state.plan, { sequence, startedAtISO: stored.cycleStartedAtISO ?? null, localStartDate: stored.cycleStartedDate ?? null });
 
-  state.cycleProgress = cycleProgress(state.plan, state.cycle, finished);
-  state.next = nextSession(state.plan, state.cycle, finished);
+  state.cycleProgress = cycleProgress(state.plan, state.cycle, plannedFinished);
+  state.next = nextSession(state.plan, state.cycle, plannedFinished);
   state.boundary = blockBoundary(state.plan, state.cycle);
 
   const block = blockFor(state.plan, state.cycle.sequence);
@@ -197,8 +198,8 @@ async function loadEverything() {
   // ripple through every view at once.
   state.position = {
     nextSessionId: state.next.position,
-    sessionsDone: finished.length,
-    lastSessionId: finished.length ? finished[finished.length - 1].rotationPosition ?? null : null,
+    sessionsDone: plannedFinished.length,
+    lastSessionId: plannedFinished.length ? plannedFinished[plannedFinished.length - 1].rotationPosition ?? null : null,
   };
   state.blockProgress = {
     blockDone: state.cycleProgress.complete,
@@ -207,16 +208,18 @@ async function loadEverything() {
     daysElapsed: state.cycle.localStartDate ? daysBetween(state.cycle.localStartDate, state.todayISO) : null,
   };
 
-  const firstLogged = finished.length ? (finished[0].localDate || finished[0].dateISO || '').slice(0, 10) : null;
+  const firstLogged = plannedFinished.length
+    ? (plannedFinished[0].localDate || plannedFinished[0].dateISO || '').slice(0, 10)
+    : null;
   state.planProgress = {
-    sessionsDone: finished.length,
+    sessionsDone: plannedFinished.length,
     cyclesDone: Math.max(0, state.cycle.sequence - 1) + (state.cycleProgress.finished ? 1 : 0),
     daysElapsed: firstLogged ? daysBetween(firstLogged, state.todayISO) : null,
     calendarWeek: firstLogged ? Math.floor(Math.max(0, daysBetween(firstLogged, state.todayISO)) / 7) + 1 : 1,
     pace: null,
   };
   if (state.planProgress.daysElapsed > 0) {
-    state.planProgress.pace = finished.length / (state.planProgress.daysElapsed / 7);
+    state.planProgress.pace = plannedFinished.length / (state.planProgress.daysElapsed / 7);
     state.projection = projectedFinish(state.plan, {
       cyclesDone: state.planProgress.cyclesDone,
       daysElapsed: state.planProgress.daysElapsed,
@@ -337,8 +340,12 @@ async function ensureActiveLog() {
   if (state.activeLog) return state.activeLog;
   if (startingSession) return startingSession;
 
-  // Stable for this position on this day, so a retry cannot open a second one.
-  const operationId = `start:${state.cycle.id}:${state.trainSessionId}:${todayISO()}`;
+  // Stable for this one start attempt, but never reused for a later legitimate
+  // restart of the same workout. The active-pointer transaction and
+  // `startingSession` prevent double opens; a date-level key incorrectly
+  // resurrected a discarded session when the user tried again that day.
+  const nonce = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const operationId = `start:${state.cycle.id}:${state.trainSessionId}:${nonce}`;
 
   startingSession = (async () => {
     const { log } = await startSessionAtomic(
@@ -350,7 +357,7 @@ async function ensureActiveLog() {
         startedAt: nowISO(),
         endedAt: null,
         sessionId: state.trainSessionId,
-        rotationPosition: state.trainSessionId,
+        rotationPosition: state.trainSessionId === train.CUSTOM_SESSION_ID ? null : state.trainSessionId,
         cycleId: state.cycle.id,
         cycleSequence: state.cycle.sequence,
         blockId: state.block.idx,
@@ -359,7 +366,10 @@ async function ensureActiveLog() {
         // Real until said otherwise: a session logged as it happens is the
         // normal case, and the switch beside Finish is for the times it is not.
         timingReliable: true,
-        rotationIndex: state.plan.meta.rotationOrder.indexOf(state.trainSessionId),
+        rotationIndex:
+          state.trainSessionId === train.CUSTOM_SESSION_ID
+            ? null
+            : state.plan.meta.rotationOrder.indexOf(state.trainSessionId),
         bodyweight: null,
         sessionRpe: null,
         note: null,
@@ -401,7 +411,9 @@ async function saveSet(slotIndex, setIndex, values) {
     rir: values.rpe == null ? null : Math.max(0, 10 - values.rpe),
     toFailure: !!values.toFailure,
     isAmrap: !!values.isAmrap,
-    isIndexSet: !!slot.idx,
+    // The plan supplies the default, but the logger can deliberately promote
+    // or demote this individual set when it is the best evidence from the day.
+    isIndexSet: values.isIndexSet == null ? !!slot.idx : !!values.isIndexSet,
     isMyoRep: !!values.isMyoRep,
     velocity: values.velocity ?? null,
     note: values.note ?? null,
@@ -511,7 +523,10 @@ async function persistDraft() {
 
 async function finishSession() {
   await persistDraft();
-  const session = state.plan.sessions.find((s) => s.id === state.trainSessionId);
+  const isCustom = state.trainSessionId === train.CUSTOM_SESSION_ID;
+  const session = isCustom
+    ? { id: 'Custom', name: 'Custom workout' }
+    : state.plan.sessions.find((s) => s.id === state.trainSessionId);
   const prescribed = prescribedSetCount({ slots: train.slotsFor(state) });
   const logged = state.loggedSets.size;
   const ratio = completionRatio(logged, prescribed);
@@ -553,7 +568,11 @@ async function finishSession() {
       finishedLog.isPartial ? ' — logged as a partial session' : ''
     }${Number.isFinite(minutes) && minutes > 0 ? ` · ${minutes} min` : ''}</p>
     ${
-      state.cycleProgress.finished
+      isCustom
+        ? `<p style="text-align:center;font-size:13px">Saved to History and analytics. The plan did not move; next in the rotation is still <b>${escape(
+            state.position.nextSessionId
+          )}</b>.</p><button class="big mt" data-act="sheet-close">Done</button>`
+        : state.cycleProgress.finished
         ? `<p style="text-align:center;font-size:13px">That completes <b>rotation ${state.cycle.sequence}</b>${
             state.cycleProgress.partial || state.cycleProgress.skipped
               ? ` — with ${state.cycleProgress.partial + state.cycleProgress.skipped} position${
@@ -730,9 +749,19 @@ const ctx = {
         <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">You have <b>${state.loggedSets.size} sets</b> logged in session ${escape(
           state.activeLog.sessionId
         )}.</p>
-        <p style="text-align:center;font-size:13px">Finish that session before starting another, or carry on where you left off.</p>
-        <button class="big mt" data-act="sheet-close">Carry on</button>`);
+        <p style="text-align:center;font-size:13px">Finish that session before starting another, carry on where you left off, or move it to Recently deleted.</p>
+        <button class="big mt" data-act="sheet-close">Carry on</button>
+        <button class="big ghost danger-text mt" data-act="discard-session" data-next="${escape(id)}">Discard it and open ${escape(
+          id
+        )}</button>`);
       return;
+    }
+    if (!state.activeLog && state.trainSessionId !== id) {
+      // An unstarted custom builder is only a draft. Switching away discards
+      // that draft rather than leaking its exercises into a planned session.
+      state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {} };
+      state.grips = {};
+      state.loggedSets = new Map();
     }
     state.trainSessionId = id;
     state.exOpen = new Set(['0']);
@@ -1636,6 +1665,31 @@ const globalActions = {
     goTo({ tab: 'set' });
   },
   'sheet-close'() {
+    closeSheet();
+    render();
+  },
+  'discard-session'(_ctx, data) {
+    if (!state.activeLog) return;
+    const next = data.next || '';
+    openSheet(`<div class="ttl">Discard session ${escape(state.activeLog.sessionId)}</div>
+      <p style="text-align:center;margin:14px 0 6px;font-size:14px;color:var(--ink)">Move this session and its <b>${
+        state.loggedSets.size
+      } logged set${state.loggedSets.size === 1 ? '' : 's'}</b> to Recently deleted?</p>
+      <p style="text-align:center;font-size:13px">The clock will stop. Nothing is permanently erased: you can restore the session from Settings until you empty the bin.</p>
+      <button class="big danger mt" data-act="confirm-discard-session"${
+        next ? ` data-next="${escape(next)}"` : ''
+      }>Move to Recently deleted</button>
+      <button class="big ghost mt" data-act="sheet-close">Keep session</button>`);
+  },
+  async 'confirm-discard-session'(ctx, data) {
+    const id = state.activeLog?.id;
+    if (id == null) return;
+    await ctx.deleteEntry('session', id, { reason: 'discarded while active' });
+    if (data.next) {
+      state.trainSessionId = data.next;
+      state.exOpen = new Set(['0']);
+      state.cleared = new Set();
+    }
     closeSheet();
     render();
   },

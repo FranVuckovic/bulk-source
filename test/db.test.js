@@ -536,6 +536,20 @@ test('two starts cannot produce two active sessions', async () => {
   assert.equal(a.created && b.created, false, 'but not both');
 });
 
+test('a discarded session can be started again as a fresh session', async () => {
+  const { db } = await freshDb();
+  const row = { dateISO: '2026-08-20', localDate: '2026-08-20', sessionId: 'A', blockId: 1, startedAt: '2026-08-20T17:00:00.000Z' };
+  const first = await startSessionAtomic(db, row, { operationId: 'first-attempt' });
+
+  await softDeleteSession(db, first.log.id, { reason: 'started by mistake' });
+  await writeSetting(db, 'activeSessionLogId', null);
+  const second = await startSessionAtomic(db, { ...row, startedAt: '2026-08-20T17:05:00.000Z' }, { operationId: 'second-attempt' });
+
+  assert.equal(second.created, true);
+  assert.notEqual(second.log.id, first.log.id);
+  assert.ok(!second.log.deletedAtISO);
+});
+
 test('finishing is atomic and a finished session never reopens', async () => {
   const { db } = await freshDb();
   const { log } = await startSessionAtomic(

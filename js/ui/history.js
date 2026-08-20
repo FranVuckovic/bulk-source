@@ -64,7 +64,9 @@ export function entries(state, { deleted = false } = {}) {
         key: `session:${log.id}`,
         id: log.id,
         dateISO: dayOf(log.dateISO),
-        title: `${log.sessionId} · ${session ? session.name : 'Session'}`,
+        title: `${log.sessionId === 'custom' ? 'Custom' : log.sessionId} · ${
+          session ? session.name : log.sessionId === 'custom' ? 'Custom workout' : 'Session'
+        }`,
         summary: [
           `${sets.length} sets`,
           minutes ? `${minutes} min` : null,
@@ -169,7 +171,9 @@ function deletedEntries(state) {
 
       const title =
         kind === 'session'
-          ? `${row.sessionId ?? '—'} · ${session ? session.name : 'Session'}`
+          ? `${row.sessionId === 'custom' ? 'Custom' : row.sessionId ?? '—'} · ${
+              session ? session.name : row.sessionId === 'custom' ? 'Custom workout' : 'Session'
+            }`
           : kind === 'set'
             ? `Set · ${exercise?.name || row.exerciseId || '—'}`
             : kind === 'measurement'
@@ -672,7 +676,9 @@ function sessionScreen(ctx) {
     <div class="lbl">${escape(longDate(log.dateISO))}${
       log.readiness && log.readiness !== 'normal' ? ` \u00b7 ${escape(log.readiness)} day` : ''
     }</div>
-    <div class="nm">${escape(log.sessionId)} \u00b7 ${escape(session ? session.name : 'Session')}</div>
+    <div class="nm">${escape(log.sessionId === 'custom' ? 'Custom' : log.sessionId)} \u00b7 ${escape(
+      session ? session.name : log.sessionId === 'custom' ? 'Custom workout' : 'Session'
+    )}</div>
     <div class="meta">
       <span>rotation ${log.cycleSequence ?? '\u2014'}</span>
       ${minutes ? `<span>${minutes} min${t.startLooksWrong ? ' of work' : ''}</span>` : ''}

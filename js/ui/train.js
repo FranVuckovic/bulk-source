@@ -44,6 +44,7 @@ import {
 } from './components.js';
 
 const setKey = (slotIndex, setIndex) => `${slotIndex}:${setIndex}`;
+export const CUSTOM_SESSION_ID = 'custom';
 
 /*
  * A touch-and-go rep is worth about 4% more than a one-second pause, so mixing
@@ -61,6 +62,14 @@ const tracksPause = (exerciseId) => exerciseId.startsWith('bench');
  * checked for safety before it is applied.
  */
 export function slotsFor(state, readinessOverride) {
+  if (state.trainSessionId === CUSTOM_SESSION_ID) {
+    return (state.deviations.extras || []).map((slot, i) => {
+      const prescribed = slot.sets;
+      const loggedHere = highestLoggedIndex(state, i);
+      const sets = Math.max(prescribed, loggedHere + 1);
+      return { ...slot, sets, prescribedSets: prescribed, beyondPlan: sets > prescribed, added: true };
+    });
+  }
   // Everything block-specific comes from the plan engine: the bench work for
   // this block, the failure permission for this rotation's effort mode, the
   // accessory multiplier, the static hold if one is offered, and any readiness
@@ -125,6 +134,7 @@ function highestLoggedIndex(state, slotIndex) {
  * survivable (see above); reindexing is not, so it is refused instead.
  */
 export function readinessWouldReindex(state, nextReadiness) {
+  if (state.trainSessionId === CUSTOM_SESSION_ID) return false;
   const current = slotsFor(state);
   const next = slotsFor(state, nextReadiness);
   if (current.length !== next.length) return true;
@@ -206,13 +216,18 @@ export function rowValues(state, slot, slotIndex, setIndex) {
 
 export function view(ctx) {
   const { state } = ctx;
-  const session = state.plan.sessions.find((s) => s.id === state.trainSessionId);
+  const isCustom = state.trainSessionId === CUSTOM_SESSION_ID;
+  const session = isCustom
+    ? { id: 'Custom', name: 'Custom workout', purpose: 'An ad-hoc session that does not advance or change the A–F rotation.' }
+    : state.plan.sessions.find((s) => s.id === state.trainSessionId);
   const slots = slotsFor(state);
-  const resolved = resolveSession(state.plan, {
-    rotation: state.cycle.sequence,
-    sessionId: state.trainSessionId,
-    readiness: state.readiness || 'normal',
-  });
+  const resolved = isCustom
+    ? { effortMode: 'none', accessoryMultiplier: 1, blockType: 'custom' }
+    : resolveSession(state.plan, {
+        rotation: state.cycle.sequence,
+        sessionId: state.trainSessionId,
+        readiness: state.readiness || 'normal',
+      });
   const unit = state.settings.unit;
 
   let prescribedSets = 0;
@@ -222,8 +237,10 @@ export function view(ctx) {
     for (let i = 0; i < slot.sets; i++) if (state.loggedSets.has(setKey(si, i))) doneSets++;
   });
 
-  const isNext = state.trainSessionId === state.position.nextSessionId;
-  const label = isNext
+  const isNext = !isCustom && state.trainSessionId === state.position.nextSessionId;
+  const label = isCustom
+    ? `Outside the rotation · next remains ${escape(state.position.nextSessionId)}`
+    : isNext
     ? `Next in rotation · session ${state.position.sessionsDone + 1}`
     : `Picked manually · next up is ${escape(state.position.nextSessionId)}`;
 
@@ -233,11 +250,11 @@ export function view(ctx) {
       (s) =>
         `<button class="pill ${s.id === state.trainSessionId ? 'on' : ''}" data-act="pick-session" data-id="${s.id}">${s.id}</button>`
     )
-    .join('')}</div>
+    .join('')}<button class="pill custom ${isCustom ? 'on' : ''}" data-act="pick-session" data-id="${CUSTOM_SESSION_ID}">Custom</button></div>
 
-  ${state.calibration ? calibrationCard() : ''}
+  ${state.calibration && !isCustom ? calibrationCard() : ''}
 
-  ${readinessBar(state)}
+  ${isCustom ? '' : readinessBar(state)}
 
   <div class="shead">
     <div class="lbl">${label}</div>
@@ -247,8 +264,8 @@ export function view(ctx) {
     <div class="meta">
       <span>${doneSets} / ${prescribedSets} sets</span>
       <span>~${Math.round(sessionClock(state, slots).totalSeconds / 60)} min incl. warm-ups</span>
-      <span>Cycle ${state.cycle.sequence}/${state.plan.meta.rotations} · ${escape(state.block.name)}</span>
-      <span>${state.cycleProgress.complete}/${state.plan.meta.rotationOrder.length} this rotation</span>
+      <span>${isCustom ? 'Does not advance the plan' : `Cycle ${state.cycle.sequence}/${state.plan.meta.rotations} · ${escape(state.block.name)}`}</span>
+      <span>${state.cycleProgress.complete}/${state.plan.meta.rotationOrder.length} planned sessions this rotation</span>
     </div>
     ${
       resolved.effortMode === 'high' || resolved.effortMode === 'standard'
@@ -261,13 +278,25 @@ export function view(ctx) {
           ? `<p class="hint" style="margin-top:8px"><b>${escape(resolved.blockName)}</b> — reduced volume, nothing to failure.</p>`
           : ''
     }
-    <div class="mini" style="margin-top:10px"><button data-act="open-cycle-control">Rotation ${state.cycle.sequence} ·
-      correct</button></div>
+    ${
+      isCustom
+        ? '<p class="hint" style="margin-top:8px">Add any exercises below. Custom work still appears in History and analytics, but never replaces A–F.</p>'
+        : `<div class="mini" style="margin-top:10px"><button data-act="open-cycle-control">Rotation ${state.cycle.sequence} · correct</button></div>`
+    }
   </div>
+
+  ${
+    state.activeLog
+      ? `<div class="mini session-actions"><button class="warn" data-act="discard-session">Discard session</button></div>`
+      : slots.length
+        ? `<button class="big train-start" data-act="start-session">Start session</button>
+           <p class="hint train-start-hint">Starts the clock before your warm-up. If you skip this, the first logged set starts it automatically.</p>`
+        : '<p class="hint train-start-hint"><b>Add an exercise to build this workout.</b> The clock will not start while you are choosing.</p>'
+  }
 
   ${sessionProgressCard(state, slots)}
 
-  <div class="card flush">${slots.map((slot, si) => exerciseBlock(state, slot, si)).join('')}</div>
+  ${slots.length ? `<div class="card flush">${slots.map((slot, si) => exerciseBlock(state, slot, si)).join('')}</div>` : ''}
 
   <div class="mini" style="margin:0 2px 12px"><button data-act="open-add">+ Add exercise</button><button data-act="open-timer">Timer</button></div>
 
@@ -282,13 +311,6 @@ export function view(ctx) {
     </div>
     <p class="hint">Session RPE = how hard the <b>whole session</b> felt, 0–10, rated about 20 minutes after you finish. Multiplied by duration it gives a session load — the earliest warning sign that weekly fatigue is climbing, usually a week before you feel it.</p>
     ${timingRow(state)}
-    ${
-      state.activeLog
-        ? ''
-        : `<button class="big ghost mt" data-act="start-session">Start session</button>
-           <p class="hint">Only starts the clock. You never have to press it — the session starts itself the moment
-           you tick your first set, and finishes fine either way. It is here for when you want the warm-up counted.</p>`
-    }
     <button class="big mt" data-act="finish">Finish session</button>
   </div>`;
 }
@@ -391,7 +413,7 @@ function sessionProgressCard(state, slots) {
     <p class="hint" style="margin:8px 0 0">About <b>${Math.round(clock.totalSeconds / 60)} min</b> in total —
     ${Math.round(clock.warmupSeconds / 60)} of warm-up ramps and ${Math.round(clock.workingSeconds / 60)} of work
     and rest. Estimates, at ${SET_SETUP_SECONDS} s to get set and ${SECONDS_PER_REP} s a rep.${
-      started ? '' : ' <b>Start session</b> below begins the clock.'
+      started ? '' : ' <b>Start session</b> above begins the clock; logging a set starts it automatically.'
     }</p>
   </div>`;
 }
@@ -478,6 +500,39 @@ function exerciseBlock(state, slot, slotIndex) {
   const workingMax = workingMaxFor(state, slot.ex);
 
   const rows = Array.from({ length: slot.sets }, (_, i) => setRow(state, slot, slotIndex, i)).join('');
+  const valueActions = `${
+    previous ? `<button data-act="same-as-last" data-si="${slotIndex}">Same as last time</button>` : ''
+  }${
+    prescribed != null
+      ? `<button class="warn" data-act="clear-pres" data-si="${slotIndex}">${
+          state.cleared.has(String(slotIndex)) ? 'Restore prescribed' : 'Clear prescribed'
+        }</button>`
+      : ''
+  }`;
+  const setupActions = `${
+    prescribed != null && !state.plan.exercises[slot.ex].bodyweightLoaded
+      ? `<button data-act="open-ramp" data-si="${slotIndex}">Warm-up</button>
+         <button data-act="open-plates" data-si="${slotIndex}">Plates</button>`
+      : ''
+  }${
+    exercise.grips
+      ? `<button data-act="open-grip" data-si="${slotIndex}">Grip: ${escape(
+          (state.grips[`${state.trainSessionId}-${slotIndex}`] || exercise.grips[0]).split(' (')[0]
+        )}</button>`
+      : ''
+  }`;
+  const exerciseActions = `<button data-act="add-set" data-si="${slotIndex}">+ Set</button>
+    ${
+      slot.added
+        ? `<button class="warn" data-act="remove-added" data-si="${slotIndex}">Remove</button>`
+        : `<button data-act="open-swap" data-si="${slotIndex}">Swap</button>`
+    }
+    <button data-act="about" data-id="${slot.ex}">About</button>
+    <button class="${exerciseNote(state, slotIndex) ? 'warn' : ''}" data-act="open-ex-note" data-si="${slotIndex}">${
+      exerciseNote(state, slotIndex) ? '\u2713 Note' : 'Note'
+    }</button>`;
+  const actionGroup = (label, buttons) =>
+    buttons ? `<div class="action-group"><span>${label}</span><div class="mini">${buttons}</div></div>` : '';
 
   return `<div class="ex ${open ? 'open' : ''}">
     <div class="exhead" data-act="toggle-ex" data-si="${slotIndex}">
@@ -540,26 +595,10 @@ function exerciseBlock(state, slot, slotIndex) {
             )}</div>`
           : ''
       }
-      <div class="mini">
-        ${previous ? `<button data-act="same-as-last" data-si="${slotIndex}">Same as last time</button>` : ''}
-        ${prescribed != null && !state.plan.exercises[slot.ex].bodyweightLoaded ? `<button data-act="open-ramp" data-si="${slotIndex}">Warm-up</button>` : ''}
-        ${prescribed != null && !state.plan.exercises[slot.ex].bodyweightLoaded ? `<button data-act="open-plates" data-si="${slotIndex}">Plates</button>` : ''}
-        <button data-act="add-set" data-si="${slotIndex}">+ Set</button>
-        <button data-act="open-swap" data-si="${slotIndex}">Swap</button>
-        <button class="warn" data-act="clear-pres" data-si="${slotIndex}">${
-          state.cleared.has(String(slotIndex)) ? 'Restore prescribed' : 'Clear prescribed'
-        }</button>
-        <button data-act="about" data-id="${slot.ex}">About</button>
-        <button class="${exerciseNote(state, slotIndex) ? 'warn' : ''}" data-act="open-ex-note" data-si="${slotIndex}">${
-          exerciseNote(state, slotIndex) ? '\u2713 Note' : 'Note'
-        }</button>
-        ${
-          exercise.grips
-            ? `<button data-act="open-grip" data-si="${slotIndex}">Grip: ${escape(
-                (state.grips[`${state.trainSessionId}-${slotIndex}`] || exercise.grips[0]).split(' (')[0]
-              )}</button>`
-            : ''
-        }
+      <div class="ex-actions">
+        ${actionGroup('Values', valueActions)}
+        ${actionGroup('Setup', setupActions)}
+        ${actionGroup('Exercise', exerciseActions)}
       </div></div></div>`;
 }
 
@@ -700,6 +739,7 @@ function drawStepSheet(ctx) {
       <button data-act="flag" data-flag="toFailure" class="${c.toFailure ? 'warn' : ''}">${c.toFailure ? '\u2713 ' : ''}To failure</button>
       <button data-act="flag" data-flag="isAmrap" class="${c.isAmrap ? 'warn' : ''}">${c.isAmrap ? '\u2713 ' : ''}AMRAP</button>
       <button data-act="flag" data-flag="isMyoRep" class="${c.isMyoRep ? 'warn' : ''}">${c.isMyoRep ? '\u2713 ' : ''}Myo-reps</button>
+      <button data-act="flag" data-flag="isIndexSet" class="${c.isIndexSet ? 'warn' : ''}">${c.isIndexSet ? '\u2713 ' : ''}Index set</button>
       ${
         tracksPause(c.slot.ex)
           ? PAUSE_STYLES.map(
@@ -853,16 +893,33 @@ export const actions = {
     await setExerciseNote(ctx, Number(data.si), '');
   },
 
-  'add-set'(ctx, data) {
+  async 'add-set'(ctx, data) {
     const slotIndex = Number(data.si);
-    const planned = ctx.state.plan.sessions.find((s) => s.id === ctx.state.trainSessionId).slots;
+    const planned = ctx.state.plan.sessions.find((s) => s.id === ctx.state.trainSessionId)?.slots || [];
     if (slotIndex < planned.length) {
       ctx.state.deviations.addedSets[slotIndex] = (ctx.state.deviations.addedSets[slotIndex] || 0) + 1;
     } else {
       ctx.state.deviations.extras[slotIndex - planned.length].sets += 1;
     }
     ctx.state.exOpen.add(String(slotIndex));
-    ctx.saveDeviations();
+    if (ctx.state.activeLog || ctx.state.trainSessionId !== CUSTOM_SESSION_ID) await ctx.saveDeviations();
+    ctx.render();
+  },
+
+  async 'remove-added'(ctx, data) {
+    const { state } = ctx;
+    const slotIndex = Number(data.si);
+    const wouldReindexLogged = [...state.loggedSets.keys()].some((key) => Number(key.split(':')[0]) >= slotIndex);
+    if (wouldReindexLogged) {
+      openSheet(`<div class="ttl">Exercise has logged sets</div>
+        <p style="text-align:center;margin:14px 0;font-size:13px">This exercise or one below it already has logged sets. Remove those sets first, or discard the whole session. A visible set is never shifted onto a different exercise.</p>
+        <button class="big mt" data-act="sheet-close">Go back</button>`);
+      return;
+    }
+    const plannedLength = state.plan.sessions.find((s) => s.id === state.trainSessionId)?.slots.length || 0;
+    state.deviations.extras.splice(slotIndex - plannedLength, 1);
+    state.exOpen = new Set(['0']);
+    if (state.activeLog) await ctx.saveDeviations();
     ctx.render();
   },
 
@@ -897,6 +954,7 @@ export const actions = {
       toFailure: values.logged ? !!values.logged.toFailure : values.toFailure,
       isAmrap: values.logged ? !!values.logged.isAmrap : !!slot.amrap,
       isMyoRep: values.logged ? !!values.logged.isMyoRep : !!slot.myoReps && i === slot.sets - 1,
+      isIndexSet: values.logged ? !!values.logged.isIndexSet : !!slot.idx,
       velocity: values.logged?.velocity ?? null,
       note: values.logged?.note ?? null,
       pauseStyle: values.logged?.pauseStyle ?? null,
@@ -1029,6 +1087,7 @@ export const actions = {
       toFailure: c.toFailure,
       isAmrap: c.isAmrap,
       isMyoRep: c.isMyoRep,
+      isIndexSet: c.isIndexSet,
       velocity: c.velocity,
       note: c.note,
       pauseStyle: c.pauseStyle,
@@ -1058,12 +1117,12 @@ export const actions = {
       <button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
   },
 
-  'set-grip'(ctx, data) {
+  async 'set-grip'(ctx, data) {
     const { state } = ctx;
     const slot = slotsFor(state)[Number(data.si)];
     const grip = state.plan.exercises[slot.ex].grips[Number(data.gi)];
     state.grips[`${state.trainSessionId}-${data.si}`] = grip;
-    ctx.saveDeviations();
+    await ctx.saveDeviations();
     closeSheet();
     ctx.render();
   },
@@ -1084,7 +1143,7 @@ export const actions = {
       .join('')}</div><button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
   },
 
-  'do-add'(ctx, data) {
+  async 'do-add'(ctx, data) {
     const { state } = ctx;
     const exercise = state.plan.exercises[data.id];
     state.deviations.extras.push({
@@ -1101,7 +1160,9 @@ export const actions = {
       added: true,
     });
     state.exOpen.add(String(slotsFor(state).length - 1));
-    ctx.saveDeviations();
+    // Building a custom workout is not starting it. The in-memory draft is
+    // persisted with the session when Start or the first set is logged.
+    if (state.activeLog || state.trainSessionId !== CUSTOM_SESSION_ID) await ctx.saveDeviations();
     closeSheet();
     ctx.render();
   },
@@ -1132,10 +1193,10 @@ export const actions = {
       <button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
   },
 
-  'do-swap'(ctx, data) {
+  async 'do-swap'(ctx, data) {
     ctx.state.deviations.swaps[Number(data.si)] = data.id;
     ctx.state.exOpen.add(String(data.si));
-    ctx.saveDeviations();
+    await ctx.saveDeviations();
     closeSheet();
     ctx.render();
   },
@@ -1171,12 +1232,12 @@ export const actions = {
       return;
     }
 
-    ctx.finishSession();
+    return ctx.finishSession();
   },
 
   'do-finish'(ctx) {
     closeSheet();
-    ctx.finishSession();
+    return ctx.finishSession();
   },
 
   /** Start the clock without logging anything. */

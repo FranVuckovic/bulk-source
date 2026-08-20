@@ -12,6 +12,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, normalize, relative } from 'node:path';
+import { actions as trainActions, inputs as trainInputs } from '../js/ui/train.js';
+import { actions as bodyActions, files as bodyFiles } from '../js/ui/body.js';
+import { actions as progressActions } from '../js/ui/progress.js';
+import { actions as historyActions } from '../js/ui/history.js';
+import { actions as planActions, inputs as planInputs } from '../js/ui/plan.js';
+import { actions as settingsActions, files as settingsFiles } from '../js/ui/settings.js';
 
 const root = new URL('..', import.meta.url).pathname;
 const read = (path) => readFileSync(join(root, path), 'utf8');
@@ -39,6 +45,22 @@ function moduleGraph() {
     }
   }
   return seen;
+}
+
+function objectMethodNames(source, from, to) {
+  const block = source.slice(source.indexOf(from), source.indexOf(to, source.indexOf(from)));
+  return new Set(
+    [...block.matchAll(/^\s*(?:async\s+)?(?:'([^']+)'|([A-Za-z][\w-]*))\s*\(/gm)].map((match) => match[1] || match[2])
+  );
+}
+
+function literalBindings(attribute) {
+  const files = ['index.html', ...[...moduleGraph()]];
+  return new Set(
+    files.flatMap((file) =>
+      [...read(file).matchAll(new RegExp(`${attribute}="([^"$]+)"`, 'g'))].map((match) => match[1])
+    )
+  );
 }
 
 test('every module the app imports is in the offline shell', () => {
@@ -81,6 +103,38 @@ test('every js file in the project is reachable from the entry point', () => {
   assert.deepEqual(orphans, [], `imported by nothing: ${orphans.join(', ')}`);
 });
 
+test('every literal UI control is wired to a real handler', () => {
+  const app = read('js/app.js');
+  const globalActions = objectMethodNames(app, 'const globalActions = {', 'const changeHandlers = {');
+  const clickHandlers = new Set([
+    ...globalActions,
+    ...Object.keys(trainActions),
+    ...Object.keys(bodyActions),
+    ...Object.keys(progressActions),
+    ...Object.keys(historyActions),
+    ...Object.keys(planActions),
+    ...Object.keys(settingsActions),
+  ]);
+  for (const action of literalBindings('data-act')) {
+    assert.ok(clickHandlers.has(action), `data-act="${action}" has no click handler`);
+  }
+
+  const changeHandlers = objectMethodNames(app, 'const changeHandlers = {', '/** Hand a file');
+  for (const action of literalBindings('data-act-change')) {
+    assert.ok(changeHandlers.has(action), `data-act-change="${action}" has no change handler`);
+  }
+
+  const fileHandlers = new Set([...Object.keys(bodyFiles), ...Object.keys(settingsFiles)]);
+  for (const action of literalBindings('data-act-file')) {
+    assert.ok(fileHandlers.has(action), `data-act-file="${action}" has no file handler`);
+  }
+
+  const inputHandlers = new Set([...Object.keys(trainInputs), ...Object.keys(planInputs)]);
+  for (const action of literalBindings('data-act-input')) {
+    assert.ok(inputHandlers.has(action), `data-act-input="${action}" has no input handler`);
+  }
+});
+
 
 test('the app opens sessions only through the atomic path', () => {
   // The guarantee is only worth as much as the call site. `startSessionAtomic`
@@ -101,6 +155,52 @@ test('deletion in the app is recoverable, not a raw remove', () => {
   assert.ok(deleter.includes('softDeleteSession('), 'sessions are soft-deleted');
   assert.ok(deleter.includes('softDeleteRow('), 'so is everything else');
   assert.ok(!deleter.includes('deleteSessionCascade('), 'the cascade belongs to emptying the bin only');
+});
+
+test('an active session can be discarded only through the recoverable deletion path', () => {
+  const app = read('js/app.js');
+  const action = app.slice(app.indexOf("async 'confirm-discard-session'"), app.indexOf("'rest-skip'"));
+
+  assert.ok(action.includes("ctx.deleteEntry('session'"), 'discard uses the central soft-delete path');
+  assert.ok(action.includes("reason: 'discarded while active'"), 'the recovery audit says why it moved');
+  assert.ok(!action.includes('deleteSessionCascade('), 'discard never destroys a session directly');
+});
+
+test('the session clock control is above the exercise list', () => {
+  const train = read('js/ui/train.js');
+  const view = train.slice(train.indexOf('export function view'), train.indexOf('function timingRow'));
+
+  assert.ok(view.indexOf('data-act="start-session"') < view.indexOf('exerciseBlock(state'));
+  assert.ok(view.includes('data-act="discard-session"'), 'an active session exposes the recoverable escape hatch');
+});
+
+test('the set editor exposes and saves an explicit index-set choice', () => {
+  const train = read('js/ui/train.js');
+  const app = read('js/app.js');
+
+  assert.ok(train.includes('data-flag="isIndexSet"'), 'the set sheet has a visible index-set toggle');
+  assert.ok(train.includes('isIndexSet: values.logged ? !!values.logged.isIndexSet : !!slot.idx'));
+  assert.ok(train.includes('isIndexSet: c.isIndexSet'), 'the choice reaches saveSet');
+  assert.ok(app.includes('values.isIndexSet == null ? !!slot.idx : !!values.isIndexSet'));
+});
+
+test('exercise actions are grouped by consequence instead of rendered as one button list', () => {
+  const train = read('js/ui/train.js');
+  const block = train.slice(train.indexOf('function exerciseBlock'), train.indexOf('function prescriptionHint'));
+
+  for (const label of ['Values', 'Setup', 'Exercise']) assert.ok(block.includes(`actionGroup('${label}'`));
+  assert.ok(block.includes('class="ex-actions"'));
+  assert.ok(block.includes("prescribed != null\n      ? `<button class=\"warn\" data-act=\"clear-pres\""));
+});
+
+test('custom workouts are explicitly outside plan rotation progress', () => {
+  const app = read('js/app.js');
+  const train = read('js/ui/train.js');
+
+  assert.ok(train.includes("export const CUSTOM_SESSION_ID = 'custom'"));
+  assert.ok(train.includes('does not advance or change the A–F rotation'));
+  assert.ok(app.includes('plannedFinished = finished.filter'));
+  assert.ok(app.includes('rotationPosition: state.trainSessionId === train.CUSTOM_SESSION_ID ? null'));
 });
 
 test('every icon the manifest names is precached and present', () => {
@@ -182,4 +282,30 @@ test('the published build includes everything index.html asks for', () => {
   for (const path of referenced) {
     assert.ok(shell.has(path), `index.html references ${path}, which is not published`);
   }
+});
+
+test('the demo warning is hidden unless demo mode is actually on', () => {
+  // The author stylesheet sets `.demostrip { display:flex }`, which overrides
+  // the browser's built-in `[hidden] { display:none }` rule. Without an author
+  // rule of our own the warning appears on real data even though both the HTML
+  // and app state correctly set the hidden property.
+  const html = read('index.html');
+  const css = read('css/app.css');
+  const app = read('js/app.js');
+
+  assert.match(html, /id="demostrip"[^>]*\bhidden\b/, 'the strip starts hidden before JavaScript runs');
+  assert.match(css, /\.demostrip\[hidden\]\s*\{\s*display\s*:\s*none\s*\}/, 'author CSS must honour hidden');
+  assert.match(app, /getElementById\('demostrip'\)\.hidden\s*=\s*!state\.demo/, 'render follows demo state');
+});
+
+test('demo data is the first Settings section instead of a buried utility', () => {
+  const settings = read('js/ui/settings.js');
+  const demo = settings.indexOf('>Demo data</h3>');
+  const training = settings.indexOf('Training &amp; display');
+  const danger = settings.indexOf('Deletion &amp; reset');
+
+  assert.ok(demo > 0 && demo < training && demo < danger);
+  assert.match(settings, /data-act="demo-on">Explore the demo/);
+  assert.match(settings, /<details class="card settings-group" open>/, 'only everyday settings start open');
+  assert.match(settings, /<details class="card settings-group danger-settings">/, 'destructive settings start collapsed');
 });

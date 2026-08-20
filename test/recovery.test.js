@@ -84,7 +84,12 @@ test('the bin lists every recoverable store, newest deletion first', async () =>
   // reachable from the Log — the duplicate you logged twice, the one you put on
   // the wrong exercise. A set with no session of its own is listed on its own;
   // sets deleted by a session cascade are not, because the session restores them.
-  ids.sets = await put(db, 'sets', { sessionLogId: 9999, exerciseId: 'benchComp', slotIndex: 0, setIndex: 0, load: 100, reps: 5 });
+  const { sessionLogId } = await saveSession(
+    db,
+    { dateISO: '2026-08-01', sessionId: 'A', status: 'partial' },
+    [{ exerciseId: 'benchComp', slotIndex: 0, setIndex: 0, load: 100, reps: 1, rpe: 8 }]
+  );
+  ids.sets = (await getAll(db, 'sets')).find((row) => row.sessionLogId === sessionLogId).id;
 
   for (const store of RECOVERABLE_STORES) {
     await softDeleteRow(db, store, ids[store]);
@@ -120,6 +125,26 @@ test('a set deleted with its session is not listed apart from it', async () => {
   const bin = await deletedRecords(db);
   assert.equal(bin.length, 1, 'the session, and not its two sets');
   assert.equal(bin[0].store, 'sessionLogs');
+});
+
+test('a set deleted on its own can be restored without changing its session', async () => {
+  const db = await openFresh();
+  const { sessionLogId } = await saveSession(
+    db,
+    { dateISO: '2026-08-01', sessionId: 'A', status: 'partial' },
+    [{ exerciseId: 'benchComp', slotIndex: 0, setIndex: 0, load: 100, reps: 1, rpe: 8 }]
+  );
+  const set = (await getAll(db, 'sets')).find((row) => row.sessionLogId === sessionLogId);
+
+  await softDeleteRow(db, 'sets', set.id, { reason: 'logged against the wrong exercise' });
+  assert.equal(alive(await getAll(db, 'sets')).length, 0);
+  assert.deepEqual((await deletedRecords(db)).map((entry) => entry.store), ['sets']);
+
+  await restoreRow(db, 'sets', set.id);
+  const restored = alive(await getAll(db, 'sets'))[0];
+  assert.equal(restored.exerciseId, 'benchComp');
+  assert.equal(restored.load, 100);
+  assert.equal(alive(await getAll(db, 'sessionLogs')).length, 1, 'the session stays live throughout');
 });
 
 test('an unrecoverable store is refused rather than silently ignored', async () => {

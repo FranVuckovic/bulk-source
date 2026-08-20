@@ -1,20 +1,28 @@
 # Bulk v2 — verification
 
-**Build:** `sw.js` VERSION `v2.4.0` · database v3 · plan format 3 · plan `fopip-v2`
-**Verified:** 19 August 2026
-**Method:** 278 automated tests, plus a driven pass in a real Chromium at
-390 × 844 against twelve rotations of generated history.
+**Current build:** `sw.js` VERSION `v2.6.0` · database v3 · plan format 3 · plan
+`fopip-v2`
+**Automated verification:** 20 August 2026 · 308 passing, 0 failing
+**Current visual/interactive verification:** pending for v2.6.0
 
-v2.2.0 adds demo mode, the five-section navigation, the repair tools and the
-version display. Everything below marked **v2.2.0** was verified by driving the
-built app in a browser rather than by reading the code.
+Two lines of work were merged to reach this build. The v2.2.0–v2.4.0 changes —
+demo mode, the five-section navigation, the repair tools, the version display,
+the wall-clock timers, the readiness fixes and the high-rep estimate — were
+verified by driving the built app in a real Chromium at 390 × 844 against
+twelve rotations of generated history, and v2.4.0 was published on that
+evidence. The v2.5 changes on top of it have been tested through domain,
+database, rendering, wiring, failure-propagation and performance tests, but
+have **not** completed a real-browser acceptance pass: the environment that
+wrote them could not attach a browser controller, so claiming visual
+verification for them would be false. Browser observations below are evidence
+for the build they name, not for v2.6.0 as a whole.
 
 v1 is archived at `archive/v1/` and tagged `v1.0`. It still runs and still
 reads a v1 export.
 
 ---
 
-## How to reproduce this
+## How to reproduce the current automated pass
 
 ```bash
 npm test
@@ -41,33 +49,57 @@ version bump. To exercise the update path itself, open `http://localhost:8123/?s
 
 ---
 
-## Automated
+## Current automated evidence
 
 | Suite | Tests | What it holds down |
 |---|---|---|
 | `calc.test.js` | 48 | The RPE table, e1RM and its confidence, rounding, prescriptions, the working-max rule and its exceptions |
-| `db.test.js` | 26 | Migrations with backfill, idempotent writes under a real race, atomic session start and finish, cascade and soft delete |
+| `screens.test.js` | 28 | Every screen *and every section behind a tab* on an empty database, and at both ends of every block, with no arithmetic leaking into the page |
+| `db.test.js` | 27 | Migrations with backfill, idempotent writes under a real race, atomic session start and finish, cascade and soft delete |
 | `progress.test.js` | 25 | Rolling averages, slopes, records, decision flags, deload triggers |
+| `shell.test.js` | 20 | The offline shell covers the module graph, and the app calls the safe paths rather than merely containing them |
+| `plan.test.js` | 17 | The plan file's own shape and rules |
 | `plan-engine.test.js` | 16 | That all 33 × 6 rotations resolve, and what readiness does to them |
 | `volume.test.js` | 15 | Fractional sets, head against whole-muscle counting, planned versus completed |
 | `export.test.js` | 14 | Zip round-trip with CRC, staged validation, atomic apply, content verification |
 | `analytics.test.js` | 13 | Every metric the Progress screen renders, including the four v1 defects |
-| `plan.test.js` | 17 | The plan file's own shape and rules |
-| `cycle.test.js` | 11 | Rotation progress, partial and skipped positions, corrections, projection |
-| `shell.test.js` | 12 | The offline shell covers the module graph, and the app calls the safe paths rather than merely containing them |
-| `service-worker.test.js` | 7 | The takeover rule, and that no branch can answer a module request with the shell |
-| `performance.test.js` | 6 | 200 sessions and 6,000 sets against explicit budgets |
-| `recovery.test.js` | 6 | Soft delete, restore, the bin listing, that a cascade-deleted set is not listed apart from its session, and refusing stores it cannot recover |
-| `screens.test.js` | 18 | Every screen *and every section behind a tab* on an empty database, and at both ends of every block, with no arithmetic leaking into the page |
 | `timing.test.js` | 13 | Rest and duration from the stored tick times, and every case where they must not be reported |
-| `readiness.test.js` | 4 | The four defects reachable by flagging a day part-way through a session |
-| `timer.test.js` | 6 | That the rest timer reads correctly across a gap with no ticks delivered at all |
-| `duration.test.js` | 6 | How long a session takes with its warm-up ramps counted |
+| `cycle.test.js` | 12 | Rotation progress, partial and skipped positions, corrections, projection |
 | `rough-estimate.test.js` | 8 | That the high-rep estimate joins the table smoothly and never poses as the real one |
-| `resurrection.test.js` | 3 | That a deleted entry stays deleted when anything else is saved |
+| `recovery.test.js` | 7 | Soft delete, restore, the bin listing, that a cascade-deleted set is not listed apart from its session, that a set deleted alone restores without touching its session, and refusing stores it cannot recover |
+| `service-worker.test.js` | 7 | The takeover rule, and that no branch can answer a module request with the shell |
+| `duration.test.js` | 6 | How long a session takes with its warm-up ramps counted |
+| `performance.test.js` | 6 | 200 sessions and 6,000 sets against explicit budgets |
+| `timer.test.js` | 6 | That the rest timer reads correctly across a gap with no ticks delivered at all |
+| `body-ui.test.js` | 4 | The Body screen's save feedback and secondary logs |
 | `photos.test.js` | 4 | Orientation-independent fitting and size formatting |
+| `readiness.test.js` | 4 | The four defects reachable by flagging a day part-way through a session |
+| `resurrection.test.js` | 3 | That a deleted entry stays deleted when anything else is saved |
+| `demo.test.js` | 2 | That the demo generator replaces rather than duplicates, and cannot reach the personal database |
+| `train-ui.test.js` | 2 | Custom workouts and the grouped training actions |
+| `charts.test.js` | 1 | Chart recency banding |
 
-**278 passing, 0 failing**, about 1 s.
+**308 passing, 0 failing**, about 2 s.
+
+New v2.5 regressions include demo isolation and visibility, recoverable session
+discard, custom workouts staying out of the A–F rotation, manual index sets,
+collapsible Plan sections, record evidence, chart recency bands, and rejected UI
+writes reaching the central error handler. The demo generator is seeded twice
+through the real database layer to prove it replaces rather than duplicates
+data, cannot alter the personal database, and stays read-only after boot. A
+wiring audit checks every literal button, change control, text input and file
+picker against a real handler.
+
+Coverage is diagnostic rather than a release score:
+
+```bash
+node --test --experimental-test-coverage test/*.test.js
+```
+
+On 20 August it reported roughly 69% line, 75% branch and 71% function
+coverage. Database, demo, cycle, plan and volume modules are around 96–100%
+line coverage; DOM-heavy action modules are lower. That is exactly why the
+real-device checklist below remains mandatory.
 
 `shell.test.js` exists because two of the defects found during this pass were
 not wrong code but unused code. `js/photos.js` was imported by the Body screen
@@ -85,10 +117,52 @@ and at this size that is tens of millions of comparisons.
 
 ---
 
-## Manual
+## Current v2.6.0 real-browser acceptance checklist
 
-Each of these was checked in the browser against the sample database, in both
-colour schemes at 390 × 844.
+Use a narrow phone viewport and both colour schemes. Run once with demo data
+and once with a fresh disposable personal database.
+
+- Confirm the demo banner appears only in demo mode, “Back to my data” returns
+  to the personal database, and changing demo data does not change personal
+  data.
+- Start A, log/edit/unlog a set, toggle index-set status, add and remove a set,
+  swap an exercise, set grip, and finish. Reload after each save-sensitive step
+  and confirm the state survived.
+- Start a session accidentally, discard it, confirm it appears in Recently
+  deleted, restore it, discard it again, and confirm a fresh session can start.
+- Build and finish a custom workout; confirm it does not advance the A–F
+  rotation or inflate planned rotation volume.
+- Inspect Plan on a phone: tabs wrap without horizontal scrolling; workout and
+  muscle sections open and close independently; no card is stuck open.
+- Inspect Strength: lift selection needs no horizontal scroll; record evidence
+  precedes the chart; weight, reps, RPE, date and e1RM are legible; block
+  baseline reads as calibration, not a failed negative score. The selected
+  lift must show “Prescriptions use” beside “Best eligible set this block”, and
+  relative strength must appear before Programming diagnostics.
+- Inspect “Is this going to plan?”: Bodyweight & waist, Strength, Strength
+  relative to bodyweight and Plan completion must be distinct visible groups,
+  not another layer of collapsed navigation.
+- Inspect Settings: Demo stays at the top; routine Training & display begins
+  open; Data & backups, Privacy & storage, Deletion & reset and About begin
+  collapsed and open independently.
+- Inspect Summary, measurements and Settings for clipped text, excessive blank
+  space, overlapping tap targets and unwanted horizontal scroll.
+- Export, delete one harmless demo entry, restore it, import the export in a
+  disposable database, and run the integrity check.
+- Install/update with `?sw=1`: an update must wait for approval, warn if a
+  session is active, reload once, and still open offline.
+- Check the console for exceptions and CSP/service-worker errors throughout.
+
+Until this list passes, v2.6.0 is a tested release candidate, not a
+published release.
+
+---
+
+## Historical v2.1.3 manual evidence
+
+Each item below was checked on 19 August 2026 against v2.1.3 in the browser with
+the sample database, in both colour schemes at 390 × 844. It remains useful
+regression context but does not certify the later UI changes.
 
 ### The maths says what it means
 

@@ -391,7 +391,7 @@ export const actions = {
       note: draft.note || null,
     };
     const blanks = countBlanks([row.bodyweight, row.bodyfatPct, row.sleepHours]);
-    confirmBlanks(ctx, blanks, 'daily', async () => {
+    return confirmBlanks(ctx, blanks, 'daily', async () => {
       await ctx.saveDaily(row);
       savedSheet('Weigh-in saved', [
         row.bodyweight != null ? `${fmtNum(toDisplay(row.bodyweight, unit), 1)} ${unit}` : null,
@@ -459,7 +459,7 @@ export const actions = {
     const blanks = countBlanks(MEASUREMENT_SITES.map(([id]) => row[id]));
     const recorded = MEASUREMENT_SITES.filter(([id]) => row[id] != null);
 
-    confirmBlanks(ctx, blanks, 'measurements', async () => {
+    return confirmBlanks(ctx, blanks, 'measurements', async () => {
       await ctx.saveMeasurements(row);
       savedSheet(
         'Measurements saved',
@@ -478,7 +478,7 @@ export const actions = {
     });
   },
 
-  'save-niggle'(ctx) {
+  async 'save-niggle'(ctx) {
     const draft = ctx.state.bodyDraft;
     if (!draft.niggleSite) {
       openSheet(`<div class="ttl">Nothing to log</div>
@@ -486,20 +486,26 @@ export const actions = {
         <button class="big mt" data-act="sheet-close">Close</button>`);
       return;
     }
-    ctx.saveNiggle({
+    const row = {
       dateISO: draft.dateISO,
       site: draft.niggleSite,
       severity: Number(draft.niggleSeverity || 1),
       context: draft.niggleContext || null,
       note: null,
-    });
+    };
+    await ctx.saveNiggle(row);
+    savedSheet('Niggle logged', [
+      row.site,
+      `severity ${row.severity} of 3`,
+      row.context,
+    ]);
   },
 
   'confirm-body-save'(ctx) {
     closeSheet();
     const pending = ctx.state.pendingSave;
     ctx.state.pendingSave = null;
-    pending?.();
+    return pending?.();
   },
 
   'add-photo'() {
@@ -595,12 +601,14 @@ export const actions = {
       <button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
   },
 
-  'save-formcheck'(ctx) {
+  async 'save-formcheck'(ctx) {
     const fileRef = document.getElementById('fc-file')?.value?.trim();
     const note = document.getElementById('fc-note')?.value?.trim();
-    closeSheet();
-    if (!fileRef && !note) return;
-    ctx.saveMedia({
+    if (!fileRef && !note) {
+      closeSheet();
+      return;
+    }
+    await ctx.saveMedia({
       dateISO: ctx.state.bodyDraft.dateISO,
       kind: 'formcheck',
       exerciseId: null,
@@ -610,6 +618,7 @@ export const actions = {
       fileRef: fileRef || null,
       imageBlob: null,
     });
+    savedSheet('Form check referenced', [note, fileRef]);
   },
 };
 
@@ -639,8 +648,7 @@ function savedSheet(title, lines, { extra = '' } = {}) {
 
 function confirmBlanks(ctx, blanks, what, save) {
   if (!blanks) {
-    save();
-    return;
+    return save();
   }
   ctx.state.pendingSave = save;
   openSheet(`<div class="ttl">Empty values</div>

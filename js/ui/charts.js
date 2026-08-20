@@ -278,14 +278,22 @@ export function scatterIso(points, { curves = [], pctFor, unit = 'kg', height = 
     .join('');
 
   const dots = points
-    .map(
-      (p) =>
-        `<circle cx="${toX(p.reps).toFixed(1)}" cy="${toY(p.load).toFixed(1)}" r="${p.recent ? 5 : 3.6}" fill="${
-          p.recent ? 'var(--s2)' : 'var(--s1)'
-        }" opacity="${p.recent ? 0.95 : 0.5}"><title>${num(p.load)} ${escape(unit)} × ${p.reps}${
-          p.dateISO ? ` · ${escape(p.dateISO)}` : ''
-        }</title></circle>`
-    )
+    .map((p) => {
+      const age = Number.isFinite(p.ageDays) ? p.ageDays : Infinity;
+      const style =
+        age <= 7
+          ? ['var(--s2)', 5.2, 1]
+          : age <= 14
+            ? ['var(--s1)', 4.8, 0.9]
+            : age <= 28
+              ? ['var(--s3)', 4.3, 0.78]
+              : ['var(--axis)', 3.6, 0.45];
+      return `<circle cx="${toX(p.reps).toFixed(1)}" cy="${toY(p.load).toFixed(1)}" r="${style[1]}" fill="${
+        style[0]
+      }" opacity="${style[2]}"><title>${num(p.load)} ${escape(unit)} × ${p.reps}${
+        p.dateISO ? ` · ${escape(p.dateISO)}` : ''
+      }</title></circle>`;
+    })
     .join('');
 
   const xLabels = [1, 3, 5, 8, 12]
@@ -308,8 +316,10 @@ export function scatterIso(points, { curves = [], pctFor, unit = 'kg', height = 
 
   // A touch device has no hover, so the legend has to carry what the colours mean.
   return `${chart}<div class="lg" style="margin-top:6px">
-    <span><i style="background:var(--s2)"></i>last 14 days</span>
-    <span><i style="background:var(--s1);opacity:.5"></i>earlier</span>
+    <span><i style="background:var(--s2)"></i>last 7 days</span>
+    <span><i style="background:var(--s1)"></i>8–14 days</span>
+    <span><i style="background:var(--s3)"></i>15–28 days</span>
+    <span><i style="background:var(--axis);opacity:.55"></i>older</span>
     <span><i style="background:var(--axis)"></i>equal e1RM</span></div>`;
 }
 
