@@ -226,30 +226,35 @@ function summaryView(state, m, unit) {
 
 function strengthView(ctx, state, m, unit) {
   const liftName = state.plan.exercises[m.focus].name;
+  const shortName = liftName.split(' (')[0];
   return `
   ${liftPicker(state, m.focus)}
 
-  <h3>Estimated 1RM — ${escape(liftName.split(' (')[0])}</h3>
+  <h3>Best performance — ${escape(shortName)}</h3>
+  ${recordsCard(state, m, unit, { onlyExerciseId: m.focus })}
+
+  <h3>Estimated 1RM trend</h3>
   ${strengthCard(state, m, unit)}
 
-  <h3>Load and reps — every set of ${escape(liftName.split(' (')[0])}</h3>
-  <div class="card">${scatter(state, m.focus, unit)}
+  <details class="card section-fold"><summary>Load and reps · every ${escape(shortName)} set</summary><div class="c">
+    ${scatter(state, m.focus, unit)}
     <p class="hint">Every set you have logged, plotted as the load against the reps you got. The dashed curves join
     loads worth the <b>same estimated max</b> — a set sitting on a higher curve is a better set, whatever the rep
-    count. Orange is the last fortnight: if it sits above the faded dots, you are getting stronger at every rep
-    range. Rising only on the low-rep side means strength is outpacing work capacity.</p></div>
+    count. The colours show how recently each set was performed.</p>
+  </div></details>
 
-  <h3>Records</h3>
-  ${recordsCard(state, m, unit)}
+  <details class="card section-fold"><summary>Records on the other tracked lifts</summary><div class="c">
+    ${recordsCard(state, m, unit, { excludeExerciseId: m.focus, nested: true })}
+  </div></details>
 
-  <h3>Block comparison</h3>
-  ${blockCard(state, m, unit)}
-
-  <h3>Strength against bodyweight</h3>
-  ${strengthVsBodyweight(m)}
-
-  <h3>Working maxes</h3>
-  ${workingMaxes(ctx)}`;
+  <details class="card section-fold"><summary>Programming diagnostics</summary><div class="c">
+    <h3>Block comparison</h3>
+    ${blockCard(state, m, unit)}
+    <h3>Strength against bodyweight</h3>
+    ${strengthVsBodyweight(m)}
+    <h3>Working maxes</h3>
+    ${workingMaxes(ctx)}
+  </div></details>`;
 }
 
 function bodyView(state, m, unit) {
@@ -425,14 +430,17 @@ function flagsSection(state, m) {
 }
 
 function liftPicker(state, focus) {
-  return `<div class="picker">${trackedLifts(state)
+  const lifts = trackedLifts(state);
+  const selected = lifts.find((lift) => lift.id === focus) || lifts[0];
+  return `<details class="lift-picker"><summary><span><small>Exercise</small>${escape(selected.short)}</span><b>Change</b></summary>
+    <div class="lift-grid">${lifts
     .map(
       (lift) =>
         `<button class="pill ${lift.id === focus ? 'on' : ''}" data-act="focus-lift" data-id="${lift.id}">${escape(
           lift.short
         )}</button>`
     )
-    .join('')}</div>`;
+    .join('')}</div></details>`;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -715,20 +723,29 @@ function sessionLoadChart(state) {
  * the heaviest thing you have picked up, and the best estimate on each lift
  * that supports one.
  */
-function recordsCard(state, m, unit) {
+function recordsCard(state, m, unit, { onlyExerciseId = null, excludeExerciseId = null, nested = false } = {}) {
   const result = recordsFor(m.sets, { exercises: m.exercises, logs: m.logs });
   const tracked = new Set(trackedLifts(state).map((lift) => lift.id));
+  const wanted = (row) =>
+    tracked.has(row.exerciseId) &&
+    (onlyExerciseId == null || row.exerciseId === onlyExerciseId) &&
+    (excludeExerciseId == null || row.exerciseId !== excludeExerciseId);
 
   const estimated = result.estimated
-    .filter((row) => tracked.has(row.exerciseId))
+    .filter(wanted)
     .sort((a, b) => b.value - a.value);
   const heaviest = result.heaviest
-    .filter((row) => state.plan.exercises[row.exerciseId]?.tracksMax)
+    .filter((row) => wanted(row) && state.plan.exercises[row.exerciseId]?.tracksMax)
     .sort((a, b) => b.load - a.load)
     .slice(0, 8);
 
   if (!estimated.length && !heaviest.length) {
-    return `<div class="card">${emptyChart('No records yet — they appear after a few index sets.')}</div>`;
+    const empty = emptyChart(
+      onlyExerciseId
+        ? 'No record on this lift yet — mark a trustworthy set as an index set.'
+        : 'No other tracked-lift records yet.'
+    );
+    return nested ? empty : `<div class="card">${empty}</div>`;
   }
 
   const history = recordHistory(m.sets, { exercises: m.exercises, logs: m.logs });
@@ -762,14 +779,15 @@ function recordsCard(state, m, unit) {
         const isCurrent = i === 0;
         return `<div class="rec-step${isCurrent ? ' now' : ''}">
           <span class="d">${escape(step.dateISO)}</span>
-          <span class="v">${fmtLoad(step.value, unit)} ${escape(unit)}${
-            step.rpe == null ? '' : ` @${fmtNum(step.rpe, 1)}`
-          }</span>
+          <span class="v">${fmtLoad(step.value, unit)} ${escape(unit)}</span>
           <span class="g">${
             step.gain == null
               ? 'first'
               : `+${fmtNum(step.gain, 1)} after ${step.daysSince} day${step.daysSince === 1 ? '' : 's'}`
-          }</span></div>`;
+          }</span>
+          <span class="set">${fmtLoad(step.load, unit)} ${escape(unit)} × ${step.reps} rep${
+            step.reps === 1 ? '' : 's'
+          }${step.rpe == null ? ' · RPE not recorded' : ` · RPE ${fmtNum(step.rpe, 1)}`}</span></div>`;
       })
       .join('')}
       <p class="hint" style="margin:6px 0 0">${steps.length} record${steps.length === 1 ? '' : 's'} on this lift,
@@ -792,9 +810,12 @@ function recordsCard(state, m, unit) {
   // reads like an error.
   const setLine = (r) => {
     const exercise = state.plan.exercises[r.exerciseId];
-    if (!exercise?.bodyweightLoaded) return `${fmtLoad(r.load, unit)} ${unit} × ${r.reps}`;
+    if (!exercise?.bodyweightLoaded) return `${fmtLoad(r.load, unit)} ${unit} × ${r.reps} rep${r.reps === 1 ? '' : 's'}`;
     const bodyweight = state.settings.bodyweight;
-    return `+${fmtLoad(r.load, unit)} × ${r.reps}, ${fmtLoad(systemLoad(r.load, bodyweight), unit)} ${unit} with bodyweight`;
+    return `+${fmtLoad(r.load, unit)} ${unit} × ${r.reps} rep${r.reps === 1 ? '' : 's'} · ${fmtLoad(
+      systemLoad(r.load, bodyweight),
+      unit
+    )} ${unit} including bodyweight`;
   };
   const evidenceLine = (r) => {
     const totals = liftStats.get(r.exerciseId) || { reps: 0, sets: 0 };
@@ -803,15 +824,18 @@ function recordsCard(state, m, unit) {
     )} total reps in ${totals.sets.toLocaleString('en-GB')} logged sets`;
   };
 
-  return `<div class="card">
+  const contents = `
     ${estimated.length ? '<p class="hint" style="margin:0 0 8px">Best estimated max</p>' : ''}
     <div class="records">${estimated
       .map((r) =>
         row(
           state.plan.exercises[r.exerciseId].name.split(' (')[0],
-          `${setLine(r)} @ ${evidenceLine(r)} · ${r.dateISO}`,
+          `Record set: ${setLine(r)} · ${r.rpe == null ? 'RPE not recorded' : `RPE ${fmtNum(r.rpe, 1)}`} · ${r.dateISO} · ${evidenceLine(r)
+            .split(' · ')
+            .slice(1)
+            .join(' · ')}`,
           fmtLoad(r.value, unit),
-          unit,
+          `${unit} e1RM`,
           progression('estimated', r.exerciseId)
         )
       )
@@ -821,11 +845,11 @@ function recordsCard(state, m, unit) {
       .map((r) =>
         row(
           state.plan.exercises[r.exerciseId].name.split(' (')[0],
-          `${state.plan.exercises[r.exerciseId].bodyweightLoaded ? 'added, ' : ''}for ${r.reps} rep${
-            r.reps === 1 ? '' : 's'
-          } · ${evidenceLine(r)} · ${r.dateISO}`,
+          `${state.plan.exercises[r.exerciseId].bodyweightLoaded ? 'Added load' : 'Load'} · ${
+            r.rpe == null ? 'RPE not recorded' : `RPE ${fmtNum(r.rpe, 1)}`
+          } · ${r.dateISO}`,
           fmtLoad(r.load, unit),
-          unit,
+          `${unit} × ${r.reps} rep${r.reps === 1 ? '' : 's'}`,
           progression('heaviest', r.exerciseId)
         )
       )
@@ -833,7 +857,8 @@ function recordsCard(state, m, unit) {
     <p class="hint">Tap any record to see how it got there — every previous best, what it gained, and how long it took.</p>
     <p class="hint">Estimated maxes come only from index sets on lifts where the estimate means something — no curl
     record, because the equations are known to fail on isolation work. Heaviest load is a fact about every lift, so
-    it needs no estimate at all. On pull-ups, chin-ups and dips the load shown is what was added to the bar.</p></div>`;
+    it needs no estimate at all. On pull-ups, chin-ups and dips the load shown is what was added to the bar.</p>`;
+  return nested ? contents : `<div class="card">${contents}</div>`;
 }
 
 function blockCard(state, m, unit) {

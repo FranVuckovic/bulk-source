@@ -131,6 +131,24 @@ test('relative strength matches only nearby bodyweight readings and reports the 
   assert.equal(rows[0].value, 1.5);
 });
 
+test('Strength leads with the selected lift record and keeps the full lift list off the horizontal axis', () => {
+  const state = emptyState();
+  state.progressSection = 'strength';
+  state.logs = [
+    { id: 'log-1', localDate: '2026-08-10', dateISO: '2026-08-10', blockId: 0, cycleSequence: 1, sessionId: 'A' },
+  ];
+  state.sets = [
+    { id: 'set-1', sessionLogId: 'log-1', exerciseId: 'benchComp', load: 100, reps: 5, rpe: 8, isIndexSet: true },
+  ];
+
+  const html = progressScreen.view({ state, render() {} });
+  assert.ok(html.indexOf('Best performance') < html.indexOf('Estimated 1RM trend'), 'the evidence precedes its graph');
+  assert.match(html, /Record set: 100\.0 kg × 5 reps · RPE 8/);
+  assert.match(html, /kg e1RM/);
+  assert.match(html, /class="lift-grid"/, 'all lifts live in a wrapping chooser');
+  assert.doesNotMatch(html, /class="picker"/, 'the sideways lift carousel is gone');
+});
+
 test('every screen survives a rotation at each block boundary', () => {
   for (const block of PLAN.blocks) {
     for (const sequence of [block.from, block.to]) {

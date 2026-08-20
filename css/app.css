@@ -87,6 +87,7 @@ p{margin:0 0 10px;color:var(--ink2);font-size:13.5px}
 .rec-step .d{color:var(--muted);flex:0 0 auto;min-width:74px}
 .rec-step .v{font-weight:700;color:var(--ink);flex:0 0 auto;min-width:62px}
 .rec-step .g{color:var(--muted);flex:1;text-align:right}
+.rec-step .set{flex:0 0 100%;padding-left:83px;color:var(--muted);font-size:10.5px}
 .rec-step.now .v{color:var(--s1)}
 .rec-step.now .g{color:var(--goodtx);font-weight:650}
 
@@ -131,8 +132,19 @@ nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.9;st
 .rel-stats b{display:block;font-size:22px;font-variant-numeric:tabular-nums;color:var(--ink)}
 .rel-stats span{display:block;margin-top:2px;font-size:10px;line-height:1.3;color:var(--muted)}
 
-/* session picker — the demo carried these inline */
-.picker{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;-webkit-overflow-scrolling:touch}
+/* A long horizontal lift carousel hid exercises beyond the screen edge. The
+   chosen lift is one compact row; opening it reveals the complete grid. */
+.lift-picker{background:var(--surface);border:1px solid var(--line);border-radius:12px;margin:0 0 12px;padding:0 12px}
+.lift-picker summary{padding:10px 0}
+.lift-picker summary span{display:flex;flex-direction:column;gap:2px}
+.lift-picker summary small{color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.07em}
+.lift-picker summary b{margin-left:auto;color:var(--s1);font-size:11px}
+.lift-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:0 0 12px}
+.lift-grid .pill{width:100%;min-width:0;padding:8px 5px;font-size:11px}
+.section-fold{margin-top:12px;padding:0 13px}
+.section-fold>summary{font-size:13px}
+.section-fold>.c{padding-bottom:13px}
+.section-fold>.c>.card{padding:0;background:transparent;border:0;box-shadow:none}
 .pill{flex:0 0 auto;font:inherit;font-size:12.5px;font-weight:650;padding:8px 15px;border-radius:99px;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--ink2);min-width:42px}
 .pill.on{border-color:var(--s1);background:var(--s1);color:#fff}
 .picker .pill.custom{padding-left:11px;padding-right:11px}
