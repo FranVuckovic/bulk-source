@@ -12,7 +12,7 @@
  * instead of 92 and spotted a week later.
  */
 
-import { e1rm, systemLoad, setDifficulty, noEstimateReason } from '../calc.js';
+import { e1rm, systemLoad, setDifficulty, noEstimateReason, roughE1rm, roughConfidence } from '../calc.js';
 import { sessionTiming, sessionAnalysis } from '../analytics.js';
 import { escape, fmtLoad, fmtNum, subnav, flag, openSheet, closeSheet } from './components.js';
 import { measurementTimeLabel, scaleLabel } from './body.js';
@@ -38,8 +38,16 @@ const longDate = (iso) => {
 const minutesBetween = (from, to) =>
   from && to ? Math.round((Date.parse(to) - Date.parse(from)) / 60000) : null;
 
-/** Every stored thing, flattened into one dated list. */
-export function entries(state) {
+/**
+ * Every stored thing, flattened into one dated list.
+ *
+ * `deleted` asks for the soft-deleted rows instead of the live ones. They are
+ * the same records — a delete in this app marks a row rather than removing it —
+ * so the same shaping applies, and each carries `isDeleted` so a row can say
+ * what it is rather than relying on which list it came from.
+ */
+export function entries(state, { deleted = false } = {}) {
+  if (deleted) return deletedEntries(state);
   const setsByLog = new Map();
   for (const set of state.sets) {
     if (!setsByLog.has(set.sessionLogId)) setsByLog.set(set.sessionLogId, []);
@@ -143,6 +151,54 @@ const SECTIONS = (state) => [
   ['bin', 'Bin', (state.deleted || []).length ? String(state.deleted.length) : ''],
 ];
 
+/**
+ * The bin's contents, shaped like ordinary entries so one list can show both.
+ *
+ * `state.deleted` is what `deletedRecords` returns: the store it came from, its
+ * key, when it was deleted, and the row itself.
+ */
+function deletedEntries(state) {
+  const KIND_OF = { sessionLogs: 'session', daily: 'daily', measurements: 'measurement', niggles: 'niggle', media: 'media', sets: 'set' };
+
+  return (state.deleted || [])
+    .map((entry) => {
+      const row = entry.row || {};
+      const kind = KIND_OF[entry.store] || entry.store;
+      const session = kind === 'session' ? state.plan.sessions.find((s) => s.id === row.sessionId) : null;
+      const exercise = kind === 'set' ? state.plan.exercises[row.exerciseId] : null;
+
+      const title =
+        kind === 'session'
+          ? `${row.sessionId ?? '—'} · ${session ? session.name : 'Session'}`
+          : kind === 'set'
+            ? `Set · ${exercise?.name || row.exerciseId || '—'}`
+            : kind === 'measurement'
+              ? 'Measurements'
+              : kind === 'niggle'
+                ? `Niggle · ${row.site ?? ''}`
+                : kind === 'media'
+                  ? row.kind === 'physique' ? 'Physique photo' : 'Form check'
+                  : 'Daily';
+
+      return {
+        kind,
+        key: `deleted:${entry.store}:${entry.id}`,
+        id: entry.id,
+        store: entry.store,
+        isDeleted: true,
+        deletedAtISO: entry.deletedAtISO,
+        dateISO: dayOf(row.dateISO || row.localDate || entry.deletedAtISO),
+        title,
+        summary: `deleted ${dayOf(entry.deletedAtISO)}${
+          row.bodyweight != null ? ` · ${fmtNum(row.bodyweight, 1)} kg` : ''
+        }${row.waist != null ? ` · waist ${row.waist}` : ''}`,
+        record: row,
+        sets: [],
+      };
+    })
+    .sort((a, b) => b.deletedAtISO.localeCompare(a.deletedAtISO));
+}
+
 export function view(ctx) {
   const { state } = ctx;
   const section = state.logSection || 'entries';
@@ -158,7 +214,11 @@ export function view(ctx) {
 
 function entriesView(state) {
   const filter = state.historyFilter || 'all';
-  const all = entries(state);
+  // `active` and `deleted` are a different axis from the kind filter: one says
+  // which sort of record, the other says whether it is still live. Kept
+  // separate so you can ask for "deleted measurements" and get them.
+  const status = state.historyStatus || 'active';
+  const all = entries(state, { deleted: status === 'deleted' });
   const shown = filter === 'all' ? all : all.filter((row) => row.kind === filter);
 
   const byDate = new Map();
@@ -190,6 +250,13 @@ function entriesView(state) {
       : ''
   }
 
+  <div class="picker">
+    <button class="pill ${status === 'active' ? 'on' : ''}" data-act="history-status" data-id="active">Active</button>
+    <button class="pill ${status === 'deleted' ? 'on' : ''}" data-act="history-status" data-id="deleted">Deleted${
+      (state.deleted || []).length ? ` · ${(state.deleted || []).length}` : ''
+    }</button>
+  </div>
+
   <div class="picker">${KINDS.map(
     ([id, label]) =>
       `<button class="pill ${filter === id ? 'on' : ''}" data-act="history-filter" data-id="${id}">${escape(
@@ -198,13 +265,31 @@ function entriesView(state) {
   ).join('')}</div>
 
   ${
+    status === 'deleted'
+      ? flag(
+          'info',
+          'i',
+          `<b>Showing deleted entries.</b> They are excluded from every chart and average, and stay here until you
+           empty the Bin. Tap one to put it back.`
+        )
+      : ''
+  }
+
+  ${
     shown.length
       ? [...byDate.entries()]
           .map(
             ([date, rows]) => `<h3>${escape(longDate(date))}</h3>
         <div class="card flush">${rows
           .map(
-            (row) => `<div class="big-row" data-act="history-open" data-key="${escape(row.key)}">
+            (row) =>
+              row.isDeleted
+                ? `<div class="big-row" style="cursor:default"><div class="ic">\u21ba</div>
+                    <div class="m"><b>${escape(row.title)}</b><span>${escape(row.summary)}</span></div>
+                    <button class="setok" data-act="history-restore" data-store="${escape(
+                      row.store
+                    )}" data-id="${escape(String(row.id))}" aria-label="Restore">\u21ba</button></div>`
+                : `<div class="big-row" data-act="history-open" data-key="${escape(row.key)}">
             <div class="ic">${escape(row.kind === 'session' ? row.title.slice(0, 1) : row.kind.slice(0, 1).toUpperCase())}</div>
             <div class="m"><b>${escape(row.title)}</b><span>${escape(row.summary)}</span></div>
             <div class="car">\u203a</div></div>`
@@ -212,10 +297,12 @@ function entriesView(state) {
           .join('')}</div>`
           )
           .join('')
-      : '<div class="card"><p style="margin:0">Nothing stored under that filter yet.</p></div>'
+      : `<div class="card"><p style="margin:0">${
+          status === 'deleted' ? 'Nothing deleted under that filter.' : 'Nothing stored under that filter yet.'
+        }</p></div>`
   }
 
-  <p class="hint" style="margin:14px 2px">${all.length} entries in total. Deleting removes an entry from every
+  <p class="hint" style="margin:14px 2px">${all.length} ${status === 'deleted' ? 'deleted' : ''} entries in total. Deleting removes an entry from every
   chart and average straight away, and keeps it in the Bin until you empty it.</p>`;
 }
 
@@ -666,6 +753,7 @@ function setLines(state, entry, unit) {
       const estimate = set.reps ? e1rm(total, set.reps, Math.min(10, set.rpe ?? 8)) : null;
       const hard = set.reps ? setDifficulty(total, set.reps) : null;
       const why = estimate == null ? noEstimateReason(total, set.reps, Math.min(10, set.rpe ?? 8), { short: true }) : null;
+      const rough = estimate == null ? roughE1rm(total, set.reps, Math.min(10, set.rpe ?? 8)) : null;
 
       const marks = [
         set.isAmrap ? 'AMRAP' : null,
@@ -684,7 +772,9 @@ function setLines(state, entry, unit) {
         <span class="e">${
           estimate
             ? `${fmtLoad(estimate, unit)}<small> e1RM</small> \u00b7 ${fmtLoad(hard, unit)}<small> diff</small>`
-            : `<small style="color:var(--muted)">no estimate \u00b7 ${escape(why || '')}</small>`
+            : rough
+              ? `~${fmtLoad(rough, unit)}<small> ${escape(roughConfidence(set.reps))}</small>`
+              : `<small style="color:var(--muted)">no estimate \u00b7 ${escape(why || '')}</small>`
         }</span>
         ${marks.length ? `<span class="m">${escape(marks.join(' \u00b7 '))}</span>` : ''}
         ${set.note ? `<span class="nt">${escape(set.note)}</span>` : ''}
@@ -856,6 +946,12 @@ export const actions = {
 
   'history-filter'(ctx, data) {
     ctx.state.historyFilter = data.id;
+    ctx.render();
+    window.scrollTo(0, 0);
+  },
+
+  'history-status'(ctx, data) {
+    ctx.state.historyStatus = data.id;
     ctx.render();
     window.scrollTo(0, 0);
   },

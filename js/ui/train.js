@@ -16,6 +16,8 @@ import {
   e1rm,
   setDifficulty,
   noEstimateReason,
+  roughE1rm,
+  roughConfidence,
   sessionDuration,
   SET_SETUP_SECONDS,
   SECONDS_PER_REP,
@@ -617,7 +619,9 @@ function setRow(state, slot, slotIndex, i) {
   // How big the set was, independent of how hard it felt. See setDifficulty.
   const difficulty = total != null ? setDifficulty(total, reps) : null;
   // A blank where a number usually sits reads as a broken app. Say which it is.
-  const why = total != null && estimate == null ? noEstimateReason(total, reps, Math.min(10, rpe)) : null;
+  const why = total != null && estimate == null ? noEstimateReason(total, reps, Math.min(10, rpe), { short: true }) : null;
+  // Past the table's twelve reps, a weaker estimate rather than a blank.
+  const rough = estimate == null && total != null ? roughE1rm(total, reps, Math.min(10, rpe)) : null;
 
   return `<div class="setrow ${logged ? 'logged' : ''}">
       <div class="sn ${toFailure ? 'f' : ''}">${i + 1}</div>
@@ -635,9 +639,13 @@ function setRow(state, slot, slotIndex, i) {
           }${
             difficulty ? ` <span class="dif">difficulty <b>${fmtLoad(difficulty, unit)}</b></span>` : ''
           }</div>`
-        : why
-          ? `<div class="e1 none">no estimate \u2014 ${escape(why)}</div>`
-          : ''
+        : rough
+          ? `<div class="e1 rough">~<b>${fmtLoad(rough, unit)} ${unit}</b> <span>${escape(
+              roughConfidence(reps)
+            )} \u00b7 ${reps} reps is past the RPE table</span></div>`
+          : why
+            ? `<div class="e1 none">no estimate \u2014 ${escape(why)}</div>`
+            : ''
     }`;
 }
 

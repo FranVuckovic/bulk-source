@@ -186,6 +186,9 @@ nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.9;st
 .e1 .dif{color:var(--muted)}
 .e1 .dif b{color:var(--ink2);font-weight:700}
 .e1.none{color:var(--muted);font-style:normal}
+.e1.rough{color:var(--ink2)}
+.e1.rough b{color:var(--c6)}
+.e1.rough span{color:var(--muted)}
 .e1 b{color:var(--s1);font-weight:700}
 .hint{font-size:11.5px;color:var(--muted);margin:9px 0 0;font-variant-numeric:tabular-nums;line-height:1.5}
 .hint b{color:var(--ink2);font-weight:650}
@@ -215,6 +218,11 @@ nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.9;st
 /* the session progress card */
 .card.sess .tstat b{font-size:19px}
 .card.sess .tstat b small{font-size:10.5px;font-weight:600;color:var(--muted)}
+
+/* the "?" beside a measurement label */
+.howto{margin-left:6px;width:16px;height:16px;padding:0;border-radius:50%;border:1px solid var(--line);
+  background:var(--sunk);color:var(--ink2);font:inherit;font-size:10px;font-weight:800;cursor:pointer;
+  line-height:1;vertical-align:1px}
 
 /* a note about the exercise, not about one set of it */
 .exnote{margin:0 13px 9px;padding:8px 11px;background:var(--sunk);border-left:3px solid var(--s3);border-radius:0 8px 8px 0;

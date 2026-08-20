@@ -112,6 +112,94 @@ export function rpeFor(ratio, reps) {
  * estimate stops being meaningful, and a number that looks precise and is not
  * is worse than no number.
  */
+/* ═══════════════════════════════════════════════════════════════════════
+   The rough estimate, past the RPE table
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The furthest a rough estimate is offered at all.
+ *
+ * Mayhew was developed and validated to about 15 reps. Past that this is
+ * extrapolation and is labelled as such; past 25 it is not worth printing in
+ * any words, so nothing is.
+ */
+export const MAX_ROUGH_REPS = 25;
+
+/** Past this the estimate is extrapolated beyond where Mayhew was validated. */
+const MAYHEW_VALIDATED_REPS = 15;
+
+/**
+ * A rough one-rep max for sets the RPE table will not touch.
+ *
+ * The table stops at 12 reps and returns nothing past it, on the reasoning that
+ * a number which looks precise and is not is worse than no number. That is
+ * still true — but a real log came back with 15 of 27 sets blank, and "nothing"
+ * turned out to communicate "broken" rather than "unknowable".
+ *
+ * So: a second, weaker estimate, using Mayhew — 1RM = 100w / (52.2 + 41.9
+ * e^-0.055r). Mayhew and Wathen are the two exponential equations, and the
+ * validation literature consistently puts them among the lowest-error formulas
+ * and specifically better than Epley or Brzycki above ten reps, where the
+ * linear and hyperbolic forms break down. Mayhew's exponential form is reported
+ * as effective from 2 to about 15 reps.
+ *
+ * Two things it is not, and both are enforced elsewhere rather than trusted to
+ * be remembered:
+ *
+ *   It is not the e1RM. It never feeds a record, a working-max proposal, an
+ *   index set or a strength chart — those all go through `e1rm`, which is
+ *   unchanged and still refuses past 12 reps. This is a reading for the set in
+ *   front of you, not a claim about your strength.
+ *
+ *   It is not precise. Above ten reps the published equations diverge from
+ *   measured maxes by something like 15-20%, and the number is shown with that
+ *   said rather than implied.
+ *
+ * Sets short of failure are handled the way the RPE table handles them: the
+ * reps you left behind are added to the reps you did, because a set of 15 at
+ * RPE 8 is a set of 17 you stopped early.
+ */
+/** Mayhew's denominator. The whole rep-dependence of the equation lives here. */
+const mayhewDenominator = (reps) => 52.2 + 41.9 * Math.exp(-0.055 * reps);
+
+export function roughE1rm(load, reps, rpe = 10) {
+  if (!load || !reps) return null;
+  if (reps <= MAX_ESTIMABLE_REPS) return null; // the table is better; use it
+  if (reps > MAX_ROUGH_REPS) return null;
+
+  /*
+   * Anchored to the table at its own edge, rather than used raw.
+   *
+   * Mayhew calibrated against a different population on a different lift, and
+   * its absolute values sit systematically below this table's: at twelve reps
+   * to failure the table says 68% of max and Mayhew says about 74%. Used raw,
+   * a thirteen-rep set would have estimated ~10 kg LOWER than a twelve-rep set
+   * at the same weight — one more rep making you look weaker, which reads as a
+   * broken app and would be one.
+   *
+   * So the table supplies the calibration and Mayhew supplies only the shape of
+   * the curve past where the table stops. The two agree exactly at twelve reps
+   * and the estimate rises from there, which is the only behaviour that is not
+   * obviously wrong.
+   */
+  const anchor = e1rm(load, MAX_ESTIMABLE_REPS, 10);
+  if (anchor == null) return null;
+
+  const repsToFailure = reps + Math.max(0, 10 - (rpe ?? 10));
+  return anchor * (mayhewDenominator(MAX_ESTIMABLE_REPS) / mayhewDenominator(repsToFailure));
+}
+
+/**
+ * How much to trust it, in a word the screen can print.
+ *
+ * `rough` inside the range Mayhew was validated over, `very rough` past it.
+ * Never `good` — that word belongs to the RPE table.
+ */
+export function roughConfidence(reps) {
+  if (!reps || reps <= MAX_ESTIMABLE_REPS || reps > MAX_ROUGH_REPS) return null;
+  return reps <= MAYHEW_VALIDATED_REPS ? 'rough' : 'very rough';
+}
+
 /**
  * How hard the set was, in kilograms.
  *
@@ -145,9 +233,14 @@ export function noEstimateReason(load, reps, rpe, { short = false } = {}) {
   if (reps > MAX_ESTIMABLE_REPS) {
     // Repeated against every high-rep set in a session list, the full sentence
     // is noise; said once beside the set you are logging, it is the answer.
+    if (reps <= MAX_ROUGH_REPS) {
+      return short
+        ? `over ${MAX_ESTIMABLE_REPS} reps — rough only`
+        : `over ${MAX_ESTIMABLE_REPS} reps, so the RPE table cannot be used — the rough figure beside it is a different, weaker estimate`;
+    }
     return short
-      ? `over ${MAX_ESTIMABLE_REPS} reps`
-      : `over ${MAX_ESTIMABLE_REPS} reps — past there the estimate stops meaning anything`;
+      ? `over ${MAX_ROUGH_REPS} reps`
+      : `over ${MAX_ROUGH_REPS} reps — no formula is worth trusting this far out`;
   }
   if (pct(reps, rpe) == null) return `RPE ${rpe} is off the table`;
   return null;

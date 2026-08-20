@@ -289,6 +289,30 @@ async function restoreActiveSession() {
   for (const key of state.loggedSets.keys()) state.exOpen.add(key.split(':')[0]);
 }
 
+/**
+ * Re-read one dated store after writing to it.
+ *
+ * Every one of these used to inline its own `getAll(...).sort(...)`, and all
+ * four had drifted from the one in `loadEverything` by dropping the `alive()`
+ * filter. So deleting a weigh-in put it in the bin correctly, and then saving
+ * *any* weigh-in reloaded the store raw and brought the deleted one back — into
+ * History, into the charts, and into the averages — until the next full reload
+ * quietly removed it again. The database was right the whole time; only what
+ * the app was holding was wrong, which is the hardest kind of wrong to notice.
+ *
+ * The fix is not the filter. The fix is that there is one of these now, so it
+ * cannot be applied in one place and forgotten in another.
+ */
+async function reloadDated(store) {
+  const rows = alive(await getAll(state.db, store)).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+  state[store] = rows;
+  // The bin has to be re-read too: saving over a soft-deleted row at the same
+  // date replaces it, and the recovery list would go on offering it back.
+  state.deleted = await deletedRecords(state.db);
+  buildHistory();
+  render();
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    Writes
    ═══════════════════════════════════════════════════════════════════════ */
@@ -720,33 +744,31 @@ const ctx = {
 
   async saveDaily(row) {
     await put(state.db, 'daily', row);
-    state.daily = (await getAll(state.db, 'daily')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-    render();
+    await reloadDated('daily');
   },
 
   async saveMeasurements(row) {
     await put(state.db, 'measurements', row);
-    state.measurements = (await getAll(state.db, 'measurements')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-    render();
+    await reloadDated('measurements');
   },
 
   async saveNiggle(row) {
     await put(state.db, 'niggles', row);
-    state.niggles = (await getAll(state.db, 'niggles')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
     state.bodyDraft.niggleSite = '';
     state.bodyDraft.niggleContext = '';
-    render();
+    await reloadDated('niggles');
   },
 
   async deleteMedia(id, { reason = null } = {}) {
     await softDeleteRow(state.db, 'media', id, { reason });
     await loadEverything();
+    buildHistory();
+    render();
   },
 
   async saveMedia(row) {
     await put(state.db, 'media', row);
-    state.media = (await getAll(state.db, 'media')).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-    render();
+    await reloadDated('media');
   },
 
   /** Confirming a working max writes it and appends to the audit history. */
@@ -1246,13 +1268,14 @@ const ctx = {
  * open sheet is a level too: back closes the sheet before it changes screen,
  * because that is what the gesture means when something is covering the page.
  */
-const VIEW_KEYS = ['tab', 'progressSection', 'planSection', 'logSection', 'bodySection', 'historyFilter', 'logSessionId'];
+const VIEW_KEYS = ['tab', 'progressSection', 'planSection', 'logSection', 'bodySection', 'historyFilter', 'historyStatus', 'logSessionId'];
 
 const currentView = () => Object.fromEntries(VIEW_KEYS.map((key) => [key, state[key] ?? null]));
 
 function applyView(view) {
   for (const key of VIEW_KEYS) state[key] = view?.[key] ?? null;
   state.historyFilter = state.historyFilter || 'all';
+  state.historyStatus = state.historyStatus || 'active';
   state.tab = state.tab || 'train';
 }
 

@@ -1,4 +1,4 @@
-# v2.3.0 — how to try it, and how to undo any of it
+# v2.4.0 — how to try it, and how to undo any of it
 
 Everything is on the branch `claude/project-onboarding-verify-lz3ob6`.
 **Nothing has been published.** The public `bulk` repo is untouched, and
@@ -10,7 +10,7 @@ Everything is on the branch `claude/project-onboarding-verify-lz3ob6`.
 
 ```bash
 git checkout claude/project-onboarding-verify-lz3ob6
-npm test          # expect 267 passing, 0 failing
+npm test          # expect 278 passing, 0 failing
 npm run serve     # then open http://localhost:8123
 ```
 
@@ -41,7 +41,7 @@ Worth looking at specifically:
 | Body | Which scale the weigh-in was on; when the tape was read. |
 | Android | The back button now moves inside the app instead of closing it. |
 
-To test the update path itself — the thing that shows `v2.1.3 → v2.3.0` — open
+To test the update path itself — the thing that shows `v2.1.3 → v2.4.0` — open
 `http://localhost:8123/?sw=1`. The offline shell is deliberately off on
 localhost otherwise, or every edit would be invisible until the version is
 bumped.
@@ -97,8 +97,8 @@ Nothing on this branch has touched `main`, the public repo, or your database.
 `dev/publish.sh` force-pushes over the public repo and replaces its history, so
 it is yours to run, not mine. When you do:
 
-1. `npm test` — 267, 0 failing.
-2. Check `sw.js` VERSION reads `v2.3.0`. The publish set is derived from the
+1. `npm test` — 278, 0 failing.
+2. Check `sw.js` VERSION reads `v2.4.0`. The publish set is derived from the
    `SHELL` array in that file, and `js/demo.js` was added to it — a test
    enforces that the shell covers the module graph, so this cannot silently go
    wrong.
@@ -112,7 +112,7 @@ from those directories, no occurrence of your name in any published file, and
 the retired v1 plan still excluded.
 
 **Your phone will not lose anything.** The update replaces code only; it never
-opens IndexedDB. It will show `v2.1.3 → v2.3.0` — though on that first update
+opens IndexedDB. It will show `v2.1.3 → v2.4.0` — though on that first update
 the *old* banner appears, because the page showing it is still the old build.
 Every update after this one shows both versions.
 

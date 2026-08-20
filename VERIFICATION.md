@@ -1,8 +1,8 @@
 # Bulk v2 — verification
 
-**Build:** `sw.js` VERSION `v2.3.0` · database v3 · plan format 3 · plan `fopip-v2`
+**Build:** `sw.js` VERSION `v2.4.0` · database v3 · plan format 3 · plan `fopip-v2`
 **Verified:** 19 August 2026
-**Method:** 267 automated tests, plus a driven pass in a real Chromium at
+**Method:** 278 automated tests, plus a driven pass in a real Chromium at
 390 × 844 against twelve rotations of generated history.
 
 v2.2.0 adds demo mode, the five-section navigation, the repair tools and the
@@ -63,9 +63,11 @@ version bump. To exercise the update path itself, open `http://localhost:8123/?s
 | `readiness.test.js` | 4 | The four defects reachable by flagging a day part-way through a session |
 | `timer.test.js` | 6 | That the rest timer reads correctly across a gap with no ticks delivered at all |
 | `duration.test.js` | 6 | How long a session takes with its warm-up ramps counted |
+| `rough-estimate.test.js` | 8 | That the high-rep estimate joins the table smoothly and never poses as the real one |
+| `resurrection.test.js` | 3 | That a deleted entry stays deleted when anything else is saved |
 | `photos.test.js` | 4 | Orientation-independent fitting and size formatting |
 
-**267 passing, 0 failing**, about 1 s.
+**278 passing, 0 failing**, about 1 s.
 
 `shell.test.js` exists because two of the defects found during this pass were
 not wrong code but unused code. `js/photos.js` was imported by the Body screen
@@ -302,6 +304,27 @@ restored. The session screen then reported 14,746 kg moved, 340 reps, 27 sets,
 6 to failure, a typical rest of 7m 28s across 22 counted gaps, and 164 minutes
 of work — with the comparison section correctly saying there is nothing to
 compare a first session against.
+
+## v2.4.0 — a deleted entry was coming back
+
+Reported as a suspicion — "I think an entry I deleted has maybe returned
+automatically" — and reproduced exactly on the second attempt.
+
+`loadEverything` filters the dated stores through `alive()`. The four save
+handlers each inlined their own `getAll(...).sort(...)` and **all four had
+dropped the filter**. So deleting a weigh-in put it in the bin correctly, and
+then saving *any* weigh-in reloaded the store raw and brought the deleted one
+back — into History, into the charts, and into every average — until the next
+full reload quietly removed it again.
+
+The database was right throughout, which is what made it hard to believe and
+hard to catch: an export taken at any point looked perfectly correct.
+
+Reproduced in Chromium against the real database: two weigh-ins, delete one
+(list goes to 1), save any weigh-in (**list goes back to 2**), reload (back to
+1). After the fix it stays at 1, and the row is still in the bin and still
+restorable. The cause was duplication, so the fix is one shared `reloadDated`
+rather than a fourth copy of the filter.
 
 ## Known limits
 
