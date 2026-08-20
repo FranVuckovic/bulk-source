@@ -103,6 +103,23 @@ test('deletion in the app is recoverable, not a raw remove', () => {
   assert.ok(!deleter.includes('deleteSessionCascade('), 'the cascade belongs to emptying the bin only');
 });
 
+test('an active session can be discarded only through the recoverable deletion path', () => {
+  const app = read('js/app.js');
+  const action = app.slice(app.indexOf("async 'confirm-discard-session'"), app.indexOf("'rest-skip'"));
+
+  assert.ok(action.includes("ctx.deleteEntry('session'"), 'discard uses the central soft-delete path');
+  assert.ok(action.includes("reason: 'discarded while active'"), 'the recovery audit says why it moved');
+  assert.ok(!action.includes('deleteSessionCascade('), 'discard never destroys a session directly');
+});
+
+test('the session clock control is above the exercise list', () => {
+  const train = read('js/ui/train.js');
+  const view = train.slice(train.indexOf('export function view'), train.indexOf('function timingRow'));
+
+  assert.ok(view.indexOf('data-act="start-session"') < view.indexOf('exerciseBlock(state'));
+  assert.ok(view.includes('data-act="discard-session"'), 'an active session exposes the recoverable escape hatch');
+});
+
 test('every icon the manifest names is precached and present', () => {
   // An icon whose bytes change but whose filename does not is an icon the
   // installed app will never notice. The filenames carry the version, so the

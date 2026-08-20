@@ -730,8 +730,11 @@ const ctx = {
         <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">You have <b>${state.loggedSets.size} sets</b> logged in session ${escape(
           state.activeLog.sessionId
         )}.</p>
-        <p style="text-align:center;font-size:13px">Finish that session before starting another, or carry on where you left off.</p>
-        <button class="big mt" data-act="sheet-close">Carry on</button>`);
+        <p style="text-align:center;font-size:13px">Finish that session before starting another, carry on where you left off, or move it to Recently deleted.</p>
+        <button class="big mt" data-act="sheet-close">Carry on</button>
+        <button class="big ghost danger-text mt" data-act="discard-session" data-next="${escape(id)}">Discard it and open ${escape(
+          id
+        )}</button>`);
       return;
     }
     state.trainSessionId = id;
@@ -1636,6 +1639,31 @@ const globalActions = {
     goTo({ tab: 'set' });
   },
   'sheet-close'() {
+    closeSheet();
+    render();
+  },
+  'discard-session'(_ctx, data) {
+    if (!state.activeLog) return;
+    const next = data.next || '';
+    openSheet(`<div class="ttl">Discard session ${escape(state.activeLog.sessionId)}</div>
+      <p style="text-align:center;margin:14px 0 6px;font-size:14px;color:var(--ink)">Move this session and its <b>${
+        state.loggedSets.size
+      } logged set${state.loggedSets.size === 1 ? '' : 's'}</b> to Recently deleted?</p>
+      <p style="text-align:center;font-size:13px">The clock will stop. Nothing is permanently erased: you can restore the session from Settings until you empty the bin.</p>
+      <button class="big danger mt" data-act="confirm-discard-session"${
+        next ? ` data-next="${escape(next)}"` : ''
+      }>Move to Recently deleted</button>
+      <button class="big ghost mt" data-act="sheet-close">Keep session</button>`);
+  },
+  async 'confirm-discard-session'(ctx, data) {
+    const id = state.activeLog?.id;
+    if (id == null) return;
+    await ctx.deleteEntry('session', id, { reason: 'discarded while active' });
+    if (data.next) {
+      state.trainSessionId = data.next;
+      state.exOpen = new Set(['0']);
+      state.cleared = new Set();
+    }
     closeSheet();
     render();
   },

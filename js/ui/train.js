@@ -265,6 +265,13 @@ export function view(ctx) {
       correct</button></div>
   </div>
 
+  ${
+    state.activeLog
+      ? `<div class="mini session-actions"><button class="warn" data-act="discard-session">Discard session</button></div>`
+      : `<button class="big train-start" data-act="start-session">Start session</button>
+         <p class="hint train-start-hint">Starts the clock before your warm-up. If you skip this, the first logged set starts it automatically.</p>`
+  }
+
   ${sessionProgressCard(state, slots)}
 
   <div class="card flush">${slots.map((slot, si) => exerciseBlock(state, slot, si)).join('')}</div>
@@ -282,13 +289,6 @@ export function view(ctx) {
     </div>
     <p class="hint">Session RPE = how hard the <b>whole session</b> felt, 0–10, rated about 20 minutes after you finish. Multiplied by duration it gives a session load — the earliest warning sign that weekly fatigue is climbing, usually a week before you feel it.</p>
     ${timingRow(state)}
-    ${
-      state.activeLog
-        ? ''
-        : `<button class="big ghost mt" data-act="start-session">Start session</button>
-           <p class="hint">Only starts the clock. You never have to press it — the session starts itself the moment
-           you tick your first set, and finishes fine either way. It is here for when you want the warm-up counted.</p>`
-    }
     <button class="big mt" data-act="finish">Finish session</button>
   </div>`;
 }
@@ -391,7 +391,7 @@ function sessionProgressCard(state, slots) {
     <p class="hint" style="margin:8px 0 0">About <b>${Math.round(clock.totalSeconds / 60)} min</b> in total —
     ${Math.round(clock.warmupSeconds / 60)} of warm-up ramps and ${Math.round(clock.workingSeconds / 60)} of work
     and rest. Estimates, at ${SET_SETUP_SECONDS} s to get set and ${SECONDS_PER_REP} s a rep.${
-      started ? '' : ' <b>Start session</b> below begins the clock.'
+      started ? '' : ' <b>Start session</b> above begins the clock; logging a set starts it automatically.'
     }</p>
   </div>`;
 }
