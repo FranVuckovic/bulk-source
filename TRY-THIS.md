@@ -104,15 +104,16 @@ it is yours to run, not mine. When you do:
    wrong.
 3. `npm run publish -- https://github.com/FranVuckovic/bulk.git`
 
-The published set is **28 files**: the 27 real paths in `SHELL` — the `'./'`
+The published set is **29 files**: the 27 real paths in `SHELL` — the `'./'`
 entry is a route, not a file — plus `sw.js`, which is never in its own shell
-because it does not precache itself. `docs/`, `test/`, `dev/`, `archive/` and
+because it does not precache itself, plus the README the script generates. `docs/`, `test/`, `dev/`, `archive/` and
 this file stay here. I dry-ran that selection: 28 present, 0 missing, nothing
 from those directories, no occurrence of your name in any published file, and
 the retired v1 plan still excluded.
 
-**Your phone will not lose anything.** The update replaces code only; it never
-opens IndexedDB. It will show `v2.1.3 → v2.4.0` — though on that first update
+**See `PUBLISHING.md`** for the tested answers on data, auto-update and
+rollback. In short: your phone will not lose anything, and it will not update
+itself — it downloads in the background and waits for your tap. It will show `v2.1.3 → v2.4.0` — though on that first update
 the *old* banner appears, because the page showing it is still the old build.
 Every update after this one shows both versions.
 
