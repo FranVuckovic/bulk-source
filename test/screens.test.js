@@ -113,6 +113,24 @@ test('measurement history shows real dates, a selectable chart and a bodyweight 
   assert.match(html, /Tape changes describe circumference, not body composition/);
 });
 
+test('relative strength matches only nearby bodyweight readings and reports the real ratio', () => {
+  const rows = progressScreen.relativeStrengthSeries(
+    [
+      { dateISO: '2026-08-01', value: 120 },
+      { dateISO: '2026-08-10', value: 130 },
+      { dateISO: '2026-08-20', value: 140 },
+    ],
+    [
+      { dateISO: '2026-08-02', value: 80 },
+      { dateISO: '2026-08-16', value: 90 },
+    ]
+  );
+
+  assert.equal(rows.length, 1, 'a four-day-old bodyweight is not silently paired');
+  assert.equal(rows[0].bodyweight, 80);
+  assert.equal(rows[0].value, 1.5);
+});
+
 test('every screen survives a rotation at each block boundary', () => {
   for (const block of PLAN.blocks) {
     for (const sequence of [block.from, block.to]) {

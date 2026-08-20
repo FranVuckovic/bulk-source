@@ -544,9 +544,23 @@ function waistCard(m) {
     }</p></div>`;
 }
 
+export function relativeStrengthSeries(strengthPoints, bodyweightPoints, maxGapDays = 3) {
+  const weights = new Map(bodyweightPoints.map((point) => [point.dateISO, point.value]));
+  return strengthPoints
+    .map((point) => {
+      let bodyweight = weights.get(point.dateISO) ?? null;
+      for (let offset = 1; bodyweight == null && offset <= maxGapDays; offset++) {
+        bodyweight = weights.get(addDays(point.dateISO, -offset)) ?? weights.get(addDays(point.dateISO, offset)) ?? null;
+      }
+      return bodyweight > 0 ? { dateISO: point.dateISO, value: point.value / bodyweight, strength: point.value, bodyweight } : null;
+    })
+    .filter(Boolean);
+}
+
 function strengthVsBodyweight(m) {
+  const strengthPoints = m.perCycle.length ? m.perCycle : m.series.points;
   const rows = alignByDate(
-    m.perCycle.length ? m.perCycle : m.series.points,
+    strengthPoints,
     m.averaged.map((p) => ({ dateISO: p.dateISO, value: p.value }))
   );
 
@@ -565,15 +579,33 @@ function strengthVsBodyweight(m) {
     }
     return row;
   });
+  const ratios = relativeStrengthSeries(strengthPoints, m.averaged);
+  const latestRatio = ratios[ratios.length - 1]?.value ?? null;
+  const ratioChange = ratios.length > 1 ? latestRatio - ratios[0].value : null;
 
   return `<div class="card">
+    ${
+      latestRatio == null
+        ? ''
+        : `<div class="g2 rel-stats"><div><b>${fmtNum(latestRatio, 2)}×</b><span>current e1RM / bodyweight</span></div>
+           <div><b>${ratioChange == null ? '—' : `${ratioChange >= 0 ? '+' : ''}${fmtNum(ratioChange, 2)}`}</b><span>change from first matched point</span></div></div>`
+    }
     ${indexedByDate(filled, {
       names: { a: 'Strength', b: 'Bodyweight' },
       colors: { a: 'var(--s1)', b: 'var(--s2)' },
     })}
     <p class="hint">Both indexed to 100 at their first reading and joined on <b>dates</b>, not on positions — a week
     with no weigh-in leaves a gap rather than pairing your bodyweight with the wrong week's strength. If the strength
-    line pulls away from bodyweight, the bulk is working.</p></div>`;
+    line pulls away from bodyweight, relative strength is improving.</p>
+    ${
+      ratios.length >= 2
+        ? `<details class="measure-compare"><summary>Relative-strength ratio over time</summary><div class="c">${timeChart(ratios, {
+            color: 'var(--s1)',
+            unit: '× BW',
+            label: (point) => `${point.dateISO} · ${fmtNum(point.value, 2)}× bodyweight`,
+          })}<p class="hint">Estimated 1RM divided by the nearest bodyweight reading within three days. This is your own trend, not a population percentile.</p></div></details>`
+        : ''
+    }</div>`;
 }
 
 /**

@@ -126,6 +126,10 @@ nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.9;st
 .measure-readout{font-size:12.5px;color:var(--ink2);line-height:1.45;margin:8px 0 10px}
 .measure-compare{border-top:1px solid var(--grid);border-bottom:1px solid var(--grid);margin:8px 0 12px}
 .measure-table td small{display:block;color:var(--muted);font-size:9px;font-weight:500;margin-top:2px}
+.rel-stats{margin-bottom:10px}
+.rel-stats>div{padding:10px;background:var(--sunk);border-radius:10px}
+.rel-stats b{display:block;font-size:22px;font-variant-numeric:tabular-nums;color:var(--ink)}
+.rel-stats span{display:block;margin-top:2px;font-size:10px;line-height:1.3;color:var(--muted)}
 
 /* session picker — the demo carried these inline */
 .picker{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;-webkit-overflow-scrolling:touch}
