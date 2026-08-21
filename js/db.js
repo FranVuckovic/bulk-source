@@ -600,14 +600,43 @@ function findByIndex(store, indexName, value) {
  * timestamp either both exist or neither does.
  */
 export function putSetIdempotent(db, record, { operationId }) {
-  return withTransaction(db, ['sets', 'sessionLogs'], 'readwrite', async ([sets, logs]) => {
+  return withTransaction(db, ['sets', 'sessionLogs', 'auditLog'], 'readwrite', async ([sets, logs, audit]) => {
     if (operationId) {
       const already = await findByIndex(sets, 'operationId', operationId);
       if (already) return { set: already, created: false, duplicate: true };
     }
 
     const logicalKey = record.logicalKey || logicalSetKey(record.sessionLogId, record.slotIndex, record.setIndex);
-    const existing = await findByIndex(sets, 'logicalKey', logicalKey);
+    let existing = await findByIndex(sets, 'logicalKey', logicalKey);
+
+    /*
+     * The key says "this slot, this set number, in this session". It is the
+     * right identity while the slot means the same exercise — unlog a set,
+     * retype it, log it again, one row. It stops being the right identity the
+     * moment a swap changes what the slot holds: the first hack squat set
+     * lands on the key the first leg press set already owns, and replacing is
+     * destruction rather than correction.
+     *
+     * So a collision between two different exercises is not an idempotent
+     * write. The set that was there is soft-deleted, its key released so the
+     * new one can take it, and an audit entry says what displaced it. It goes
+     * to the bin like every other deletion in this app, and it can be restored.
+     */
+    let displaced = null;
+    if (existing && record.exerciseId && existing.exerciseId && existing.exerciseId !== record.exerciseId) {
+      const atISO = new Date().toISOString();
+      displaced = existing;
+      await request(
+        sets.put({
+          ...existing,
+          // Released, so the incoming set can hold it and a restore does not
+          // collide. Kept readable so its origin is not a mystery.
+          logicalKey: `${logicalKey}#displaced-${atISO}`,
+          deletedAtISO: atISO,
+        })
+      );
+      existing = null;
+    }
 
     const row = {
       ...record,
@@ -619,12 +648,32 @@ export function putSetIdempotent(db, record, { operationId }) {
 
     const id = await request(sets.put(row));
 
+    if (displaced) {
+      await request(
+        audit.put({
+          atISO: new Date().toISOString(),
+          entity: 'sets',
+          entityId: displaced.id,
+          action: 'displaced',
+          reason: 'the slot was swapped to a different exercise',
+          exerciseId: record.exerciseId,
+          previous: {
+            exerciseId: displaced.exerciseId,
+            load: displaced.load ?? null,
+            reps: displaced.reps ?? null,
+            rpe: displaced.rpe ?? null,
+          },
+          restorable: true,
+        })
+      );
+    }
+
     // Touch the session so its updated time reflects the work, in the same
     // transaction as the set itself.
     const log = await request(logs.get(record.sessionLogId));
     if (log) await request(logs.put({ ...log, updatedAtISO: row.timestampISO ?? log.updatedAtISO }));
 
-    return { set: { ...row, id }, created: !existing, duplicate: false };
+    return { set: { ...row, id }, created: !existing, duplicate: false, displaced: displaced ?? null };
   });
 }
 

@@ -139,6 +139,8 @@ const state = {
   cleared: new Set(),
   grips: {},
   deviations: { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {} },
+  // Slots where you have already been told a swap will displace logged sets.
+  swapConfirmed: new Set(),
   draft: { note: '', bodyweight: '', sessionRpe: '' },
   sheetCtx: null,
 
@@ -585,6 +587,7 @@ async function finishSession() {
   state.cleared = new Set();
   state.grips = {};
   state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {} };
+  state.swapConfirmed = new Set();
   state.draft = { note: '', bodyweight: '', sessionRpe: '' };
   state.exOpen = new Set(['0']);
   stopRest();
@@ -837,6 +840,7 @@ const ctx = {
       // An unstarted custom builder is only a draft. Switching away discards
       // that draft rather than leaking its exercises into a planned session.
       state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {} };
+      state.swapConfirmed = new Set();
       state.grips = {};
       state.loggedSets = new Map();
     }
@@ -1349,6 +1353,7 @@ const ctx = {
     state.activeLog = null;
     state.loggedSets = new Map();
     state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {} };
+    state.swapConfirmed = new Set();
     state.grips = {};
     state.draft = { note: '', bodyweight: '', sessionRpe: '' };
     await loadEverything();

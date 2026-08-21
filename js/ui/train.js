@@ -1199,8 +1199,29 @@ export const actions = {
 
   'open-swap'(ctx, data) {
     const { state } = ctx;
-    const slot = slotsFor(state)[Number(data.si)];
+    const slotIndex = Number(data.si);
+    const slot = slotsFor(state)[slotIndex];
     const exercise = state.plan.exercises[slot.ex];
+
+    /*
+     * Sets already logged here belong to the exercise that is being swapped
+     * out. The database keeps them — a displaced set goes to the bin rather
+     * than being replaced — but being told afterwards that your work is in the
+     * bin is not the same as being asked first.
+     */
+    const logged = [...state.loggedSets.keys()].filter((key) => Number(key.split(':')[0]) === slotIndex).length;
+    if (logged && !state.swapConfirmed?.has(slotIndex)) {
+      openSheet(`<div class="ttl">${escape(exercise.name)} has ${logged} logged set${logged === 1 ? '' : 's'}</div>
+        <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">Those sets were done on
+        <b>${escape(exercise.name)}</b>, not on whatever you swap to.</p>
+        <p style="text-align:center;font-size:13px">They stay in your history as ${escape(
+          exercise.name
+        )}. Any set number the new exercise reaches will move the old set of that number to <b>Log → Bin</b>, where you
+        can put it back. Nothing is destroyed either way.</p>
+        <button class="big mt" data-act="confirm-swap" data-si="${slotIndex}">Swap anyway</button>
+        <button class="big ghost mt" data-act="sheet-close">Keep ${escape(exercise.name)}</button>`);
+      return;
+    }
     const byId = Object.entries(state.plan.exercises);
     const suggested = exercise.subs
       .map((name) => byId.find(([, x]) => x.name.toLowerCase() === name.toLowerCase()))
@@ -1221,6 +1242,13 @@ export const actions = {
         .map(([id, x]) => `<button data-act="do-swap" data-si="${data.si}" data-id="${id}">${escape(x.name)}</button>`)
         .join('')}</div>
       <button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
+  },
+
+  'confirm-swap'(ctx, data) {
+    const { state } = ctx;
+    const slotIndex = Number(data.si);
+    state.swapConfirmed = new Set([...(state.swapConfirmed || []), slotIndex]);
+    actions['open-swap'](ctx, data);
   },
 
   async 'do-swap'(ctx, data) {
