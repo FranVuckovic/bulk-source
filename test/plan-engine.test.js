@@ -226,3 +226,54 @@ test('rotation 1 is a full-volume baseline survey', () => {
   assert.equal(rotationSets(1) > rotationSets(3) * 0.95, true, 'baseline keeps its volume');
   assert.equal(resolveSession(PLAN, { rotation: 2, sessionId: 'A' }).isBaseline, false);
 });
+
+test('session B runs arms first, then the heavy leg work', () => {
+  /*
+   * Requested by the owner, 21 August 2026, and his reasoning is the standard
+   * one: heavy lower-body work is systemically expensive and degrades the
+   * curls that used to follow it, while curls cost almost nothing and do not
+   * touch leg press. Leg press before hip thrust is his preference for which
+   * heavy lift gets the freshest legs.
+   *
+   * Only the order changed. Every slot keeps its id, its exercise, its sets,
+   * reps, RPE, rest and effort text — proven at the time by sorting both
+   * versions of the plan file by slot id and diffing them to nothing.
+   *
+   * Asserted by id rather than by position, so this test says what it means:
+   * it is about which exercise comes first, not about a number that would
+   * silently pass if the exercises were swapped underneath it.
+   */
+  const B = PLAN.sessions.find((session) => session.id === 'B');
+  assert.deepEqual(
+    B.slots.map((slot) => slot.id),
+    ['B5', 'B6', 'B2', 'B1', 'B4', 'B3', 'B7', 'B8', 'B9', 'B10']
+  );
+
+  const names = B.slots.map((slot) => PLAN.exercises[slot.ex].name);
+  assert.match(names[0], /curl/i, 'the first exercise is a curl');
+  assert.match(names[1], /curl/i, 'and so is the second');
+  assert.match(names[2], /leg press/i, 'then the heaviest leg lift');
+  assert.match(names[3], /hip thrust/i);
+});
+
+test('reordering a session changed nothing about any prescription', () => {
+  // The guard against a reorder quietly becoming an edit. Every slot in B still
+  // carries exactly what it did, keyed by id so position is irrelevant.
+  const B = PLAN.sessions.find((session) => session.id === 'B');
+  const byId = Object.fromEntries(B.slots.map((slot) => [slot.id, slot]));
+
+  const expected = {
+    B1: { ex: 'hipThrust', sets: 3, repsLow: 6, repsHigh: 10, rpe: 8, restSec: 150 },
+    B2: { ex: 'legpress', sets: 3, repsLow: 8, repsHigh: 12, rpe: 9, restSec: 150 },
+    B3: { ex: 'legcurlSeat', sets: 4, repsLow: 8, repsHigh: 12, rpe: 10, restSec: 75 },
+    B4: { ex: 'quadext', sets: 3, repsLow: 12, repsHigh: 20, rpe: 10, restSec: 75 },
+    B5: { ex: 'curlIncline', sets: 3, repsLow: 8, repsHigh: 12, rpe: 10, restSec: 75 },
+    B6: { ex: 'curlHammer', sets: 2, repsLow: 10, repsHigh: 15, rpe: 10, restSec: 75 },
+  };
+
+  for (const [id, want] of Object.entries(expected)) {
+    for (const [field, value] of Object.entries(want)) {
+      assert.equal(byId[id][field], value, `${id}.${field}`);
+    }
+  }
+});

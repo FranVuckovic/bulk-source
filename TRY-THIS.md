@@ -76,6 +76,7 @@ or block rule changed, and the database schema is still v3.
 | Train → any planned exercise | **Phases** — how that exercise is prescribed across all 33 rotations, and everywhere else it appears in this rotation. |
 | Train → Swap | Warns first when the exercise already has logged sets, and those sets can no longer be destroyed. |
 | Log → Bin | A set displaced by a swap is offered back here. |
+| Train → B | **Arms first.** Curls → leg press → hip thrust → quads → hamstrings → the rest. Your call, made 21 August; nothing but the order changed. |
 
 **Two data-loss defects fixed.** Swapping an exercise after logging sets on it
 destroyed the overlapping ones — silently, with no bin entry. And the class it

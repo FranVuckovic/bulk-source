@@ -106,6 +106,35 @@ Blocks advance on **sessions completed**, not on dates, because a block is an
 amount of training, not an amount of time. The calendar is tracked alongside
 purely as a pace check, because the March target is a real date.
 
+### Why session B runs arms before legs
+
+Changed on the owner's instruction, 21 August 2026. B now runs:
+
+    incline dumbbell curl → hammer/reverse curl → leg press → hip thrust
+    → quad extension → seated leg curl → crunch → calf → lateral → face pull
+
+**The reasoning, which is his:** heavy lower-body work is systemically
+expensive — by the fourth exercise you are four lifts and ten working sets deep
+and breathing hard — and it degrades curls taken to RPE 10. Curls cost almost
+nothing systemically and take no grip that leg press or hip thrust needs, so
+putting them first costs the legs nothing measurable. Leg press before hip
+thrust is his preference for which heavy lift gets the freshest legs.
+
+**The cost, stated because it is real:** §5 ranks elbows as the second-highest
+injury risk in this plan, and fresh curls are heavier curls. Session B's two
+curl slots now sit on top of the skullcrushers in C, the weighted chin-ups and
+two curl slots in D, and the high-cable curls in F. Watch the elbows; if they
+complain, this is the first thing to reverse.
+
+**Nothing else changed.** Every slot keeps its id, exercise, sets, reps, RPE,
+rest and effort text. Verified at the time by sorting both versions of the plan
+file by slot id and diffing them to nothing, and held by two tests in
+`test/plan-engine.test.js` — one for the order, one asserting every
+prescription in B is unchanged.
+
+Sessions already logged are unaffected: history is grouped by the exercise
+stored on each set, not by its position.
+
 ### Why the sessions run in this order
 
 A controlled trial found a statistically significant bench advantage for the
