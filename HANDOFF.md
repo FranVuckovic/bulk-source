@@ -43,7 +43,7 @@ wants from a session is the change, working, and a short honest account of it.
 
 Run these and tell me the results before doing anything else:
 
-- `npm test` — must be **358 passing, 0 failing**
+- `npm test` — must be **360 passing, 0 failing**
 - `git rev-list --count HEAD` — must be **82**
 - `grep VERSION sw.js` — must be **v2.9.0**
 - Count exercises in `data/plan-fopip-v2.json` — must be **49**

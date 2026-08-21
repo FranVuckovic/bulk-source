@@ -17,7 +17,7 @@ data (nothing) and how to roll back (exactly).
 
 ```bash
 git checkout claude/project-onboarding-verify-lz3ob6
-npm test          # expect 358 passing, 0 failing
+npm test          # expect 360 passing, 0 failing
 npm run serve     # then open http://localhost:8123
 ```
 
@@ -177,7 +177,7 @@ v2.4.0 publish. Nothing on this branch has touched `main` or your database.
 `dev/publish.sh` force-pushes over the public repo and replaces its history.
 Ask before running it. The checklist:
 
-1. `npm test` — 358, 0 failing.
+1. `npm test` — 360, 0 failing.
 2. Check `sw.js` VERSION reads `v2.9.0`. The publish set is derived from the
    `SHELL` array in that file, and `js/demo.js` was added to it — a test
    enforces that the shell covers the module graph, so this cannot silently go

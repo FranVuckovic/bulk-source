@@ -23,7 +23,7 @@ older build brief and decision log provide history, not current verification.
 - Working branch: `claude/project-onboarding-verify-lz3ob6`. The v2.6.0 work
   arrived on `codex/v2.5-product-hardening` and was merged there.
 - Current shell: `v2.9.0`
-- Test command: `npm test` (358 passing)
+- Test command: `npm test` (360 passing)
 - Local app: `npm run serve`, then `http://localhost:8123/`
 - Demo: Settings → Demo data → Explore the demo. Demo and personal data use
   separate IndexedDB databases.
