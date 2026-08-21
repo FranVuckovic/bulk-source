@@ -3,7 +3,7 @@
 Written 20 August 2026, against `v2.7.0`. Every claim below was tested, and the
 test is named next to it.
 
-**Status: v2.9.0 is live. v2.10.0 is ready but NOT published.** Published 20 August 2026. It replaced v2.4.0, which
+**Status: v2.10.0 is live.** Published 20 August 2026. It replaced v2.4.0, which
 had replaced v2.1.3 earlier the same day. Every claim below about your data,
 about updating and about rolling back holds unchanged across all three: the
 database version has been 3 throughout, so no migration has ever run.
@@ -137,16 +137,16 @@ The two states are both on `origin`, so neither can be lost:
 |---|---|---|
 | **Oldest kept** | `5ffae2e` — branch `main` | v2.1.3 |
 | **Earlier release** | `e304ef7` on `claude/project-onboarding-verify-lz3ob6` | v2.4.0 |
-| **Previous release** | `3210f94` on `claude/project-onboarding-verify-lz3ob6` | v2.8.1 |
-| **Live now** | `306667b` on `claude/project-onboarding-verify-lz3ob6` | v2.9.0 |
-| **Staged, not published** | tip of `claude/project-onboarding-verify-lz3ob6` | v2.10.0 |
+| **Earlier release** | `3210f94` on `claude/project-onboarding-verify-lz3ob6` | v2.8.1 |
+| **Previous release** | `306667b` on `claude/project-onboarding-verify-lz3ob6` | v2.9.0 |
+| **Live now** | tip of `claude/project-onboarding-verify-lz3ob6` | v2.10.0 |
 
-Rolling back from v2.9.0 means republishing from
-`3210f94` rather than from `main` — v2.8.1 is the previous release, so it is
+Rolling back from v2.10.0 means republishing from
+`306667b` rather than from `main` — v2.9.0 is the previous release, so it is
 the sensible thing to fall back to:
 
 ```bash
-git checkout 3210f94
+git checkout 306667b
 npm run publish -- https://github.com/FranVuckovic/bulk.git
 ```
 
