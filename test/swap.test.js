@@ -129,3 +129,39 @@ test('a displaced set can be restored without colliding again', async () => {
   assert.equal(live.length, 2, 'both sets are live');
   assert.deepEqual(live.map((s) => s.exerciseId).sort(), ['hackSquat', 'legpress']);
 });
+
+test('unlogging a set and then logging the swapped exercise does not resurrect it', async () => {
+  /*
+   * The path you actually take in a gym: a set is logged, you swap the slot,
+   * you tap the tick to clear the set that is now showing under the wrong
+   * exercise, then you log the new one.
+   *
+   * The unlog soft-deletes the row, which leaves it holding `logicalKey`.
+   * Before this, the next write found it by that key and wrote straight into
+   * it, clearing `deletedAtISO` on the way — so a deleted leg press set came
+   * back to life as a hack squat set, with the leg press load gone and the bin
+   * entry silently emptied.
+   */
+  const db = await openFresh();
+  const log = await openSession(db);
+  const { softDeleteRow, restoreRow } = await import('../js/db.js');
+
+  const { set } = await putSetIdempotent(db, record(log, 4, 0, 'legpress', 200), { operationId: 'press-0' });
+  await softDeleteRow(db, 'sets', set.id, { reason: 'removed from the set editor' });
+  assert.equal((await deletedRecords(db)).length, 1, 'in the bin after the unlog');
+
+  await putSetIdempotent(db, record(log, 4, 0, 'hackSquat', 120), { operationId: 'hack-0' });
+
+  const live = alive(await getAll(db, 'sets'));
+  assert.equal(live.length, 1);
+  assert.equal(live[0].exerciseId, 'hackSquat', 'the new set is the live one');
+  assert.equal(live[0].load, 120);
+
+  const bin = await deletedRecords(db);
+  assert.equal(bin.length, 1, 'and the leg press set is still in the bin');
+  assert.equal(bin[0].row.exerciseId, 'legpress');
+  assert.equal(bin[0].row.load, 200, 'with its own load, not the hack squat one');
+
+  await restoreRow(db, 'sets', bin[0].id);
+  assert.equal(alive(await getAll(db, 'sets')).length, 2, 'and can be brought back beside it');
+});

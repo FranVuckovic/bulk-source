@@ -110,11 +110,25 @@ purely as a pace check, because the March target is a real date.
 
 A controlled trial found a statistically significant bench advantage for the
 order that puts the *low-fatigue* session between the volume session and the
-heavy session. So the volume day (C) is followed by the speed day (D), not by
-the AMRAP, and the heavy day (A) always sits two sessions after the AMRAP —
-following F, the leg day.
+heavy session. So the volume day (**E**) is followed by the speed day (**F**),
+not by the AMRAP.
 
-**Never reorder so that A directly follows C or E.**
+**Never reorder so that A directly follows C or E** — the AMRAP day and the
+volume day. Those are the two that cost the most, and A is the one that needs
+you fresh.
+
+> **Letters checked against the plan file, 21 August 2026.** v1 and v2 use the
+> same six letters for different sessions — C and E are swapped, and so are D
+> and F — and this section was written against v1. In v2: **C** is the AMRAP,
+> **E** is bench volume, **D** is lower body and jumps, **F** is the speed day.
+>
+> One clause did not survive the translation and has been removed rather than
+> guessed at: v1 said the heavy day "always sits two sessions after the AMRAP —
+> following F, the leg day". In v1's letters that was true (AMRAP was E, and
+> A is two on from E). In v2's running order A–F the AMRAP is C, and two
+> sessions on from C is E, not A. Either the running order changed with the
+> rewrite or the claim needs restating. **It is a training-order decision, so
+> it is open rather than rewritten.**
 
 ### Why four bench exposures with only one to failure
 
@@ -152,10 +166,11 @@ against +9.7% for deliberately slow lifting. Double the gain from identical
 work. The effect only exists when sets are not taken to failure, which is
 another reason failure stays off the bench.
 
-### Why the AMRAP is first in session E
+### Why the AMRAP is first in session C
 
 It is a measurement, and a tired reading is a corrupted reading. It used to sit
-after four sets of variation work, which corrupted it. Load stays in the 80–87%
+after four sets of variation work, which corrupted it. In the plan file it is
+slot `C1` — the first slot of session C, straight after the warm-up ramp. Load stays in the 80–87%
 window because there the rep count agrees between sessions to within about one
 rep and formula error at ≤5 reps is near zero. At 70% the between-person spread
 runs from 6 to 28 reps and the error roughly doubles.

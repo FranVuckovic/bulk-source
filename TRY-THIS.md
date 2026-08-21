@@ -17,7 +17,7 @@ data (nothing) and how to roll back (exactly).
 
 ```bash
 git checkout claude/project-onboarding-verify-lz3ob6
-npm test          # expect 333 passing, 0 failing
+npm test          # expect 358 passing, 0 failing
 npm run serve     # then open http://localhost:8123
 ```
 
@@ -68,6 +68,24 @@ Worth looking at specifically:
 
 `docs/release-v2.6.0.md` is the full list. No exercise, set, rep, RPE, rotation
 or block rule changed, and the database schema is still v3.
+
+### New in v2.9.0
+
+| Where | What is new |
+|---|---|
+| Train → any planned exercise | **Phases** — how that exercise is prescribed across all 33 rotations, and everywhere else it appears in this rotation. |
+| Train → Swap | Warns first when the exercise already has logged sets, and those sets can no longer be destroyed. |
+| Log → Bin | A set displaced by a swap is offered back here. |
+
+**Two data-loss defects fixed.** Swapping an exercise after logging sets on it
+destroyed the overlapping ones — silently, with no bin entry. And the class it
+belongs to is now a standing test: `docs/data-safety.md` lists every store whose
+key comes from the data, with what stops a replacement being a loss, and
+`test/write-safety.test.js` fails if a new one appears unlisted.
+
+**How to put back the measurements that were overwritten:** `docs/data-safety.md`,
+last section. It needs v2.9.0, because changing the day is what makes it
+possible.
 
 ### New in v2.8.0
 
@@ -158,8 +176,8 @@ v2.4.0 publish. Nothing on this branch has touched `main` or your database.
 `dev/publish.sh` force-pushes over the public repo and replaces its history.
 Ask before running it. The checklist:
 
-1. `npm test` — 333, 0 failing.
-2. Check `sw.js` VERSION reads `v2.8.1`. The publish set is derived from the
+1. `npm test` — 358, 0 failing.
+2. Check `sw.js` VERSION reads `v2.9.0`. The publish set is derived from the
    `SHELL` array in that file, and `js/demo.js` was added to it — a test
    enforces that the shell covers the module graph, so this cannot silently go
    wrong.

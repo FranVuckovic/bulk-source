@@ -28,6 +28,8 @@ wants from a session is the change, working, and a short honest account of it.
 2. `PUBLISHING.md` — the two repos, what an update does to his data, how to roll
    back. Read this BEFORE touching anything to do with publishing.
 3. `VERIFICATION.md` — what has been verified, how, and the known limits.
+3b. `docs/data-safety.md` — every write that can destroy a record, and what
+   stops it. Read before touching any write path.
 4. `TRY-THIS.md` — every commit on the working branch and which are safe to
    revert alone.
 5. `docs/v2-status.md` — every requirement, its evidence, the judgement calls.
@@ -41,9 +43,9 @@ wants from a session is the change, working, and a short honest account of it.
 
 Run these and tell me the results before doing anything else:
 
-- `npm test` — must be **333 passing, 0 failing**
+- `npm test` — must be **358 passing, 0 failing**
 - `git rev-list --count HEAD` — must be **82**
-- `grep VERSION sw.js` — must be **v2.8.1**
+- `grep VERSION sw.js` — must be **v2.9.0**
 - Count exercises in `data/plan-fopip-v2.json` — must be **49**
 - `git branch --show-current` — must be **claude/project-onboarding-verify-lz3ob6**
 - Confirm you can read `docs/`, `test/`, `archive/` and `dev/`

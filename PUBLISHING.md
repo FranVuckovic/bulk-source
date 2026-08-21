@@ -3,7 +3,7 @@
 Written 20 August 2026, against `v2.7.0`. Every claim below was tested, and the
 test is named next to it.
 
-**Status: v2.8.1 is live.** Published 20 August 2026. It replaced v2.4.0, which
+**Status: v2.8.1 is live. v2.9.0 is ready but NOT published.** Published 20 August 2026. It replaced v2.4.0, which
 had replaced v2.1.3 earlier the same day. Every claim below about your data,
 about updating and about rolling back holds unchanged across all three: the
 database version has been 3 throughout, so no migration has ever run.
@@ -117,8 +117,8 @@ Nothing is required. But:
 ```bash
 cd /path/to/bulk-source
 git checkout claude/project-onboarding-verify-lz3ob6
-npm test                                                    # 333, 0 failing
-grep VERSION sw.js                                          # reads v2.8.1
+npm test                                                    # 358, 0 failing
+grep VERSION sw.js                                          # reads v2.9.0
 npm run publish -- https://github.com/FranVuckovic/bulk.git
 ```
 
@@ -137,9 +137,10 @@ The two states are both on `origin`, so neither can be lost:
 |---|---|---|
 | **Oldest kept** | `5ffae2e` — branch `main` | v2.1.3 |
 | **Previous release** | `e304ef7` on `claude/project-onboarding-verify-lz3ob6` | v2.4.0 |
-| **Live now** | tip of `claude/project-onboarding-verify-lz3ob6` | v2.8.1 |
+| **Live now** | `3210f94` on `claude/project-onboarding-verify-lz3ob6` | v2.8.1 |
+| **Staged, not published** | tip of `claude/project-onboarding-verify-lz3ob6` | v2.9.0 |
 
-Rolling back from v2.8.1 means republishing from
+Rolling back from v2.9.0, once published, means republishing from
 `e304ef7` rather than from `main` — v2.4.0 is the version you have actually
 used, so it is the sensible thing to fall back to:
 
