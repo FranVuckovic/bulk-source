@@ -172,6 +172,41 @@ function gallery(state, photos) {
   }`;
 }
 
+/**
+ * Which day these entries are being written to.
+ *
+ * `daily` and `measurements` are keyed by their date, so the date is not a
+ * label on the screen — it is the identity of the record about to be replaced.
+ * It used to be implicit, worked out once when the app started, and an
+ * installed PWA that is resumed rather than reloaded went on believing it was
+ * yesterday. The first anyone knew of it was yesterday's tape readings being
+ * gone.
+ *
+ * So it is stated, always, and it is changeable — which also means a reading
+ * you took yesterday and are entering now can go on the day you took it.
+ */
+function dateBar(ctx) {
+  const { state } = ctx;
+  const draft = state.bodyDraft;
+  const today = state.todayISO;
+  const on = draft.dateISO === today;
+  const existing =
+    state.daily.some((d) => d.dateISO === draft.dateISO) ||
+    state.measurements.some((m) => m.dateISO === draft.dateISO);
+
+  return `<div class="datebar${on ? '' : ' off'}">
+    <div>
+      <b>${escape(on ? 'Today' : shortDate(draft.dateISO))}</b>
+      <span>${escape(on ? shortDate(draft.dateISO) : 'not today — check this is what you want')}</span>
+    </div>
+    <button class="pill" data-act="body-date">Change day</button>
+  </div>${
+    existing
+      ? `<p class="hint" style="margin:-4px 2px 12px">There is already an entry for this day. Saving replaces it — the values it replaces are kept in the log.</p>`
+      : ''
+  }`;
+}
+
 export function view(ctx) {
   const { state } = ctx;
   const unit = state.settings.unit;
@@ -188,6 +223,7 @@ export function view(ctx) {
   const videos = state.media.filter((m) => m.kind === 'formcheck');
 
   return `
+  ${dateBar(ctx)}
   ${section(
     'today',
     'Today · about 8 seconds',
@@ -370,6 +406,33 @@ const parse = parseNumber;
 const countBlanks = (values) => values.filter((v) => v == null).length;
 
 export const actions = {
+  /** Pick the day these entries belong to. */
+  'body-date'(ctx) {
+    const { state } = ctx;
+    const draft = state.bodyDraft;
+    const today = state.todayISO;
+    const yesterday = new Date(Date.parse(`${today}T12:00:00Z`) - 86400000).toISOString().slice(0, 10);
+
+    openSheet(`<div class="ttl">Which day is this?</div>
+      <p style="text-align:center;font-size:13px;margin:12px 0 4px">A weigh-in and a set of tape readings are stored
+      under their date, so this decides which record you are writing. Entering yesterday's reading today is what this is
+      for.</p>
+      <div class="picker" style="justify-content:center;padding-bottom:2px">
+        <button class="pill ${draft.dateISO === today ? 'on' : ''}" data-act="body-date-set" data-id="${escape(today)}">Today</button>
+        <button class="pill ${draft.dateISO === yesterday ? 'on' : ''}" data-act="body-date-set" data-id="${escape(
+          yesterday
+        )}">Yesterday</button>
+      </div>
+      <div class="mt"><label for="b-date">Or a specific day</label>
+        <input id="b-date" type="date" max="${escape(today)}" value="${escape(draft.dateISO)}" data-act-input="body-date-pick"></div>
+      <button class="big ghost mt" data-act="sheet-close">Done</button>`);
+  },
+
+  'body-date-set'(ctx, data) {
+    ctx.setBodyDate(data.id);
+    closeSheet();
+  },
+
   section(ctx, data) {
     ctx.state.shut.has(data.id) ? ctx.state.shut.delete(data.id) : ctx.state.shut.add(data.id);
     ctx.render();
@@ -667,6 +730,12 @@ function confirmBlanks(ctx, blanks, what, save) {
  * should not lose the other five, so failures are collected and reported at
  * the end rather than thrown at the first one.
  */
+export const inputs = {
+  'body-date-pick'(ctx, value) {
+    if (value) ctx.setBodyDate(value);
+  },
+};
+
 export const files = {
   async photo(ctx, fileList) {
     const chosen = [...(fileList || [])];

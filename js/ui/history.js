@@ -254,19 +254,25 @@ function entriesView(state) {
       : ''
   }
 
-  <div class="picker">
-    <button class="pill ${status === 'active' ? 'on' : ''}" data-act="history-status" data-id="active">Active</button>
-    <button class="pill ${status === 'deleted' ? 'on' : ''}" data-act="history-status" data-id="deleted">Deleted${
-      (state.deleted || []).length ? ` · ${(state.deleted || []).length}` : ''
-    }</button>
+  <div class="filterset">
+    <span class="filterlab">Show</span>
+    <div class="picker">
+      <button class="pill ${status === 'active' ? 'on' : ''}" data-act="history-status" data-id="active">Active</button>
+      <button class="pill ${status === 'deleted' ? 'on' : ''}" data-act="history-status" data-id="deleted">Deleted${
+        (state.deleted || []).length ? ` · ${(state.deleted || []).length}` : ''
+      }</button>
+    </div>
   </div>
 
-  <div class="picker">${KINDS.map(
+  <div class="filterset">
+    <span class="filterlab">Of what kind</span>
+    <div class="picker">${KINDS.map(
     ([id, label]) =>
       `<button class="pill ${filter === id ? 'on' : ''}" data-act="history-filter" data-id="${id}">${escape(
         label
       )}</button>`
   ).join('')}</div>
+  </div>
 
   ${
     status === 'deleted'
@@ -915,7 +921,38 @@ function timingSection(ctx, log, sets) {
     </div>`;
 }
 
-function plainDetail(row) {
+/**
+ * What a replacement replaced.
+ *
+ * `daily` and `measurements` are keyed by their date, so writing the same day
+ * twice replaces the row. That is right — a weigh-in you re-enter is the same
+ * weigh-in — but the previous numbers used to disappear with nothing to notice
+ * them by. They are kept now, and this is where you read them.
+ */
+function replacedValues(state, row) {
+  const store = { daily: 'daily', measurement: 'measurements', niggle: 'niggles', media: 'media' }[row.kind];
+  if (!store) return '';
+
+  const history = (state.auditLog || [])
+    .filter((entry) => entry.action === 'overwrite' && entry.entity === store && entry.entityId === row.record.dateISO)
+    .sort((a, b) => b.atISO.localeCompare(a.atISO));
+  if (!history.length) return '';
+
+  return `<details class="card" style="margin-top:12px"><summary>Replaced values · ${history.length}</summary><div class="c">
+    <p class="hint" style="margin:0 0 8px">Every time this entry was written over, and what it held before.</p>
+    ${history
+      .map(
+        (entry) => `<div style="margin:0 0 10px">
+          <b style="font-size:12.5px">Written over on ${escape(longDate(entry.atISO.slice(0, 10)))}</b>
+          <table><tbody>${Object.entries(entry.previous || {})
+            .map(([field, value]) => `<tr><td>${escape(field)}</td><td>${escape(value)}</td></tr>`)
+            .join('')}</tbody></table></div>`
+      )
+      .join('')}
+  </div></details>`;
+}
+
+export function plainDetail(state, row) {
   const fields = Object.entries(row.record)
     .filter(([key, value]) => !['id', 'imageBlob'].includes(key) && value != null && value !== '')
     .map(
@@ -927,6 +964,7 @@ function plainDetail(row) {
   return `<div class="ttl">${escape(row.title)}</div>
     <p style="text-align:center;font-size:13px;margin:10px 0 12px">${escape(longDate(row.dateISO))}</p>
     <table><tbody>${fields || '<tr><td>Every field is blank</td><td></td></tr>'}</tbody></table>
+    ${replacedValues(state, row)}
     <button class="big danger mt" data-act="history-delete" data-key="${escape(row.key)}">Delete this entry</button>
     <button class="big ghost mt" data-act="sheet-close">Close</button>`;
 }
@@ -943,7 +981,7 @@ export const actions = {
     const row = entries(ctx.state).find((entry) => entry.key === data.key);
     if (!row) return;
     if (row.kind !== 'session') {
-      openSheet(plainDetail(row));
+      openSheet(plainDetail(ctx.state, row));
       return;
     }
     ctx.state.logSessionId = row.id;

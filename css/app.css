@@ -444,3 +444,22 @@ svg.ch [data-tip]{cursor:pointer}
 .rec .vl small{font-size:10.5px;font-weight:600;color:var(--muted)}
 .gal .ph{cursor:pointer}
 input[type=search]{width:100%;padding:10px;font-size:16px;font-family:inherit;background:var(--raised);color:var(--ink);border:1px solid var(--line);border-radius:10px}
+
+/* Which day the Body screen is writing to. Stated, because `daily` and
+   `measurements` are keyed by their date: this is not a label, it is the
+   identity of the record about to be replaced. */
+.datebar{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  background:var(--card);border:1px solid var(--grid);border-radius:12px;
+  padding:9px 11px;margin:0 2px 12px}
+.datebar b{display:block;font-size:14px;font-weight:700}
+.datebar span{display:block;font-size:11.5px;color:var(--muted)}
+.datebar.off{border-color:var(--s1)}
+.datebar.off b{color:var(--s1)}
+
+/* Two filters that answer different questions — which records, and which kind
+   of record — used to sit as two adjacent rows of identical pills, reading as
+   one long list of alternatives. Each is labelled and boxed as its own set. */
+.filterset{margin:0 2px 8px}
+.filterset .filterlab{display:block;font-size:10.5px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted);margin:0 0 4px}
+.filterset + .filterset{margin-top:10px;padding-top:10px;border-top:1px solid var(--grid)}

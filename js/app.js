@@ -27,6 +27,7 @@ import {
   logicalSetKey,
   softDeleteRow,
   restoreRow,
+  putDatedRow,
   deletedRecords,
   deleteSessionCascade,
   claimSingleTab,
@@ -139,6 +140,7 @@ const state = {
 
   // Body screen
   bodyDraft: { dateISO: null },
+  auditLog: [],
   shut: new Set(),
   pendingSave: null,
 
@@ -173,6 +175,10 @@ async function loadEverything() {
   state.niggles = alive(await getAll(state.db, 'niggles')).sort(byDate);
   state.media = alive(await getAll(state.db, 'media')).sort(byDate);
   state.maxes = new Map((await getAll(state.db, 'maxes')).map((m) => [m.exerciseId, m]));
+  // Kept in state so the Log can show what a replacement replaced. A weigh-in
+  // written over is not visible anywhere else — that is exactly how a day of
+  // tape readings went missing with only a photograph left of them.
+  state.auditLog = await getAll(state.db, 'auditLog');
   state.deleted = await deletedRecords(state.db);
 
   state.cycles = alive(await getAll(state.db, 'cycles')).sort((a, b) => a.sequence - b.sequence);
@@ -312,6 +318,9 @@ async function reloadDated(store) {
   // The bin has to be re-read too: saving over a soft-deleted row at the same
   // date replaces it, and the recovery list would go on offering it back.
   state.deleted = await deletedRecords(state.db);
+  // And the audit log, because a save may have just recorded the values it
+  // replaced, and the Log shows them from here.
+  state.auditLog = await getAll(state.db, 'auditLog');
   buildHistory();
   render();
 }
@@ -611,16 +620,50 @@ async function finishSession() {
     }`);
 }
 
-/** Today's Body entries, prefilled from whatever is already stored for today. */
-function resetBodyDraft() {
-  const today = state.todayISO;
-  const daily = state.daily.find((d) => d.dateISO === today) || {};
-  const measurement = state.measurements.find((m) => m.dateISO === today) || {};
+/**
+ * Re-derive the local date, and say whether it moved.
+ *
+ * `state.todayISO` used to be computed once, in `loadEverything`, at boot. An
+ * installed PWA resumed from the background does not reload — the page has been
+ * alive since you last opened it — so after midnight every "today" the Body
+ * screen used still meant the day the app was last started.
+ *
+ * That is not a display problem. `daily` and `measurements` are keyed by
+ * `dateISO`: the Body screen prefilled from the stale day's records, which is
+ * why the boxes were not empty, and saving wrote over that day rather than
+ * creating a new one. Reported from real use, with a photograph of the readings
+ * it destroyed.
+ */
+function refreshToday() {
+  const now = todayISO();
+  if (now === state.todayISO) return false;
+  state.todayISO = now;
+  return true;
+}
+
+/**
+ * Bring the app back to the current day.
+ *
+ * Called when the app is shown again and on a slow timer, so an app left open
+ * across midnight rolls over on its own rather than waiting to be reloaded.
+ */
+async function rollOverIfNeeded() {
+  if (!state.db || !refreshToday()) return;
+  await loadEverything();
+  buildHistory();
+  resetBodyDraft();
+  render();
+}
+
+/** The Body entries for one day, prefilled from whatever is already stored. */
+function fillBodyDraftFrom(dateISO) {
+  const daily = state.daily.find((d) => d.dateISO === dateISO) || {};
+  const measurement = state.measurements.find((m) => m.dateISO === dateISO) || {};
   const unit = state.settings.unit;
   const show = (value) => (value == null ? '' : String(Math.round(toDisplay(value, unit) * 10) / 10));
 
   state.bodyDraft = {
-    dateISO: today,
+    dateISO,
     bodyweight: show(daily.bodyweight),
     bodyfatPct: daily.bodyfatPct == null ? '' : String(daily.bodyfatPct),
     sleepHours: daily.sleepHours == null ? '' : String(daily.sleepHours),
@@ -645,6 +688,18 @@ function resetBodyDraft() {
   // is actually repeatable.
   state.bodyDraft.measureTime = measurement.timeOfDay || body.DEFAULT_MEASUREMENT_TIME;
   state.bodyDraft.measureTimeNote = measurement.timeOfDayNote || '';
+}
+
+/**
+ * Back to today.
+ *
+ * The date is re-derived first, every time. It used to be read from a value
+ * worked out once at boot, which on a resumed PWA meant the Body screen went on
+ * writing to the day the app was last started.
+ */
+function resetBodyDraft() {
+  refreshToday();
+  fillBodyDraftFrom(state.todayISO);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -789,14 +844,31 @@ const ctx = {
 
   toKg: (value) => (value == null ? null : fromDisplay(value, state.settings.unit)),
 
+  /**
+   * Move the Body screen to another day, and reload what is stored for it.
+   *
+   * Refuses a future date: there is no reading from tomorrow, and a mistyped
+   * year is otherwise a record you will never find again.
+   */
+  setBodyDate(dateISO) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateISO)) return;
+    refreshToday();
+    if (dateISO > state.todayISO) return;
+    state.bodyDraft = { ...state.bodyDraft, dateISO };
+    fillBodyDraftFrom(dateISO);
+    render();
+  },
+
   async saveDaily(row) {
-    await put(state.db, 'daily', row);
+    const result = await putDatedRow(state.db, 'daily', row);
     await reloadDated('daily');
+    return result;
   },
 
   async saveMeasurements(row) {
-    await put(state.db, 'measurements', row);
+    const result = await putDatedRow(state.db, 'measurements', row);
     await reloadDated('measurements');
+    return result;
   },
 
   async saveNiggle(row) {
@@ -1442,6 +1514,20 @@ function wireSessionClock() {
   window.addEventListener('focus', paintSessionClock);
 }
 
+/**
+ * The app must not go on believing it is yesterday.
+ *
+ * An installed PWA is resumed, not reloaded, so nothing here can be worked out
+ * once at boot and trusted afterwards.
+ */
+function wireDayRollover() {
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) rollOverIfNeeded();
+  });
+  window.addEventListener('focus', () => rollOverIfNeeded());
+  setInterval(rollOverIfNeeded, 60000);
+}
+
 function wireKeyboardHandling() {
   const viewport = window.visualViewport;
   if (viewport) {
@@ -1860,7 +1946,13 @@ function wireEvents() {
     }
     const input = el.dataset.actInput;
     if (input) {
-      Promise.resolve((train.inputs[input] || plan.inputs[input])?.(ctx, el.value)).catch(showFailure);
+      // Every module that exports `inputs` has to be listed here. body.js was
+      // added later and was not, so its date picker was rendered, wired to a
+      // handler, and silently did nothing — the same shape as the two defects
+      // `shell.test.js` exists to catch. A test now checks this list against
+      // the modules.
+      const handler = train.inputs[input] || plan.inputs[input] || body.inputs[input];
+      Promise.resolve(handler?.(ctx, el.value)).catch(showFailure);
     }
   });
 
@@ -1956,6 +2048,7 @@ async function boot() {
   wireBackButton();
   wireKeyboardHandling();
   wireSessionClock();
+  wireDayRollover();
   render();
 
   // Asked for after the first render, so the prompt never delays the screen.

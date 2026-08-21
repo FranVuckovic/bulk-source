@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, normalize, relative } from 'node:path';
 import { actions as trainActions, inputs as trainInputs } from '../js/ui/train.js';
-import { actions as bodyActions, files as bodyFiles } from '../js/ui/body.js';
+import { actions as bodyActions, files as bodyFiles, inputs as bodyInputs } from '../js/ui/body.js';
 import { actions as progressActions } from '../js/ui/progress.js';
 import { actions as historyActions } from '../js/ui/history.js';
 import { actions as planActions, inputs as planInputs } from '../js/ui/plan.js';
@@ -129,9 +129,26 @@ test('every literal UI control is wired to a real handler', () => {
     assert.ok(fileHandlers.has(action), `data-act-file="${action}" has no file handler`);
   }
 
-  const inputHandlers = new Set([...Object.keys(trainInputs), ...Object.keys(planInputs)]);
+  const inputHandlers = new Set([
+    ...Object.keys(trainInputs),
+    ...Object.keys(planInputs),
+    ...Object.keys(bodyInputs),
+  ]);
   for (const action of literalBindings('data-act-input')) {
     assert.ok(inputHandlers.has(action), `data-act-input="${action}" has no input handler`);
+  }
+
+  // Exporting the handlers is half of it. app.js dispatches from a hand-written
+  // list of modules, and body.js's `inputs` was added to the module and not to
+  // that list — so its date picker rendered, matched a handler, and did
+  // nothing. Both halves are asserted, because only the second one runs.
+  const dispatcher = app.slice(app.indexOf("const input = el.dataset.actInput;"));
+  for (const [name, module] of [['train', trainInputs], ['plan', planInputs], ['body', bodyInputs]]) {
+    if (!Object.keys(module).length) continue;
+    assert.ok(
+      dispatcher.includes(`${name}.inputs[input]`),
+      `${name}.js exports inputs that app.js never reaches`
+    );
   }
 });
 

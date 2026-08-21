@@ -807,6 +807,59 @@ export async function restoreRow(db, storeName, id) {
   });
 }
 
+/**
+ * Write a row keyed by its date, keeping what it replaced.
+ *
+ * `daily` and `measurements` are keyed by `dateISO`, so a second write for the
+ * same day replaces the first. That is correct — a weigh-in you re-enter is the
+ * same weigh-in — but the old values used to vanish with nothing to notice
+ * them by, and a write aimed at the wrong day was therefore silent and
+ * unrecoverable. Reported from real use: yesterday's tape readings were
+ * overwritten by today's, and only survived because they had been
+ * photographed.
+ *
+ * The replacement still happens. What is new is that the values it replaced are
+ * kept in the audit log, so the change is visible and the numbers are still
+ * there to read back.
+ */
+export async function putDatedRow(db, storeName, row) {
+  return withTransaction(db, [storeName, 'auditLog'], 'readwrite', async ([store, audit]) => {
+    const key = row[store.keyPath];
+    const existing = key == null ? null : await request(store.get(key));
+
+    const changed = [];
+    if (existing) {
+      const fields = new Set([...Object.keys(existing), ...Object.keys(row)]);
+      for (const field of fields) {
+        if (field === store.keyPath || field === 'deletedAtISO') continue;
+        const before = existing[field] ?? null;
+        const after = row[field] ?? null;
+        if (before !== after && before !== null) changed.push({ field, from: before, to: after });
+      }
+    }
+
+    await request(store.put(row));
+
+    if (changed.length) {
+      await request(
+        audit.put({
+          atISO: new Date().toISOString(),
+          entity: storeName,
+          entityId: key,
+          action: 'overwrite',
+          fields: changed.map((c) => c.field),
+          previous: Object.fromEntries(changed.map((c) => [c.field, c.from])),
+          // Not one-tap restorable: putting it back is a decision about which
+          // reading was the real one, and only you know that.
+          restorable: false,
+        })
+      );
+    }
+
+    return { existed: !!existing, changed };
+  });
+}
+
 /** Everything currently in the bin, newest deletion first. */
 export async function deletedRecords(db) {
   const out = [];
