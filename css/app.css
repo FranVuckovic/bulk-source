@@ -509,3 +509,19 @@ input[type=search]{width:100%;padding:10px;font-size:16px;font-family:inherit;ba
 .rest .rclose{background:rgba(255,255,255,.12)}
 
 body:has(.rest.big){padding-bottom:0}
+
+/* How one exercise is prescribed across the 33 rotations. */
+table.phases{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+table.phases td{padding:7px 6px;border-bottom:1px solid var(--grid);vertical-align:top}
+table.phases td:first-child{width:3.9em;color:var(--muted);font-weight:650;white-space:nowrap}
+table.phases td:nth-child(2){font-weight:600}
+table.phases td:last-child{width:7.6em;color:var(--muted);font-size:10.5px;text-align:right;line-height:1.35}
+/* Badges sit on the line they belong to rather than becoming their own row. */
+table.phases .badge{display:inline;margin-left:5px;padding:1px 5px;font-size:9px;vertical-align:1px}
+table.phases tr:last-child td{border-bottom:0}
+table.phases tr.now td{background:color-mix(in srgb, var(--s1) 16%, transparent)}
+table.phases tr.now td:first-child{color:var(--s1)}
+table.phases tr.off td:nth-child(2){color:var(--muted);font-weight:500;font-style:italic}
+#sheet h4{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);margin:16px 0 4px}
+#sheet h4:first-of-type{margin-top:6px}

@@ -475,3 +475,119 @@ export function toDisplaySlot(slot, index) {
 export function toDisplaySession(resolved) {
   return { ...resolved, slots: resolved.slots.map(toDisplaySlot) };
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   The same exercise, elsewhere in the plan
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The fields that decide whether two rotations prescribe the same thing.
+ *
+ * Deliberately not everything on the slot: `id` and `ex` are constant, and
+ * including them would make every run look different for no reason. Load is
+ * absent because a load is computed from today's working max — the same
+ * prescription resolves to a different weight in March than it does in August,
+ * and putting a kilogram figure against rotation 24 would be a fiction.
+ */
+const PRESCRIPTION_FIELDS = [
+  'role',
+  'sets',
+  'repsLow',
+  'repsHigh',
+  'rpe',
+  'amrap',
+  'idx',
+  'myoOption',
+  'failLast',
+  'pct',
+  'pctTop',
+  'pctBasis',
+  'effort',
+  'note',
+  'label',
+];
+
+const prescriptionSignature = (slot) =>
+  slot ? JSON.stringify(PRESCRIPTION_FIELDS.map((field) => slot[field] ?? null)) : null;
+
+/**
+ * Which session a slot id belongs to, and its authored form. Slot ids are
+ * unique across the whole plan, which is what makes them usable as the anchor
+ * here — slot *indices* are not, because readiness removes slots, extras are
+ * appended, and the static hold appears in nine rotations out of thirty-three.
+ */
+export function slotById(plan, slotId) {
+  for (const session of plan.sessions || []) {
+    const slot = (session.slots || []).find((candidate) => candidate.id === slotId);
+    if (slot) return { session, slot };
+  }
+  return null;
+}
+
+/**
+ * How one slot's prescription changes across the whole plan.
+ *
+ * Returns consecutive rotations that prescribe the same thing collapsed into
+ * one phase, in order, each carrying the blocks it spans. Derived rather than
+ * authored, so it cannot drift from what the Train screen will actually show:
+ * the block structure, the effort waves inside Accumulation I, specificity
+ * running its AMRAP only at each end, and the rotations where a slot is not
+ * prescribed at all all fall out of it.
+ *
+ * A phase with `slot: null` means the plan does not prescribe this exercise
+ * that rotation. Those are real and are reported rather than skipped — "it is
+ * not in the plan then" is an answer, and a gap in a list of rotation numbers
+ * looks like a bug.
+ */
+export function exerciseAcrossPlan(plan, slotId) {
+  const found = slotById(plan, slotId);
+  if (!found) return [];
+
+  const total = plan.meta?.rotations ?? 0;
+  const phases = [];
+  let signature;
+
+  for (let rotation = 1; rotation <= total; rotation += 1) {
+    const resolved = resolveSession(plan, { rotation, sessionId: found.session.id });
+    const slot = resolved.ok ? resolved.slots.find((candidate) => candidate.id === slotId) || null : null;
+    const next = prescriptionSignature(slot);
+
+    if (next !== signature || !phases.length) {
+      phases.push({ from: rotation, to: rotation, slot, blocks: [] });
+      signature = next;
+    } else {
+      phases[phases.length - 1].to = rotation;
+    }
+  }
+
+  for (const phase of phases) {
+    const names = [];
+    for (let rotation = phase.from; rotation <= phase.to; rotation += 1) {
+      const block = blockFor(plan, rotation);
+      if (block && !names.includes(block.name)) names.push(block.name);
+    }
+    phase.blocks = names;
+  }
+
+  return phases;
+}
+
+/**
+ * Everywhere else this exercise is prescribed in the same rotation.
+ *
+ * Bench appears six times across a rotation at different intensities, and until
+ * now the only way to see that was to open five other sessions. `exclude` is a
+ * slot id — the one you are standing in front of.
+ */
+export function sameExerciseElsewhere(plan, exerciseId, rotation, { exclude = null } = {}) {
+  const out = [];
+  for (const session of plan.sessions || []) {
+    const resolved = resolveSession(plan, { rotation, sessionId: session.id });
+    if (!resolved.ok) continue;
+    for (const slot of resolved.slots) {
+      if (slot.ex !== exerciseId || slot.id === exclude) continue;
+      out.push({ sessionId: session.id, sessionName: session.name, slot });
+    }
+  }
+  return out;
+}

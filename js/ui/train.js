@@ -29,7 +29,7 @@ import {
   platesFor,
   pct,
 } from '../calc.js';
-import { resolveSession, toDisplaySession } from '../plan.js';
+import { resolveSession, toDisplaySession, exerciseAcrossPlan, sameExerciseElsewhere, slotById } from '../plan.js';
 import { exerciseNoteHistory } from '../analytics.js';
 import {
   escape,
@@ -553,6 +553,11 @@ function exerciseBlock(state, slot, slotIndex) {
         : `<button data-act="open-swap" data-si="${slotIndex}">Swap</button>`
     }
     <button data-act="about" data-id="${slot.ex}">About</button>
+    ${
+      slot.id && !slot.swappedFrom && !slot.added
+        ? `<button data-act="open-phases" data-si="${slotIndex}">Phases</button>`
+        : ''
+    }
     <button class="${exerciseNote(state, slotIndex) ? 'warn' : ''}" data-act="open-ex-note" data-si="${slotIndex}">${
       exerciseNote(state, slotIndex) ? '\u2713 Note' : 'Note'
     }</button>`;
@@ -1195,6 +1200,87 @@ export const actions = {
     if (state.activeLog || state.trainSessionId !== CUSTOM_SESSION_ID) await ctx.saveDeviations();
     closeSheet();
     ctx.render();
+  },
+
+  /**
+   * How this exercise is prescribed everywhere else in the plan.
+   *
+   * Anchored on the slot's `id`, never on its index. Slot indices are not
+   * stable across rotations — readiness removes slots, added exercises are
+   * appended, and the static hold is prescribed in nine rotations out of
+   * thirty-three — so an index compared across rotations compares two different
+   * exercises. Slot ids are unique across the whole plan and never move.
+   *
+   * The phases are derived from the engine, one rotation at a time, and
+   * consecutive rotations prescribing the same thing are collapsed. That is why
+   * the effort waves inside Accumulation I, the AMRAP running only at each end
+   * of Specificity, and the rotations where nothing is prescribed all appear
+   * without any of them being written down twice.
+   *
+   * Loads are shown only for this rotation. A load is computed from today's
+   * working max, so a kilogram figure against rotation 24 would be a number the
+   * app invented rather than one the plan states.
+   */
+  'open-phases'(ctx, data) {
+    const { state } = ctx;
+    const slotIndex = Number(data.si);
+    const slot = slotsFor(state)[slotIndex];
+    if (!slot?.id) return;
+
+    const authored = slotById(state.plan, slot.id);
+    const exercise = state.plan.exercises[slot.ex];
+    const here = state.cycle.sequence;
+    const phases = exerciseAcrossPlan(state.plan, slot.id);
+    const elsewhere = sameExerciseElsewhere(state.plan, slot.ex, here, { exclude: slot.id });
+
+    const shape = (row) =>
+      row
+        ? `${row.sets} × ${row.amrap ? 'max' : row.repsLow === row.repsHigh ? row.repsLow : `${row.repsLow}–${row.repsHigh}`} @ RPE ${row.rpe}`
+        : 'not prescribed';
+
+    const range = (phase) => (phase.from === phase.to ? `${phase.from}` : `${phase.from}–${phase.to}`);
+    const current = (phase) => here >= phase.from && here <= phase.to;
+
+    const rows = phases
+      .map(
+        (phase) => `<tr class="${current(phase) ? 'now' : ''}${phase.slot ? '' : ' off'}">
+          <td>${escape(range(phase))}</td>
+          <td>${escape(shape(phase.slot))}${
+            phase.slot?.amrap ? '<span class="badge amr">AMRAP</span>' : ''
+          }${phase.slot?.idx ? '<span class="badge idx">INDEX</span>' : ''}</td>
+          <td>${escape(phase.blocks.join(' · '))}</td>
+        </tr>`
+      )
+      .join('');
+
+    const others = elsewhere.length
+      ? `<h4>Elsewhere this rotation</h4>
+         <table class="phases"><tbody>${elsewhere
+           .map(
+             (entry) => `<tr>
+               <td>${escape(entry.sessionId)}</td>
+               <td>${escape(shape(entry.slot))}</td>
+               <td>${escape(entry.slot.label || entry.slot.role)}</td>
+             </tr>`
+           )
+           .join('')}</tbody></table>
+         <p class="hint" style="margin:6px 0 0">The same lift at different intensities, on purpose — that spread is what the plan is made of.</p>`
+      : `<p class="hint" style="margin:10px 0 0">This exercise is prescribed once per rotation, in session ${escape(
+          authored?.session.id ?? ''
+        )}.</p>`;
+
+    openSheet(`<div class="ttl">${escape(exercise.name)}</div>
+      <p style="text-align:center;font-size:12.5px;margin:8px 0 12px;color:var(--muted)">Session ${escape(
+        authored?.session.id ?? ''
+      )}${slot.label ? ` · ${escape(slot.label)}` : ''} · rotation ${here} of ${state.plan.meta.rotations}</p>
+
+      <h4>Across the plan</h4>
+      <table class="phases"><tbody>${rows}</tbody></table>
+      <p class="hint" style="margin:6px 0 0">Rotations, not weeks. Loads are not shown for other rotations because a
+      load comes from your working max on the day — the sets, reps and RPE are what the plan actually states.</p>
+
+      ${others}
+      <button class="big ghost mt" data-act="sheet-close">Close</button>`);
   },
 
   'open-swap'(ctx, data) {
