@@ -41,9 +41,9 @@ wants from a session is the change, working, and a short honest account of it.
 
 Run these and tell me the results before doing anything else:
 
-- `npm test` — must be **314 passing, 0 failing**
+- `npm test` — must be **331 passing, 0 failing**
 - `git rev-list --count HEAD` — must be **82**
-- `grep VERSION sw.js` — must be **v2.7.0**
+- `grep VERSION sw.js` — must be **v2.8.0**
 - Count exercises in `data/plan-fopip-v2.json` — must be **49**
 - `git branch --show-current` — must be **claude/project-onboarding-verify-lz3ob6**
 - Confirm you can read `docs/`, `test/`, `archive/` and `dev/`

@@ -17,7 +17,7 @@ data (nothing) and how to roll back (exactly).
 
 ```bash
 git checkout claude/project-onboarding-verify-lz3ob6
-npm test          # expect 314 passing, 0 failing
+npm test          # expect 331 passing, 0 failing
 npm run serve     # then open http://localhost:8123
 ```
 
@@ -68,6 +68,25 @@ Worth looking at specifically:
 
 `docs/release-v2.6.0.md` is the full list. No exercise, set, rep, RPE, rotation
 or block rule changed, and the database schema is still v3.
+
+### New in v2.8.0
+
+| Where | What is new |
+|---|---|
+| Body | **Which day you are writing to**, stated at the top, and changeable. This is the fix for the measurements that were overwritten — see below. |
+| Log → tap an entry | **Replaced values** — every time that entry was written over, and what it held before. |
+| Log | The two filters are labelled and separated: *Show* active/deleted, *Of what kind*. |
+| Train → Timer | Tap the reading to open the timer to half the screen: six preset lengths, ±30s, pause, reset, count down or count up, minimise, close. The **Timer** button opens it without logging a set. |
+| Train → Note | **Last time** — every note you have written about this exercise before, dated. Set notes included. |
+| Plan → Tips | The AMRAP is in **Session C**. Several tips said E, which is v1's letter for it. Set counts corrected too. |
+
+**The overwrite.** `daily` and `measurements` are keyed by their date, and
+`state.todayISO` was worked out once when the app started. An installed PWA is
+resumed, not reloaded, so after midnight the Body screen still meant yesterday:
+it prefilled from yesterday's records — the numbers you found already in the
+boxes — and wrote back over them. The date is re-derived now, and the app
+watches for the day changing while it is open. Separately, a replacement keeps
+what it replaced, so this can no longer be silent.
 
 ### Undoing v2.6.0 as a whole
 
@@ -139,8 +158,8 @@ v2.4.0 publish. Nothing on this branch has touched `main` or your database.
 `dev/publish.sh` force-pushes over the public repo and replaces its history.
 Ask before running it. The checklist:
 
-1. `npm test` — 314, 0 failing.
-2. Check `sw.js` VERSION reads `v2.7.0`. The publish set is derived from the
+1. `npm test` — 331, 0 failing.
+2. Check `sw.js` VERSION reads `v2.8.0`. The publish set is derived from the
    `SHELL` array in that file, and `js/demo.js` was added to it — a test
    enforces that the shell covers the module graph, so this cannot silently go
    wrong.
