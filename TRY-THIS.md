@@ -17,7 +17,7 @@ data (nothing) and how to roll back (exactly).
 
 ```bash
 git checkout claude/project-onboarding-verify-lz3ob6
-npm test          # expect 360 passing, 0 failing
+npm test          # expect 369 passing, 0 failing
 npm run serve     # then open http://localhost:8123
 ```
 
@@ -68,6 +68,21 @@ Worth looking at specifically:
 
 `docs/release-v2.6.0.md` is the full list. No exercise, set, rep, RPE, rotation
 or block rule changed, and the database schema is still v3.
+
+### New in v2.10.0
+
+| Where | What is new |
+|---|---|
+| Header, every screen | **A blue timer button.** Three states: closed, a draggable bubble, or the full panel. Drag the bubble anywhere; it remembers. |
+| The timer | Symbols for minimise and close, top right. Custom length. It no longer closes itself when time is up. Counting up hides the controls that only make sense counting down. Optional "tell me when it is up", off by default. |
+| Train → Phases | Every rotation now shows the **load basis** (83% of working max, from the RPE table, from today's top single), the rest and the effort — the things that make two prescriptions comparable. |
+| Train → Phases | **Back-offs come with it.** Session A's bench is two slots and both are shown. |
+| Train → Phases | **Tap a rotation to borrow its prescription for today**, with a Revert button. It is stored on the session log, so it survives a reload and travels into your history. |
+| Body | **Arm L/R flexed** and **Forearm L/R.** Twelve sites. Old readings are untouched and old exports still import — blank stays blank. |
+
+**Waiting on you:** `docs/amrap-backoffs-proposal.md` — whether the AMRAP should
+have back-off sets. Short answer: the absence is deliberate and documented, but
+four options are laid out and none is implemented.
 
 ### New in v2.9.0
 
@@ -177,8 +192,8 @@ v2.4.0 publish. Nothing on this branch has touched `main` or your database.
 `dev/publish.sh` force-pushes over the public repo and replaces its history.
 Ask before running it. The checklist:
 
-1. `npm test` — 360, 0 failing.
-2. Check `sw.js` VERSION reads `v2.9.0`. The publish set is derived from the
+1. `npm test` — 369, 0 failing.
+2. Check `sw.js` VERSION reads `v2.10.0`. The publish set is derived from the
    `SHELL` array in that file, and `js/demo.js` was added to it — a test
    enforces that the shell covers the module graph, so this cannot silently go
    wrong.

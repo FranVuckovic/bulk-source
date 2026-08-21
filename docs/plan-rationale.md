@@ -170,9 +170,12 @@ The four exposures each have one job:
 | | Job |
 |---|---|
 | **A · heavy single + back-offs** | Max-strength specificity and skill at competition load |
-| **C · primer single + 5×5** | The main hypertrophy driver, plus a second heavy exposure |
-| **D · speed bench 6×3 @ RPE 6** | Skill practice and intent, at almost no fatigue cost |
-| **E · AMRAP** | The weekly measurement — and the only true-failure press |
+| **C · AMRAP** | The weekly measurement — and the only true-failure press |
+| **E · technique single + volume sets** | The main hypertrophy driver, plus a second heavy exposure |
+| **F · speed bench** | Skill practice and intent, at almost no fatigue cost |
+
+*(Letters corrected to v2 on 21 August 2026. The jobs are unchanged; v1 and v2
+use the same six letters for different sessions.)*
 
 ### Why the single alone is not the training
 
