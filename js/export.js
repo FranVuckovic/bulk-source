@@ -170,7 +170,34 @@ export const CSV_COLUMNS = Object.freeze({
   sessionLogs: ['id', 'dateISO', 'startedAt', 'endedAt', 'sessionId', 'blockId', 'rotationIndex', 'bodyweight', 'sessionRpe', 'note', 'isPartial', 'timingReliable'],
   sets: ['id', 'sessionLogId', 'exerciseId', 'slotIndex', 'setIndex', 'load', 'bodyweightUsed', 'reps', 'rpe', 'rir', 'toFailure', 'isAmrap', 'isIndexSet', 'isMyoRep', 'velocity', 'note', 'wasPrescribed', 'prescribedLoad', 'timestampISO', 'gripWidth', 'variantUsed', 'pauseStyle'],
   daily: ['dateISO', 'bodyweight', 'scale', 'scaleNote', 'bodyfatPct', 'sleepHours', 'steps', 'mood', 'caffeine', 'note'],
-  measurements: ['dateISO', 'timeOfDay', 'timeOfDayNote', 'waist', 'chest', 'shoulders', 'armL', 'armR', 'quadL', 'quadR', 'neck', 'note'],
+  /*
+   * Every measurement site, in the order the Body screen shows them, plus the
+   * columns around them. Sites are only ever added; a row written before a site
+   * existed simply has no value for it and the cell comes out empty, which is
+   * what a CSV of an optional reading should look like.
+   *
+   * `test/measurements.test.js` asserts this list covers every site the app
+   * offers, so adding one to the screen and forgetting it here is a failing
+   * test rather than a column that silently vanishes from your backups.
+   */
+  measurements: [
+    'dateISO',
+    'timeOfDay',
+    'timeOfDayNote',
+    'waist',
+    'chest',
+    'shoulders',
+    'armL',
+    'armR',
+    'armLFlex',
+    'armRFlex',
+    'forearmL',
+    'forearmR',
+    'quadL',
+    'quadR',
+    'neck',
+    'note',
+  ],
   niggles: ['id', 'dateISO', 'site', 'severity', 'context', 'note'],
   media: ['id', 'dateISO', 'kind', 'exerciseId', 'load', 'reps', 'note', 'fileRef'],
   maxes: ['exerciseId', 'workingMax', 'conf', 'setAtISO', 'sourceSetId', 'blockId'],

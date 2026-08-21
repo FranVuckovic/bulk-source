@@ -10,12 +10,30 @@ import { rollingAverage, weeklySlope } from '../progress.js';
 import { preparePhoto, imageUrl, releaseImageUrl, formatBytes } from '../photos.js';
 import { escape, fmtLoad, fmtNum, toDisplay, section, openSheet, closeSheet, parseNumber } from './components.js';
 
+/*
+ * Sites are only ever ADDED to this list, never removed and never renamed.
+ *
+ * A measurement row is a plain record keyed by its date; a site that did not
+ * exist when a row was written is simply absent from it, and absent reads as
+ * blank everywhere — the charts skip it, the trend table skips it, the CSV
+ * writes an empty cell, and an old export still imports. Renaming a key would
+ * orphan every reading ever taken under the old one, which is the same thing as
+ * deleting them.
+ *
+ * `test/measurements.test.js` holds both halves: that the earlier eight sites
+ * keep their keys, and that a row written before a site existed round-trips
+ * through export and import unchanged.
+ */
 export const MEASUREMENT_SITES = [
   ['waist', 'Waist'],
   ['chest', 'Chest'],
   ['shoulders', 'Shoulders'],
   ['armL', 'Arm L'],
   ['armR', 'Arm R'],
+  ['armLFlex', 'Arm L flexed'],
+  ['armRFlex', 'Arm R flexed'],
+  ['forearmL', 'Forearm L'],
+  ['forearmR', 'Forearm R'],
   ['quadL', 'Quad L'],
   ['quadR', 'Quad R'],
   ['neck', 'Neck'],
@@ -40,6 +58,14 @@ export const MEASUREMENT_HOW = {
   shoulders: 'Around the widest point of the delts, arms hanging relaxed. Keep the tape level all the way round — this one drifts the most if you rush it.',
   armL: 'Left arm hanging straight and relaxed, NOT flexed. Midway between shoulder and elbow.',
   armR: 'Right arm hanging straight and relaxed, NOT flexed. Midway between shoulder and elbow. Expect it to differ from the left; that is normal.',
+  armLFlex:
+    'Left arm flexed hard, elbow at about 90\u00b0, forearm supinated. Tape at the peak of the biceps, level all the way round. This is a DIFFERENT measurement from the relaxed one \u2014 record both or neither, never one in place of the other.',
+  armRFlex:
+    'Right arm flexed hard, elbow at about 90\u00b0, forearm supinated. Tape at the peak of the biceps. Expect it to differ from the left; that is normal.',
+  forearmL:
+    'Left forearm relaxed, arm hanging straight, hand open and unclenched. Around the widest part, roughly a hand\u2019s width below the elbow. Clenching the fist changes it by half a centimetre, so keep the hand loose.',
+  forearmR:
+    'Right forearm relaxed, arm hanging straight, hand open and unclenched. Around the widest part, roughly a hand\u2019s width below the elbow.',
   quadL: 'Left leg, standing with weight even on both feet. Midway between hip and knee.',
   quadR: 'Right leg, standing with weight even on both feet. Midway between hip and knee.',
   neck: 'Just below the Adam\u2019s apple, tape level. Relaxed, looking straight ahead.',
