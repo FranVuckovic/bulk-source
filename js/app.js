@@ -76,9 +76,12 @@ import {
   resetTimer,
   openTimerPanel,
   expandTimer,
+  setTimerView,
   setCountdown,
   adjustRest,
   setTimerMode,
+  setNotify,
+  wireTimerDrag,
   fromDisplay,
   toDisplay,
   parseNumber,
@@ -138,7 +141,7 @@ const state = {
   exOpen: new Set(['0']),
   cleared: new Set(),
   grips: {},
-  deviations: { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {} },
+  deviations: { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {}, phaseSwaps: {} },
   // Slots where you have already been told a swap will displace logged sets.
   swapConfirmed: new Set(),
   draft: { note: '', bodyweight: '', sessionRpe: '' },
@@ -284,7 +287,7 @@ async function restoreActiveSession() {
   // Restored from the log, not reset to normal. A session opened on a yellow
   // day used to un-trim itself the moment the app was reopened.
   state.readiness = active.readiness || 'normal';
-  state.deviations = active.deviations || { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {} };
+  state.deviations = active.deviations || { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {}, phaseSwaps: {} };
   state.grips = active.grips || {};
   // Stored values are kilograms; the draft is labelled with the display unit.
   // v1 copied the raw kg straight into a field labelled lb, so a 90 kg session
@@ -586,7 +589,7 @@ async function finishSession() {
   state.loggedSets = new Map();
   state.cleared = new Set();
   state.grips = {};
-  state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {} };
+  state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {}, phaseSwaps: {} };
   state.swapConfirmed = new Set();
   state.draft = { note: '', bodyweight: '', sessionRpe: '' };
   state.exOpen = new Set(['0']);
@@ -744,6 +747,29 @@ function staleBanner() {
 }
 
 /**
+ * A rest length that is not one of the presets.
+ *
+ * Minutes and seconds separately rather than one box: 2:45 typed into a single
+ * field is ambiguous, and 165 seconds is not how anyone thinks about a rest.
+ */
+function openCustomTimer(ctx) {
+  const current = ctx.state.timerSeconds ?? 180;
+  openSheet(`<div class="ttl">How long?</div>
+    <div class="g3" style="margin-top:14px">
+      <div><label for="tmin">Minutes</label>
+        <input id="tmin" type="number" inputmode="numeric" min="0" max="60" step="1"
+          value="${Math.floor(current / 60)}" data-pick></div>
+      <div><label for="tsec">Seconds</label>
+        <input id="tsec" type="number" inputmode="numeric" min="0" max="59" step="5"
+          value="${current % 60}" data-pick></div>
+      <div></div>
+    </div>
+    <button class="big mt" data-act="rest-custom-start">Start it</button>
+    <button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
+  requestAnimationFrame(() => document.getElementById('tmin')?.focus());
+}
+
+/**
  * The update banner names both versions.
  *
  * "A new version is ready" does not tell you what you are moving from, what you
@@ -839,7 +865,7 @@ const ctx = {
     if (!state.activeLog && state.trainSessionId !== id) {
       // An unstarted custom builder is only a draft. Switching away discards
       // that draft rather than leaking its exercises into a planned session.
-      state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {} };
+      state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {}, phaseSwaps: {} };
       state.swapConfirmed = new Set();
       state.grips = {};
       state.loggedSets = new Map();
@@ -1352,7 +1378,7 @@ const ctx = {
     await writeSetting(state.db, 'activeSessionLogId', null);
     state.activeLog = null;
     state.loggedSets = new Map();
-    state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {} };
+    state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {}, phaseSwaps: {} };
     state.swapConfirmed = new Set();
     state.grips = {};
     state.draft = { note: '', bodyweight: '', sessionRpe: '' };
@@ -1815,11 +1841,25 @@ const globalActions = {
   'rest-reset'() {
     resetTimer();
   },
-  'rest-expand'() {
-    expandTimer(true);
+  'rest-expand'(_ctx, _data, event) {
+    // A drag of the bubble ends in a click the browser sends anyway. The bubble
+    // marks it, and it is ignored here rather than opening the panel every time
+    // you move the thing out of your way.
+    if (document.getElementById('rest-bubble')?.dataset.suppressClick) return;
+    setTimerView('full');
   },
   'rest-collapse'() {
-    expandTimer(false);
+    setTimerView('bubble');
+  },
+  'rest-custom'(ctx) {
+    openCustomTimer(ctx);
+  },
+  'rest-custom-start'() {
+    const minutes = Number(document.getElementById('tmin')?.value) || 0;
+    const seconds = Number(document.getElementById('tsec')?.value) || 0;
+    const total = Math.min(60 * 60, Math.max(5, minutes * 60 + seconds));
+    setCountdown(total);
+    closeSheet();
   },
   'rest-preset'(_ctx, data) {
     setCountdown(Number(data.sec));
@@ -1856,6 +1896,17 @@ const globalActions = {
 };
 
 const changeHandlers = {
+  /**
+   * Whether a finished countdown announces itself.
+   *
+   * Off by default, and permission is only asked for when it is switched on —
+   * an app that demands notification permission on first launch has told you
+   * nothing about why it wants it.
+   */
+  async 'rest-notify'(value) {
+    await setNotify(value === 'true' || value === 'on' || value === true);
+  },
+
   async bodyweight(value) {
     const parsed = parseNumber(value);
     if (parsed == null || parsed <= 0) return;
@@ -2073,6 +2124,7 @@ async function boot() {
   wireKeyboardHandling();
   wireSessionClock();
   wireDayRollover();
+  wireTimerDrag();
   render();
 
   // Asked for after the first render, so the prompt never delays the screen.

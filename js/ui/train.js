@@ -28,8 +28,17 @@ import {
   warmupRamp,
   platesFor,
   pct,
+  AMRAP_FRACTION,
 } from '../calc.js';
-import { resolveSession, toDisplaySession, exerciseAcrossPlan, sameExerciseElsewhere, slotById } from '../plan.js';
+import {
+  resolveSession,
+  toDisplaySession,
+  exerciseAcrossPlan,
+  sameExerciseElsewhere,
+  slotById,
+  companionSlots,
+  BORROWABLE_FIELDS,
+} from '../plan.js';
 import { exerciseNoteHistory } from '../analytics.js';
 import {
   escape,
@@ -82,9 +91,43 @@ export function slotsFor(state, readinessOverride) {
       readiness: readinessOverride ?? state.readiness ?? 'normal',
     })
   );
-  const planned = (resolved.slots || []).map((slot, i) => {
+  const planned = (resolved.slots || []).map((raw, i) => {
     const swappedTo = state.deviations.swaps[i];
     const extraSets = state.deviations.addedSets[i] || 0;
+
+    /*
+     * A prescription borrowed from another rotation.
+     *
+     * Only the work comes across — sets, reps, RPE, the load basis, rest, the
+     * effort text. `ex` and `id` stay whatever this slot is, so borrowing
+     * rotation 24's bench cannot turn your bench into something else, and the
+     * Phases view keeps working because it is anchored on the id.
+     *
+     * If the borrowed rotation does not prescribe this slot at all, there is
+     * nothing to borrow and the plan's own prescription stands. The Phases
+     * sheet does not offer those rows, but a stored one could survive a plan
+     * edit, so it is checked here too.
+     */
+    const borrowedFrom = state.deviations.phaseSwaps?.[String(i)];
+    let slot = raw;
+    if (borrowedFrom != null) {
+      // Through the same display transform as the rest of the screen, or the
+      // borrowed slot would carry the engine's raw field names — `failSets`
+      // rather than `failLast`, no `reps` — and half of it would read blank.
+      const other = toDisplaySession(
+        resolveSession(state.plan, {
+          rotation: Number(borrowedFrom),
+          sessionId: state.trainSessionId,
+          readiness: readinessOverride ?? state.readiness ?? 'normal',
+        })
+      );
+      const lent = other.ok ? other.slots.find((candidate) => candidate.id === raw.id) : null;
+      if (lent) {
+        slot = { ...raw };
+        for (const field of [...BORROWABLE_FIELDS, 'reps', 'myoReps']) slot[field] = lent[field];
+        slot.borrowedFrom = Number(borrowedFrom);
+      }
+    }
 
     /*
      * A slot never shows fewer rows than have already been logged against it.
@@ -485,6 +528,89 @@ const calibrationCard = () => `<div class="card" style="border-color:var(--s2);b
  * session was performed rather than about the plan.
  */
 /**
+ * Everything about a prescription that lets you compare it with another one.
+ *
+ * Sets, reps and RPE alone do not: "1 × max @ RPE 10" and "3 × 5 @ RPE 7" are
+ * not comparable until you know one is at a fixed 83% of your working max and
+ * the other is wherever the RPE table lands. The percentage is what the plan
+ * states and does not change with your strength, so it travels across
+ * rotations; the kilograms do not, and are shown only for this rotation.
+ */
+function loadBasis(slot) {
+  if (!slot) return '';
+  /*
+   * These branches mirror `prescribedLoad` exactly, and deliberately ignore
+   * `slot.pct` on anything that is not an AMRAP. The plan file carries a `pct`
+   * on slots whose load is actually taken from the RPE table — rotation 29's
+   * bench triple says 0.86 and is prescribed from the table — so reading it
+   * here would put a percentage on screen that the app does not use.
+   */
+  if (slot.amrap) return `${Math.round(AMRAP_FRACTION * 100)}% of working max`;
+  if (slot.pctTop) return `${Math.round(slot.pctTop * 100)}% of today's top single`;
+  if (slot.pctBasis === 'topSingleRpe') return "from today's top single, to the target RPE";
+  return `RPE table · ${slot.rpe} at ${slot.amrap ? 'max' : repsText(slot)} reps`;
+}
+
+/** Rest, in the units it is actually thought about. */
+const restText = (seconds) => {
+  if (!seconds) return '';
+  if (seconds < 120) return `${seconds}s rest`;
+  const minutes = seconds / 60;
+  return `${Number.isInteger(minutes) ? minutes : minutes.toFixed(1)} min rest`;
+};
+
+const repsText = (slot) =>
+  slot.amrap ? 'max' : slot.repsLow === slot.repsHigh ? String(slot.repsLow) : `${slot.repsLow}–${slot.repsHigh}`;
+
+/** One prescription, with the badges that change what a set means. */
+function shapeCell(slot) {
+  if (!slot) return '<i>not prescribed</i>';
+  const rest = restText(slot.restSec);
+  const parts = [loadBasis(slot), rest, slot.effort || ''].filter(Boolean);
+  return `<b>${slot.sets} × ${escape(repsText(slot))} @ RPE ${slot.rpe}</b>${
+    slot.amrap ? '<span class="badge amr">AMRAP</span>' : ''
+  }${slot.idx ? '<span class="badge idx">INDEX</span>' : ''}${
+    slot.myoOption ? '<span class="badge myo">MYO</span>' : ''
+  }<span class="sub">${escape(parts.join(' · '))}</span>`;
+}
+
+/**
+ * One slot's phases as a table.
+ *
+ * Rows that prescribe something are tappable when this is the slot you are
+ * standing on: tapping borrows that rotation's prescription for today. Rows for
+ * rotations that prescribe nothing are not — there is nothing to borrow — and
+ * neither is the rotation you are already in.
+ */
+function phaseTable(state, slotId, here, { slotIndex, borrowed, main }) {
+  const authored = slotById(state.plan, slotId);
+  const phases = exerciseAcrossPlan(state.plan, slotId);
+  if (!phases.length) return '';
+
+  const label = authored?.slot.label || authored?.slot.role || slotId;
+  const heading = main ? 'Across the plan' : `Also in this session · ${label}`;
+
+  const rows = phases
+    .map((phase) => {
+      const range = phase.from === phase.to ? `${phase.from}` : `${phase.from}–${phase.to}`;
+      const isHere = here >= phase.from && here <= phase.to;
+      const isBorrowed = borrowed != null && borrowed >= phase.from && borrowed <= phase.to;
+      const canBorrow = main && phase.slot && !isHere;
+      const attrs = canBorrow ? ` data-act="borrow-phase" data-si="${slotIndex}" data-rot="${phase.from}"` : '';
+      return `<tr class="${isHere ? 'now' : ''}${isBorrowed ? ' borrowed' : ''}${phase.slot ? '' : ' off'}${
+        canBorrow ? ' pick' : ''
+      }"${attrs}>
+        <td>${escape(range)}</td>
+        <td>${shapeCell(phase.slot)}</td>
+        <td>${escape(phase.blocks.join(' · '))}${canBorrow ? '<span class="take">use</span>' : ''}</td>
+      </tr>`;
+    })
+    .join('');
+
+  return `<h4>${escape(heading)}</h4><table class="phases"><tbody>${rows}</tbody></table>`;
+}
+
+/**
  * What you wrote down last time you did this exercise.
  *
  * The seat height you worked out three weeks ago was in the database and not on
@@ -555,7 +681,13 @@ function exerciseBlock(state, slot, slotIndex) {
     <button data-act="about" data-id="${slot.ex}">About</button>
     ${
       slot.id && !slot.swappedFrom && !slot.added
-        ? `<button data-act="open-phases" data-si="${slotIndex}">Phases</button>`
+        ? `<button class="${slot.borrowedFrom ? 'warn' : ''}" data-act="open-phases" data-si="${slotIndex}">${
+            slot.borrowedFrom ? `Rotation ${slot.borrowedFrom}` : 'Phases'
+          }</button>`
+        : ''
+    }${
+      slot.borrowedFrom
+        ? `<button class="warn" data-act="revert-phase" data-si="${slotIndex}">Revert</button>`
         : ''
     }
     <button class="${exerciseNote(state, slotIndex) ? 'warn' : ''}" data-act="open-ex-note" data-si="${slotIndex}">${
@@ -567,7 +699,9 @@ function exerciseBlock(state, slot, slotIndex) {
   return `<div class="ex ${open ? 'open' : ''}">
     <div class="exhead" data-act="toggle-ex" data-si="${slotIndex}">
       <div class="tick ${all ? 'done' : done ? 'part' : ''}">${all ? '✓' : done || ''}</div>
-      <div class="exnm"><b>${name}${slot.idx ? '<span class="badge idx">INDEX</span>' : ''}${
+      <div class="exnm"><b>${name}${
+        slot.borrowedFrom ? `<span class="badge lent">ROT ${slot.borrowedFrom}</span>` : ''
+      }${slot.idx ? '<span class="badge idx">INDEX</span>' : ''}${
         slot.amrap ? '<span class="badge amr">AMRAP</span>' : ''
       }${slot.myoReps ? '<span class="badge myo">MYO</span>' : ''}${
         slot.isTest ? '<span class="badge test">TEST</span>' : ''
@@ -1217,9 +1351,9 @@ export const actions = {
    * of Specificity, and the rotations where nothing is prescribed all appear
    * without any of them being written down twice.
    *
-   * Loads are shown only for this rotation. A load is computed from today's
-   * working max, so a kilogram figure against rotation 24 would be a number the
-   * app invented rather than one the plan states.
+   * Companion slots come with it. Session A's bench is really two slots — the
+   * top single and the back-offs that hang off it — and a comparison that shows
+   * one without the other says nothing about how the day's bench work changes.
    */
   'open-phases'(ctx, data) {
     const { state } = ctx;
@@ -1230,57 +1364,88 @@ export const actions = {
     const authored = slotById(state.plan, slot.id);
     const exercise = state.plan.exercises[slot.ex];
     const here = state.cycle.sequence;
-    const phases = exerciseAcrossPlan(state.plan, slot.id);
-    const elsewhere = sameExerciseElsewhere(state.plan, slot.ex, here, { exclude: slot.id });
+    const borrowed = state.deviations.phaseSwaps?.[String(slotIndex)] ?? null;
 
-    const shape = (row) =>
-      row
-        ? `${row.sets} × ${row.amrap ? 'max' : row.repsLow === row.repsHigh ? row.repsLow : `${row.repsLow}–${row.repsHigh}`} @ RPE ${row.rpe}`
-        : 'not prescribed';
-
-    const range = (phase) => (phase.from === phase.to ? `${phase.from}` : `${phase.from}–${phase.to}`);
-    const current = (phase) => here >= phase.from && here <= phase.to;
-
-    const rows = phases
-      .map(
-        (phase) => `<tr class="${current(phase) ? 'now' : ''}${phase.slot ? '' : ' off'}">
-          <td>${escape(range(phase))}</td>
-          <td>${escape(shape(phase.slot))}${
-            phase.slot?.amrap ? '<span class="badge amr">AMRAP</span>' : ''
-          }${phase.slot?.idx ? '<span class="badge idx">INDEX</span>' : ''}</td>
-          <td>${escape(phase.blocks.join(' · '))}</td>
-        </tr>`
-      )
+    const ids = [slot.id, ...companionSlots(state.plan, slot.id)];
+    const tables = ids
+      .map((id, position) => phaseTable(state, id, here, { slotIndex, borrowed, main: position === 0 }))
       .join('');
 
-    const others = elsewhere.length
-      ? `<h4>Elsewhere this rotation</h4>
-         <table class="phases"><tbody>${elsewhere
-           .map(
-             (entry) => `<tr>
-               <td>${escape(entry.sessionId)}</td>
-               <td>${escape(shape(entry.slot))}</td>
-               <td>${escape(entry.slot.label || entry.slot.role)}</td>
-             </tr>`
-           )
-           .join('')}</tbody></table>
-         <p class="hint" style="margin:6px 0 0">The same lift at different intensities, on purpose — that spread is what the plan is made of.</p>`
-      : `<p class="hint" style="margin:10px 0 0">This exercise is prescribed once per rotation, in session ${escape(
-          authored?.session.id ?? ''
-        )}.</p>`;
+    const elsewhere = sameExerciseElsewhere(state.plan, slot.ex, here, { exclude: slot.id }).filter(
+      (entry) => !ids.includes(entry.slot.id)
+    );
 
     openSheet(`<div class="ttl">${escape(exercise.name)}</div>
       <p style="text-align:center;font-size:12.5px;margin:8px 0 12px;color:var(--muted)">Session ${escape(
         authored?.session.id ?? ''
       )}${slot.label ? ` · ${escape(slot.label)}` : ''} · rotation ${here} of ${state.plan.meta.rotations}</p>
 
-      <h4>Across the plan</h4>
-      <table class="phases"><tbody>${rows}</tbody></table>
-      <p class="hint" style="margin:6px 0 0">Rotations, not weeks. Loads are not shown for other rotations because a
-      load comes from your working max on the day — the sets, reps and RPE are what the plan actually states.</p>
+      ${tables}
 
-      ${others}
+      <p class="hint" style="margin:8px 0 0">Rotations, not weeks. A percentage is what the plan states; the kilograms
+      it becomes depend on your working max on the day, which is why only this rotation's are shown.${
+        borrowed
+          ? ''
+          : ' Tap a rotation to borrow its prescription for today.'
+      }</p>
+
+      ${
+        borrowed
+          ? `<button class="big warn mt" data-act="revert-phase" data-si="${slotIndex}">Back to rotation ${here}'s own prescription</button>`
+          : ''
+      }
+
+      ${
+        elsewhere.length
+          ? `<h4>The same lift in other sessions</h4>
+             <table class="phases"><tbody>${elsewhere
+               .map(
+                 (entry) => `<tr>
+                   <td>${escape(entry.sessionId)}</td>
+                   <td>${shapeCell(entry.slot)}</td>
+                   <td>${escape(entry.slot.label || entry.slot.role)}</td>
+                 </tr>`
+               )
+               .join('')}</tbody></table>
+             <p class="hint" style="margin:6px 0 0">The same lift at different intensities, on purpose — that spread is
+             what the plan is made of.</p>`
+          : ''
+      }
       <button class="big ghost mt" data-act="sheet-close">Close</button>`);
+  },
+
+  /**
+   * Borrow another rotation's prescription for this slot, for this session.
+   *
+   * It lives in `deviations`, which is already the record of how a session
+   * departed from the plan and already travels with the session log — so what
+   * you actually did is in your history rather than only on screen. The
+   * exercise never changes: only sets, reps, RPE, the load basis, rest and the
+   * effort text come across.
+   */
+  async 'borrow-phase'(ctx, data) {
+    const { state } = ctx;
+    const slotIndex = String(Number(data.si));
+    const rotation = Number(data.rot);
+    if (!Number.isFinite(rotation)) return;
+
+    state.deviations = {
+      ...state.deviations,
+      phaseSwaps: { ...(state.deviations.phaseSwaps || {}), [slotIndex]: rotation },
+    };
+    if (state.activeLog || state.trainSessionId !== CUSTOM_SESSION_ID) await ctx.saveDeviations();
+    closeSheet();
+    ctx.render();
+  },
+
+  async 'revert-phase'(ctx, data) {
+    const { state } = ctx;
+    const swaps = { ...(state.deviations.phaseSwaps || {}) };
+    delete swaps[String(Number(data.si))];
+    state.deviations = { ...state.deviations, phaseSwaps: swaps };
+    if (state.activeLog || state.trainSessionId !== CUSTOM_SESSION_ID) await ctx.saveDeviations();
+    closeSheet();
+    ctx.render();
   },
 
   'open-swap'(ctx, data) {

@@ -499,13 +499,24 @@ const PRESCRIPTION_FIELDS = [
   'idx',
   'myoOption',
   'failLast',
+  'failSets',
   'pct',
   'pctTop',
   'pctBasis',
+  'restSec',
   'effort',
   'note',
   'label',
 ];
+
+/**
+ * The fields a phase carries into the current session when you borrow one.
+ *
+ * Everything that describes the work, and nothing that describes the exercise:
+ * `ex` and `id` stay whatever the slot already is, so borrowing rotation 24's
+ * bench prescription cannot quietly turn your bench into something else.
+ */
+export const BORROWABLE_FIELDS = Object.freeze([...PRESCRIPTION_FIELDS]);
 
 const prescriptionSignature = (slot) =>
   slot ? JSON.stringify(PRESCRIPTION_FIELDS.map((field) => slot[field] ?? null)) : null;
@@ -570,6 +581,22 @@ export function exerciseAcrossPlan(plan, slotId) {
   }
 
   return phases;
+}
+
+/**
+ * The other slots in the same session that train the same exercise.
+ *
+ * Session A's bench is really two slots — the top single and the back-offs
+ * that hang off it — and comparing one without the other says nothing about
+ * how the day's bench work changes. Same for E's technique single and its
+ * volume sets. Returned in the session's own order.
+ */
+export function companionSlots(plan, slotId) {
+  const found = slotById(plan, slotId);
+  if (!found) return [];
+  return (found.session.slots || [])
+    .filter((slot) => slot.id !== slotId && slot.ex === found.slot.ex)
+    .map((slot) => slot.id);
 }
 
 /**
