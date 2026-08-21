@@ -775,3 +775,57 @@ export function records(sets, { exercises, logs }) {
     estimated: [...bestEstimate.values()].sort((a, b) => b.dateISO.localeCompare(a.dateISO)),
   };
 }
+
+/**
+ * Everything you have written down about one exercise, most recent first.
+ *
+ * Two kinds of note exist and both matter at the moment you are about to lift:
+ * the exercise note ("machine chest-supported row, seat height 8") and the set
+ * notes. Neither was reachable from the Train screen, so the seat height you
+ * worked out last week was in the app and not in front of you.
+ *
+ * Exercise notes are stored on the session log under their slot index, because
+ * that is what the screen knows. Resolving a slot index back to an exercise for
+ * a session finished weeks ago is done from `exerciseNoteIds` where the session
+ * recorded it, and otherwise from a set logged at that slot — sets carry their
+ * exercise, so a session with any logged work can always be resolved.
+ */
+export function exerciseNoteHistory(logs, sets, exerciseId, { limit = 6 } = {}) {
+  if (!exerciseId) return [];
+  const out = [];
+
+  const setsByLog = new Map();
+  for (const set of sets || []) {
+    if (!setsByLog.has(set.sessionLogId)) setsByLog.set(set.sessionLogId, []);
+    setsByLog.get(set.sessionLogId).push(set);
+  }
+
+  for (const log of logs || []) {
+    const attached = setsByLog.get(log.id) || [];
+    const notes = log.deviations?.exerciseNotes || {};
+    const ids = log.deviations?.exerciseNoteIds || {};
+
+    for (const [slotIndex, text] of Object.entries(notes)) {
+      if (!text) continue;
+      const resolved =
+        ids[slotIndex] || attached.find((set) => String(set.slotIndex) === String(slotIndex))?.exerciseId || null;
+      if (resolved !== exerciseId) continue;
+      out.push({ dateISO: log.dateISO, sessionId: log.sessionId, kind: 'exercise', text });
+    }
+
+    for (const set of attached) {
+      if (set.exerciseId !== exerciseId || !set.note) continue;
+      out.push({
+        dateISO: log.dateISO,
+        sessionId: log.sessionId,
+        kind: 'set',
+        text: set.note,
+        setIndex: set.setIndex,
+      });
+    }
+  }
+
+  return out
+    .sort((a, b) => b.dateISO.localeCompare(a.dateISO) || (a.setIndex ?? -1) - (b.setIndex ?? -1))
+    .slice(0, limit);
+}

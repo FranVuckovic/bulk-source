@@ -271,3 +271,26 @@ test('every screen survives a rotation at each block boundary', () => {
     }
   }
 });
+
+test('the timer panel offers everything the bar cannot', () => {
+  // The timer used to exist only as a consequence of logging a set: a bar with
+  // Pause, Reset and Close. Everything else — a length, a nudge, counting up,
+  // opening it at all without logging something — had no control anywhere.
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const bar = html.slice(html.indexOf('<div class="rest"'), html.indexOf('<div class="sheet"'));
+
+  assert.match(bar, /data-act="rest-expand"/, 'the reading opens the panel');
+  assert.match(bar, /data-act="rest-collapse"/, 'and it folds back');
+  assert.match(bar, /data-act="rest-mode" data-id="stopwatch"/, 'counting up is reachable');
+  assert.match(bar, /data-act="rest-mode" data-id="rest"/, 'and counting down');
+  assert.match(bar, /data-act="rest-adjust" data-sec="30"/);
+  assert.match(bar, /data-act="rest-adjust" data-sec="-30"/);
+
+  const presets = [...bar.matchAll(/data-act="rest-preset" data-sec="(\d+)"/g)].map((m) => Number(m[1]));
+  assert.deepEqual(presets, [60, 90, 120, 180, 240, 300], 'the lengths this plan actually rests for');
+
+  // Only the reading expands. Making the whole bar the target puts an invisible
+  // tap area under Pause and Close, so tapping either one opened the panel
+  // instead of doing what it said.
+  assert.doesNotMatch(bar, /class="rhead" data-act=/, 'the head itself is not a button');
+});

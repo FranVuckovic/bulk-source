@@ -68,3 +68,38 @@ test('a rest with no end instant reads zero rather than NaN', () => {
   assert.equal(reading.seconds, 0);
   assert.ok(Number.isFinite(reading.seconds));
 });
+
+/*
+ * The timer stopped being only a consequence of logging a set. It opens on its
+ * own, expands to be driven, takes a preset length and can be nudged — and the
+ * nudge is the part with time already spent in it, so it is pure and tested
+ * here.
+ */
+test('+30s on a countdown that has already run out gives thirty seconds', async () => {
+  const { nextEndsAt } = await import('../js/ui/components.js');
+  const now = 1_000_000;
+
+  // Ran out two minutes ago. The reading has been 0:00 throughout; adding to
+  // where it *would* have been would add nothing you could see.
+  const expired = now - 120_000;
+  assert.equal(nextEndsAt(expired, now, 30), now + 30_000);
+});
+
+test('adding to a running countdown extends it from where it is', async () => {
+  const { nextEndsAt } = await import('../js/ui/components.js');
+  const now = 1_000_000;
+  assert.equal(nextEndsAt(now + 45_000, now, 30), now + 75_000, 'not restarted from now');
+});
+
+test('taking time off can reach zero but never goes past it', async () => {
+  const { nextEndsAt } = await import('../js/ui/components.js');
+  const now = 1_000_000;
+  assert.equal(nextEndsAt(now + 45_000, now, -30), now + 15_000);
+  assert.equal(nextEndsAt(now + 10_000, now, -30), now, 'a negative countdown is not a thing');
+});
+
+test('opening the timer with nothing set uses the last rest length', async () => {
+  const { nextEndsAt } = await import('../js/ui/components.js');
+  const now = 1_000_000;
+  assert.equal(nextEndsAt(null, now, 0), now, 'no countdown yet means now, not NaN');
+});

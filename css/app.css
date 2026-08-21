@@ -463,3 +463,49 @@ input[type=search]{width:100%;padding:10px;font-size:16px;font-family:inherit;ba
 .filterset .filterlab{display:block;font-size:10.5px;font-weight:700;letter-spacing:.06em;
   text-transform:uppercase;color:var(--muted);margin:0 0 4px}
 .filterset + .filterset{margin-top:10px;padding-top:10px;border-top:1px solid var(--grid)}
+
+/* A note you wrote the last time you did this exercise. */
+.pastnote{padding:7px 0;border-bottom:1px solid var(--grid)}
+.pastnote:last-child{border:0}
+.pastnote b{display:block;font-size:11px;font-weight:700;letter-spacing:.03em;color:var(--muted)}
+.pastnote span{display:block;font-size:13px;margin-top:2px}
+
+/* ── The timer, opened out ─────────────────────────────────────────────────
+   Collapsed it is the bar that appears when a set is logged. Tapping it opens
+   it to about half the screen, where it can be driven: paused, reset, set to a
+   length, nudged, switched between counting down and counting up. Minimise
+   folds it back; Close dismisses it. */
+.rest .rhead{display:flex;align-items:center;justify-content:space-between;
+  gap:10px;width:100%}
+/* Only the reading opens the panel. Making the whole bar the target puts an
+   invisible tap area under the Pause and Close buttons sitting on top of it. */
+.rest .rread{cursor:pointer;flex:1;min-width:0;padding:2px 0}
+.rest .rgrip{display:none}
+.rest .rbody{display:none}
+
+.rest.big{flex-direction:column;align-items:stretch;bottom:86px;
+  padding:8px 16px 16px;border-radius:16px;max-height:56vh;overflow-y:auto}
+.rest.big .rhead{flex-direction:column;gap:2px;padding-top:6px}
+.rest.big .rread{cursor:default;width:100%}
+.rest.big .rhead .rbtns{display:none}
+.rest.big .rgrip{display:block;width:38px;height:4px;border-radius:99px;
+  background:rgba(255,255,255,.35);order:-1;margin:0 auto 8px}
+.rest.big .l{font-size:12px;text-align:center}
+.rest.big .t{font-size:56px;line-height:1.05;text-align:center;letter-spacing:-.02em}
+.rest.big .rbody{display:block;margin-top:12px}
+
+.rest .rmode{display:flex;gap:6px;margin:0 0 10px}
+.rest .rmode button{flex:1}
+.rest .rmode button.on{background:rgba(255,255,255,.9);color:var(--s1)}
+.rest.stop .rmode button.on{color:var(--c6)}
+
+.rest .rpresets{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:0 0 8px}
+.rest .radjust{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:0 0 10px}
+.rest .rbig{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.rest .rbig button{padding:13px 11px;font-size:14px}
+.rest .rbig .prime{background:rgba(255,255,255,.9);color:var(--s1);font-weight:750}
+.rest.stop .rbig .prime{color:var(--c6)}
+.rest .rmin,.rest .rclose{width:100%;margin-top:6px;padding:11px}
+.rest .rclose{background:rgba(255,255,255,.12)}
+
+body:has(.rest.big){padding-bottom:0}

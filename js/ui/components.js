@@ -118,6 +118,13 @@ export const sheetIsOpen = () => document.getElementById('sheet').classList.cont
 let paintHandle = null;
 let mode = 'rest';
 let running = false;
+/** Collapsed to the bar, or opened out. Survives mode changes. */
+let expanded = false;
+/**
+ * The countdown length in use. Kept so Reset restarts the same rest rather than
+ * guessing, and so +30s has something to add to when the clock has run out.
+ */
+let restSeconds = 180;
 
 /** Rest: the instant it finishes. Stopwatch: unused. */
 let endsAtMs = null;
@@ -153,13 +160,32 @@ function paintRest() {
   document.getElementById('rt').textContent = clock(reading.seconds);
   const label = document.getElementById('rl');
   if (label) label.textContent = mode === 'rest' ? 'Rest' : running ? 'Timer' : 'Timer — paused';
-  const toggle = document.getElementById('rest-toggle');
-  if (toggle) toggle.textContent = running ? 'Pause' : 'Start';
+  for (const id of ['rest-toggle', 'rest-toggle-big']) {
+    const toggle = document.getElementById(id);
+    if (toggle) toggle.textContent = running ? 'Pause' : 'Start';
+  }
   bar.classList.toggle('stop', mode === 'stopwatch');
+  bar.classList.toggle('big', expanded);
+
+  // Which mode is selected, and whether the countdown-only controls apply.
+  for (const button of bar.querySelectorAll('[data-act="rest-mode"]')) {
+    button.classList.toggle('on', button.dataset.id === mode);
+  }
+  const adjust = document.getElementById('radjust');
+  if (adjust) adjust.hidden = mode !== 'rest';
 
   // A countdown ends by itself — including when it ended while the phone was in
-  // a pocket and this is the first repaint since.
-  if (mode === 'rest' && reading.done) stopRest();
+  // a pocket and this is the first repaint since. Expanded, it stays open at
+  // 0:00 rather than vanishing, because the panel is something you opened.
+  if (mode === 'rest' && reading.done) {
+    if (expanded) {
+      running = false;
+      clearInterval(paintHandle);
+      paintHandle = null;
+    } else {
+      stopRest();
+    }
+  }
 }
 
 const repaintEvery = (ms) => {
@@ -183,10 +209,96 @@ if (typeof document !== 'undefined') {
 export function startRest(seconds) {
   mode = 'rest';
   running = true;
+  restSeconds = seconds;
   endsAtMs = Date.now() + seconds * 1000;
   document.getElementById('rest').classList.add('on');
   repaintEvery(250);
   paintRest();
+}
+
+/**
+ * Open the timer without logging a set.
+ *
+ * The rest timer used to exist only as a consequence of finishing a set. It is
+ * also the thing you want between warm-up ramps, while waiting for a rack, and
+ * on any set you did not log — so it opens on its own, in the same panel,
+ * carrying the last rest length rather than a number picked out of the air.
+ */
+export function openTimerPanel() {
+  expanded = true;
+  document.getElementById('rest').classList.add('on');
+  if (mode === 'rest' && endsAtMs == null) {
+    // Opened cold: show the length, ready, but do not start counting until
+    // asked. A timer that starts itself when you only wanted to look at it is
+    // worse than one that needs a tap.
+    running = false;
+    endsAtMs = Date.now() + restSeconds * 1000;
+    clearInterval(paintHandle);
+    paintHandle = null;
+  }
+  paintRest();
+}
+
+/** Fold the panel back to the bar, or open it out. The clock is untouched. */
+export function expandTimer(on) {
+  expanded = on ?? !expanded;
+  paintRest();
+}
+
+/**
+ * Where the finish line moves to. Pure, because the interesting cases are all
+ * about time that has already passed.
+ *
+ * A clock that has run out is at zero, not at minus two minutes, so +30s on it
+ * gives thirty seconds — measured from now. And nothing can push the finish
+ * line into the past: −30s on a clock with ten seconds left is zero, not −20.
+ */
+export function nextEndsAt(endsAtMs, nowMs, deltaSeconds) {
+  const base = Math.max(nowMs, endsAtMs ?? nowMs);
+  return Math.max(nowMs, base + deltaSeconds * 1000);
+}
+
+/** Set a countdown of this many seconds, and start it. */
+export function setCountdown(seconds) {
+  mode = 'rest';
+  restSeconds = seconds;
+  running = true;
+  startedAtMs = null;
+  accumulatedMs = 0;
+  endsAtMs = Date.now() + seconds * 1000;
+  document.getElementById('rest').classList.add('on');
+  repaintEvery(250);
+  paintRest();
+}
+
+/**
+ * Move the finish line, without restarting.
+ *
+ * Adding to a countdown that has already run out counts from now, not from the
+ * moment it expired — otherwise +30s on a clock that finished two minutes ago
+ * adds nothing you can see.
+ */
+export function adjustRest(deltaSeconds) {
+  if (mode !== 'rest') return;
+  endsAtMs = nextEndsAt(endsAtMs, Date.now(), deltaSeconds);
+  restSeconds = Math.max(15, restSeconds + deltaSeconds);
+  if (!running && endsAtMs > Date.now()) {
+    running = true;
+    repaintEvery(250);
+  }
+  paintRest();
+}
+
+/** Countdown or count up, keeping the panel open either way. */
+export function setTimerMode(next) {
+  if (next === mode) return;
+  if (next === 'stopwatch') {
+    openStopwatch();
+    expanded = true;
+    paintRest();
+    return;
+  }
+  setCountdown(restSeconds);
 }
 
 /** The hand-driven one. Opening it does not start it. */
@@ -195,6 +307,7 @@ export function openStopwatch() {
   running = false;
   startedAtMs = null;
   accumulatedMs = 0;
+  endsAtMs = null;
   clearInterval(paintHandle);
   paintHandle = null;
   document.getElementById('rest').classList.add('on');
@@ -203,8 +316,24 @@ export function openStopwatch() {
 
 export function toggleTimer() {
   if (mode === 'rest') {
-    // Pausing a rest countdown is the same as not wanting it any more.
-    stopRest();
+    if (!expanded) {
+      // Collapsed, the bar has one meaning: this rest is over.
+      stopRest();
+      return;
+    }
+    // Expanded, it is a timer you are driving, so pause means pause. The
+    // remaining time is banked as the new length and the clock stands still.
+    if (running) {
+      restSeconds = Math.max(0, ((endsAtMs ?? Date.now()) - Date.now()) / 1000);
+      running = false;
+      clearInterval(paintHandle);
+      paintHandle = null;
+    } else {
+      endsAtMs = Date.now() + restSeconds * 1000;
+      running = true;
+      repaintEvery(250);
+    }
+    paintRest();
     return;
   }
   if (running) {
@@ -224,6 +353,12 @@ export function toggleTimer() {
 
 export function resetTimer() {
   if (mode !== 'stopwatch') {
+    // Expanded, Reset means put this countdown back to its full length rather
+    // than dismiss it — the panel is open because you are using it.
+    if (expanded) {
+      setCountdown(restSeconds);
+      return;
+    }
     stopRest();
     return;
   }
@@ -240,8 +375,14 @@ export function stopRest() {
   endsAtMs = null;
   startedAtMs = null;
   accumulatedMs = 0;
+  expanded = false;
   const bar = document.getElementById('rest');
-  if (bar) bar.classList.remove('on', 'stop');
+  if (bar) bar.classList.remove('on', 'stop', 'big');
+}
+
+/** For tests: the timer's own state, without reaching into the module. */
+export function timerState() {
+  return { ...snapshot(), expanded, restSeconds };
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

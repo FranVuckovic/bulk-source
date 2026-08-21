@@ -37,11 +37,44 @@
 <div class="wrap" id="view"></div>
 
 <div class="rest" id="rest">
-  <div><div class="l" id="rl">Rest</div><div class="t" id="rt">3:00</div></div>
-  <div class="rbtns">
-    <button id="rest-toggle" data-act="rest-toggle">Pause</button>
-    <button data-act="rest-reset">Reset</button>
-    <button data-act="rest-skip">Close</button>
+  <div class="rhead">
+    <div class="rread" data-act="rest-expand" role="button" tabindex="0" aria-label="Open the timer">
+      <div class="l" id="rl">Rest</div><div class="t" id="rt">3:00</div>
+    </div>
+    <div class="rbtns">
+      <button id="rest-toggle" data-act="rest-toggle">Pause</button>
+      <button data-act="rest-reset">Reset</button>
+      <button data-act="rest-skip">Close</button>
+    </div>
+    <div class="rgrip" aria-hidden="true"></div>
+  </div>
+
+  <div class="rbody">
+    <div class="rmode">
+      <button data-act="rest-mode" data-id="rest">Count down</button>
+      <button data-act="rest-mode" data-id="stopwatch">Count up</button>
+    </div>
+
+    <div class="rpresets" id="rpresets">
+      <button data-act="rest-preset" data-sec="60">1:00</button>
+      <button data-act="rest-preset" data-sec="90">1:30</button>
+      <button data-act="rest-preset" data-sec="120">2:00</button>
+      <button data-act="rest-preset" data-sec="180">3:00</button>
+      <button data-act="rest-preset" data-sec="240">4:00</button>
+      <button data-act="rest-preset" data-sec="300">5:00</button>
+    </div>
+
+    <div class="radjust" id="radjust">
+      <button data-act="rest-adjust" data-sec="-30">&minus;30s</button>
+      <button data-act="rest-adjust" data-sec="30">+30s</button>
+    </div>
+
+    <div class="rbig">
+      <button class="prime" id="rest-toggle-big" data-act="rest-toggle">Pause</button>
+      <button data-act="rest-reset">Reset</button>
+    </div>
+    <button class="rmin" data-act="rest-collapse">Minimise</button>
+    <button class="rclose" data-act="rest-skip">Close the timer</button>
   </div>
 </div>
 

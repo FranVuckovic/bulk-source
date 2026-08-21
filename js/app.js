@@ -74,7 +74,11 @@ import {
   stopRest,
   toggleTimer,
   resetTimer,
-  openStopwatch,
+  openTimerPanel,
+  expandTimer,
+  setCountdown,
+  adjustRest,
+  setTimerMode,
   fromDisplay,
   toDisplay,
   parseNumber,
@@ -1806,8 +1810,23 @@ const globalActions = {
   'rest-reset'() {
     resetTimer();
   },
+  'rest-expand'() {
+    expandTimer(true);
+  },
+  'rest-collapse'() {
+    expandTimer(false);
+  },
+  'rest-preset'(_ctx, data) {
+    setCountdown(Number(data.sec));
+  },
+  'rest-adjust'(_ctx, data) {
+    adjustRest(Number(data.sec));
+  },
+  'rest-mode'(_ctx, data) {
+    setTimerMode(data.id);
+  },
   'open-timer'() {
-    openStopwatch();
+    openTimerPanel();
   },
   async unit(_ctx, data) {
     const from = state.settings.unit;

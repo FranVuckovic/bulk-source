@@ -30,6 +30,7 @@ import {
   pct,
 } from '../calc.js';
 import { resolveSession, toDisplaySession } from '../plan.js';
+import { exerciseNoteHistory } from '../analytics.js';
 import {
   escape,
   fmtLoad,
@@ -483,6 +484,30 @@ const calibrationCard = () => `<div class="card" style="border-color:var(--s2);b
  * session log beside the swaps and grips, because it is a fact about how this
  * session was performed rather than about the plan.
  */
+/**
+ * What you wrote down last time you did this exercise.
+ *
+ * The seat height you worked out three weeks ago was in the database and not on
+ * the screen, which makes it worth roughly nothing at the moment you are
+ * standing in front of the machine.
+ */
+function pastNotes(state, exerciseId) {
+  const history = exerciseNoteHistory(state.logs || [], state.sets || [], exerciseId);
+  if (!history.length) return '';
+
+  return `<details class="card" style="margin-top:12px"><summary>Last time · ${history.length}</summary><div class="c">
+    ${history
+      .map(
+        (entry) => `<div class="pastnote">
+          <b>${escape(entry.dateISO)}${entry.sessionId ? ` · ${escape(entry.sessionId)}` : ''}${
+            entry.kind === 'set' ? ` · set ${Number(entry.setIndex) + 1}` : ''
+          }</b>
+          <span>${escape(entry.text)}</span></div>`
+      )
+      .join('')}
+  </div></details>`;
+}
+
 const exerciseNote = (state, slotIndex) => state.deviations.exerciseNotes?.[String(slotIndex)] || '';
 
 function exerciseBlock(state, slot, slotIndex) {
@@ -876,6 +901,7 @@ export const actions = {
       of it, and it travels into your history with the session.</p>
       <input id="ex-note" type="text" value="${escape(exerciseNote(state, slotIndex))}"
         placeholder="Machine chest-supported row, seat height 8" autocomplete="off">
+      ${pastNotes(state, slot.ex)}
       <div class="sheet-actions">
         <button class="big mt" data-act="save-ex-note" data-si="${slotIndex}">Save the note</button>
         ${
@@ -1282,10 +1308,22 @@ function repaintFields(ctx) {
 async function setExerciseNote(ctx, slotIndex, value) {
   const { state } = ctx;
   const notes = { ...(state.deviations.exerciseNotes || {}) };
-  if (value) notes[String(slotIndex)] = value;
-  else delete notes[String(slotIndex)];
+  // The exercise is recorded beside the note. A slot index is only meaningful
+  // against the session that produced it, and reading a note back weeks later
+  // means knowing which exercise it was about — otherwise it can only be
+  // recovered from a set that happened to be logged at the same slot.
+  const ids = { ...(state.deviations.exerciseNoteIds || {}) };
+  const slot = slotsFor(state)[slotIndex];
 
-  state.deviations = { ...state.deviations, exerciseNotes: notes };
+  if (value) {
+    notes[String(slotIndex)] = value;
+    if (slot?.ex) ids[String(slotIndex)] = slot.ex;
+  } else {
+    delete notes[String(slotIndex)];
+    delete ids[String(slotIndex)];
+  }
+
+  state.deviations = { ...state.deviations, exerciseNotes: notes, exerciseNoteIds: ids };
   await ctx.saveDeviations();
   closeSheet();
   ctx.render();
