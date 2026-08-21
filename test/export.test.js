@@ -368,3 +368,60 @@ test('the preview says exactly what would be replaced', () => {
   assert.equal(sets.existing, 300);
   assert.ok(report.replaces.includes('sets'), 'the user is warned before losing them');
 });
+
+test('a backup carries where you are in the plan, and what was replaced', async () => {
+  // Reported indirectly: an export taken the morning after a wrongly dated
+  // write held one measurement row and no record at all of the readings it had
+  // replaced. `auditLog` was not in the export, and neither was `cycles` — so a
+  // backup restored onto a new phone had every session ever logged and no idea
+  // which of 33 rotations it was on.
+  const snapshot = {
+    data: {
+      sessionLogs: [],
+      sets: [],
+      daily: [],
+      measurements: [],
+      niggles: [],
+      media: [],
+      maxes: [],
+      maxHistory: [],
+      settings: [],
+      cycles: [{ sequence: 12, startedAtISO: '2026-08-01T00:00:00.000Z', completed: ['A', 'B'] }],
+      auditLog: [
+        {
+          atISO: '2026-08-21T08:00:00.000Z',
+          entity: 'measurements',
+          entityId: '2026-08-20',
+          action: 'overwrite',
+          previous: { waist: 80, chest: 105 },
+        },
+      ],
+    },
+  };
+
+  const { zip } = buildExport(snapshot, null, {});
+  const { data } = parseImport(zip);
+
+  assert.equal(data.cycles.length, 1, 'the rotation position travels');
+  assert.equal(data.cycles[0].sequence, 12);
+  assert.equal(data.auditLog.length, 1, 'and so does the record of what was replaced');
+  assert.equal(data.auditLog[0].previous.waist, 80, 'with the numbers still in it');
+});
+
+test('a date range does not slice the rotation position out of a backup', async () => {
+  // `cycles` has no date to filter on that means anything, and a backup of last
+  // week that forgets which rotation you are on is not a backup.
+  const snapshot = {
+    data: {
+      sessionLogs: [], sets: [], daily: [], measurements: [], niggles: [], media: [],
+      maxes: [], maxHistory: [], settings: [],
+      cycles: [{ sequence: 12 }],
+      auditLog: [{ atISO: '2026-01-01T00:00:00.000Z', action: 'delete', entity: 'daily', entityId: '2026-01-01' }],
+    },
+  };
+
+  const { zip } = buildExport(snapshot, null, { from: '2026-08-01', to: '2026-08-31' });
+  const { data } = parseImport(zip);
+  assert.equal(data.cycles.length, 1);
+  assert.equal(data.auditLog.length, 1, 'kept even though its date is outside the range');
+});

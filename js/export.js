@@ -216,6 +216,23 @@ export function buildExport(snapshot, plan, { from = null, to = null, include = 
     maxes: want.maxes ? data.maxes || [] : [],
     maxHistory: want.maxes ? data.maxHistory || [] : [],
     settings: data.settings || [],
+
+    /*
+     * Always, and never filtered by date.
+     *
+     * `cycles` is where you are in the 33 rotations. Without it a backup
+     * restored onto a new phone has every session you have ever logged and no
+     * idea which rotation you are on, so the plan starts again at 1.
+     *
+     * `auditLog` is the record of what was deleted and what a save replaced —
+     * including the tape readings a wrongly dated write overwrote. Leaving it
+     * out meant the one copy of a destroyed value lived only in the database it
+     * was destroyed in.
+     *
+     * Both are small, and neither means anything sliced to a date range.
+     */
+    cycles: data.cycles || [],
+    auditLog: data.auditLog || [],
   };
 
   const meta = {
