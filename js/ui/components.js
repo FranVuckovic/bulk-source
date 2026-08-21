@@ -118,19 +118,56 @@ export const sheetIsOpen = () => document.getElementById('sheet').classList.cont
 let paintHandle = null;
 let mode = 'rest';
 let running = false;
-/** Collapsed to the bar, or opened out. Survives mode changes. */
-let expanded = false;
+
 /**
- * The countdown length in use. Kept so Reset restarts the same rest rather than
- * guessing, and so +30s has something to add to when the clock has run out.
+ * closed → nothing on screen. bubble → a small draggable disc. full → the panel.
+ *
+ * Three states rather than two because the useful one during a set is neither:
+ * a bar pinned across the bottom covers the exercise you are looking at, and a
+ * closed timer is one you forget to start. The bubble sits out of the way,
+ * shows the reading, and is one tap from the panel.
  */
-let restSeconds = 180;
+let view = 'closed';
+
+/** Where the bubble sits, as a fraction of the viewport. Dragged, and remembered. */
+let bubbleAt = { x: 0.86, y: 0.62 };
 
 /** Rest: the instant it finishes. Stopwatch: unused. */
 let endsAtMs = null;
 /** Stopwatch: when the current run began, and time banked from earlier runs. */
 let startedAtMs = null;
 let accumulatedMs = 0;
+/**
+ * The countdown length in use. Kept so Reset restarts the same rest rather than
+ * guessing, and so +30s has something to add to when the clock has run out.
+ */
+let restSeconds = 180;
+/** Whether a finished countdown has already announced itself. */
+let announced = false;
+/** Opt-in, off by default, remembered. */
+let notify = false;
+
+const STORE_KEY = 'bulk.timer';
+
+function remember() {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify({ bubbleAt, notify, restSeconds }));
+  } catch {
+    // A private window, or storage switched off. The timer still works; it just
+    // starts in the default corner next time.
+  }
+}
+
+function recall() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+    if (saved.bubbleAt && Number.isFinite(saved.bubbleAt.x)) bubbleAt = saved.bubbleAt;
+    if (typeof saved.notify === 'boolean') notify = saved.notify;
+    if (Number.isFinite(saved.restSeconds)) restSeconds = saved.restSeconds;
+  } catch {
+    // Anything unreadable is treated as nothing saved.
+  }
+}
 
 /**
  * The reading, from state and an instant. Pure, so the case that matters — a
@@ -152,99 +189,6 @@ const clock = (total) => {
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
 };
 
-function paintRest() {
-  const bar = document.getElementById('rest');
-  if (!bar) return;
-  const reading = timerReading(snapshot(), Date.now());
-
-  document.getElementById('rt').textContent = clock(reading.seconds);
-  const label = document.getElementById('rl');
-  if (label) label.textContent = mode === 'rest' ? 'Rest' : running ? 'Timer' : 'Timer — paused';
-  for (const id of ['rest-toggle', 'rest-toggle-big']) {
-    const toggle = document.getElementById(id);
-    if (toggle) toggle.textContent = running ? 'Pause' : 'Start';
-  }
-  bar.classList.toggle('stop', mode === 'stopwatch');
-  bar.classList.toggle('big', expanded);
-
-  // Which mode is selected, and whether the countdown-only controls apply.
-  for (const button of bar.querySelectorAll('[data-act="rest-mode"]')) {
-    button.classList.toggle('on', button.dataset.id === mode);
-  }
-  const adjust = document.getElementById('radjust');
-  if (adjust) adjust.hidden = mode !== 'rest';
-
-  // A countdown ends by itself — including when it ended while the phone was in
-  // a pocket and this is the first repaint since. Expanded, it stays open at
-  // 0:00 rather than vanishing, because the panel is something you opened.
-  if (mode === 'rest' && reading.done) {
-    if (expanded) {
-      running = false;
-      clearInterval(paintHandle);
-      paintHandle = null;
-    } else {
-      stopRest();
-    }
-  }
-}
-
-const repaintEvery = (ms) => {
-  clearInterval(paintHandle);
-  paintHandle = setInterval(paintRest, ms);
-};
-
-/*
- * Coming back to the app repaints immediately rather than waiting up to a
- * second, so the first thing you see is the true number and not the stale one.
- */
-if (typeof document !== 'undefined') {
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) paintRest();
-  });
-  window.addEventListener('pageshow', paintRest);
-  window.addEventListener('focus', paintRest);
-}
-
-/** Rest comes from the exercise, not from a fixed three minutes. */
-export function startRest(seconds) {
-  mode = 'rest';
-  running = true;
-  restSeconds = seconds;
-  endsAtMs = Date.now() + seconds * 1000;
-  document.getElementById('rest').classList.add('on');
-  repaintEvery(250);
-  paintRest();
-}
-
-/**
- * Open the timer without logging a set.
- *
- * The rest timer used to exist only as a consequence of finishing a set. It is
- * also the thing you want between warm-up ramps, while waiting for a rack, and
- * on any set you did not log — so it opens on its own, in the same panel,
- * carrying the last rest length rather than a number picked out of the air.
- */
-export function openTimerPanel() {
-  expanded = true;
-  document.getElementById('rest').classList.add('on');
-  if (mode === 'rest' && endsAtMs == null) {
-    // Opened cold: show the length, ready, but do not start counting until
-    // asked. A timer that starts itself when you only wanted to look at it is
-    // worse than one that needs a tap.
-    running = false;
-    endsAtMs = Date.now() + restSeconds * 1000;
-    clearInterval(paintHandle);
-    paintHandle = null;
-  }
-  paintRest();
-}
-
-/** Fold the panel back to the bar, or open it out. The clock is untouched. */
-export function expandTimer(on) {
-  expanded = on ?? !expanded;
-  paintRest();
-}
-
 /**
  * Where the finish line moves to. Pure, because the interesting cases are all
  * about time that has already passed.
@@ -258,35 +202,256 @@ export function nextEndsAt(endsAtMs, nowMs, deltaSeconds) {
   return Math.max(nowMs, base + deltaSeconds * 1000);
 }
 
+/**
+ * Say that a countdown finished, once, and quietly.
+ *
+ * A notification only if it was asked for and granted; otherwise a short
+ * vibration, which is what a phone in a pocket between sets can actually
+ * convey. Neither is allowed to fire twice for the same countdown, and neither
+ * dismisses the panel — that is the user's to do.
+ */
+function announce() {
+  if (announced) return;
+  announced = true;
+
+  if (notify && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    try {
+      new Notification('Rest is up', { body: 'Back to the bar.', tag: 'bulk-rest', silent: false });
+    } catch {
+      // Some browsers refuse a constructed Notification outside a service
+      // worker. The vibration below still happens.
+    }
+  }
+  try {
+    navigator.vibrate?.([120, 80, 120]);
+  } catch {
+    // Not supported, or blocked. Nothing to fall back to, and nothing broken.
+  }
+}
+
+function paintRest() {
+  const bar = document.getElementById('rest');
+  if (!bar) return;
+  const reading = timerReading(snapshot(), Date.now());
+  const text = clock(reading.seconds);
+
+  const face = document.getElementById('rt');
+  if (face) face.textContent = text;
+  const bubbleFace = document.getElementById('rt-b');
+  if (bubbleFace) bubbleFace.textContent = text;
+
+  const label = document.getElementById('rl');
+  if (label) label.textContent = mode === 'rest' ? 'Rest' : running ? 'Timer' : 'Timer — paused';
+
+  const toggle = document.getElementById('rest-toggle');
+  if (toggle) toggle.textContent = running ? 'Pause' : 'Start';
+
+  bar.classList.toggle('on', view !== 'closed');
+  bar.classList.toggle('big', view === 'full');
+  bar.classList.toggle('stop', mode === 'stopwatch');
+
+  /*
+   * A countdown that never started has not finished. `timerReading` reports
+   * done for a null `endsAtMs` — there is no time left because there was never
+   * any — and reading that as "finished" made the app buzz on launch and paint
+   * itself amber before anything had been opened.
+   */
+  const finished = mode === 'rest' && endsAtMs != null && reading.done;
+  bar.classList.toggle('done', finished);
+  const doneLine = document.getElementById('rdone');
+  if (doneLine) doneLine.hidden = !finished;
+
+  for (const button of bar.querySelectorAll('[data-act="rest-mode"]')) {
+    button.classList.toggle('on', button.dataset.id === mode);
+  }
+  /*
+   * Only the controls that mean something for the mode you are in. A preset
+   * length and a ±30s nudge are countdown ideas; offering them while counting
+   * up leaves a button that either does nothing or silently changes the mode
+   * under you.
+   */
+  const countdownOnly = ['rpresets', 'radjust'];
+  for (const id of countdownOnly) {
+    const group = document.getElementById(id);
+    if (group) group.hidden = mode !== 'rest';
+  }
+
+  const box = document.getElementById('rest-notify');
+  if (box) box.checked = notify;
+
+  placeBubble();
+
+  if (finished && view !== 'closed') {
+    // It has run out: stop repainting and stop counting, but stay on screen.
+    // A timer that dismisses itself the moment you look up is no timer at all.
+    if (running) {
+      running = false;
+      clearInterval(paintHandle);
+      paintHandle = null;
+    }
+    announce();
+  }
+}
+
+function placeBubble() {
+  const bubble = document.getElementById('rest-bubble');
+  if (!bubble) return;
+  bubble.style.left = `${bubbleAt.x * 100}%`;
+  bubble.style.top = `${bubbleAt.y * 100}%`;
+}
+
+const repaintEvery = (ms) => {
+  clearInterval(paintHandle);
+  paintHandle = setInterval(paintRest, ms);
+};
+
+/*
+ * Coming back to the app repaints immediately rather than waiting up to a
+ * second, so the first thing you see is the true number and not the stale one.
+ */
+if (typeof document !== 'undefined') {
+  recall();
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) paintRest();
+  });
+  window.addEventListener('pageshow', paintRest);
+  window.addEventListener('focus', paintRest);
+}
+
+/**
+ * Dragging the bubble.
+ *
+ * Pointer events, so a finger and a mouse take the same path. A drag under a
+ * few pixels is treated as a tap, or the bubble would be almost impossible to
+ * open on a touchscreen. It is clamped inside the viewport with room for the
+ * bottom navigation, so it can never be parked underneath it.
+ */
+export function wireTimerDrag() {
+  const bubble = document.getElementById('rest-bubble');
+  if (!bubble) return;
+
+  let dragging = false;
+  let moved = 0;
+  let offsetX = 0;
+  let offsetY = 0;
+
+  bubble.addEventListener('pointerdown', (event) => {
+    const box = bubble.getBoundingClientRect();
+    offsetX = event.clientX - box.left - box.width / 2;
+    offsetY = event.clientY - box.top - box.height / 2;
+    dragging = true;
+    moved = 0;
+    bubble.setPointerCapture(event.pointerId);
+  });
+
+  bubble.addEventListener('pointermove', (event) => {
+    if (!dragging) return;
+    moved += Math.abs(event.movementX) + Math.abs(event.movementY);
+    if (moved < 4) return;
+    bubble.classList.add('dragging');
+
+    const margin = 34;
+    const bottom = 96;
+    const x = Math.min(Math.max(event.clientX - offsetX, margin), window.innerWidth - margin);
+    const y = Math.min(Math.max(event.clientY - offsetY, margin), window.innerHeight - bottom);
+    bubbleAt = { x: x / window.innerWidth, y: y / window.innerHeight };
+    placeBubble();
+  });
+
+  const release = (event) => {
+    if (!dragging) return;
+    dragging = false;
+    bubble.classList.remove('dragging');
+    bubble.releasePointerCapture?.(event.pointerId);
+    if (moved >= 4) {
+      remember();
+      // A drag is not a tap. Swallow the click the browser is about to send.
+      bubble.dataset.suppressClick = '1';
+      setTimeout(() => delete bubble.dataset.suppressClick, 0);
+    }
+  };
+  bubble.addEventListener('pointerup', release);
+  bubble.addEventListener('pointercancel', release);
+}
+
+/** Rest comes from the exercise, not from a fixed three minutes. */
+export function startRest(seconds) {
+  mode = 'rest';
+  running = true;
+  announced = false;
+  restSeconds = seconds;
+  endsAtMs = Date.now() + seconds * 1000;
+  if (view === 'closed') view = 'bubble';
+  repaintEvery(250);
+  paintRest();
+  remember();
+}
+
+/**
+ * Open the timer without logging a set.
+ *
+ * The rest timer used to exist only as a consequence of finishing a set. It is
+ * also the thing you want between warm-up ramps, while waiting for a rack, and
+ * on any set you did not log — so it opens on its own, in the same panel,
+ * carrying the last rest length rather than a number picked out of the air.
+ */
+export function openTimerPanel() {
+  view = 'full';
+  if (mode === 'rest' && endsAtMs == null) {
+    // Opened cold: show the length, ready, but do not start counting until
+    // asked. A timer that starts itself when you only wanted to look at it is
+    // worse than one that needs a tap.
+    running = false;
+    announced = false;
+    endsAtMs = Date.now() + restSeconds * 1000;
+    clearInterval(paintHandle);
+    paintHandle = null;
+  }
+  paintRest();
+}
+
+/** Which of the three states the timer is in. */
+export function setTimerView(next) {
+  view = next;
+  if (next === 'closed') {
+    stopRest();
+    return;
+  }
+  paintRest();
+}
+
+/** Fold the panel to the bubble, or open it out. The clock is untouched. */
+export function expandTimer(on) {
+  setTimerView(on ?? view !== 'full' ? 'full' : 'bubble');
+}
+
 /** Set a countdown of this many seconds, and start it. */
 export function setCountdown(seconds) {
   mode = 'rest';
   restSeconds = seconds;
   running = true;
+  announced = false;
   startedAtMs = null;
   accumulatedMs = 0;
   endsAtMs = Date.now() + seconds * 1000;
-  document.getElementById('rest').classList.add('on');
+  if (view === 'closed') view = 'full';
   repaintEvery(250);
   paintRest();
+  remember();
 }
 
-/**
- * Move the finish line, without restarting.
- *
- * Adding to a countdown that has already run out counts from now, not from the
- * moment it expired — otherwise +30s on a clock that finished two minutes ago
- * adds nothing you can see.
- */
+/** Move the finish line, without restarting. */
 export function adjustRest(deltaSeconds) {
   if (mode !== 'rest') return;
   endsAtMs = nextEndsAt(endsAtMs, Date.now(), deltaSeconds);
   restSeconds = Math.max(15, restSeconds + deltaSeconds);
+  announced = false;
   if (!running && endsAtMs > Date.now()) {
     running = true;
     repaintEvery(250);
   }
   paintRest();
+  remember();
 }
 
 /** Countdown or count up, keeping the panel open either way. */
@@ -294,11 +459,26 @@ export function setTimerMode(next) {
   if (next === mode) return;
   if (next === 'stopwatch') {
     openStopwatch();
-    expanded = true;
+    view = 'full';
     paintRest();
     return;
   }
   setCountdown(restSeconds);
+}
+
+/** Whether a finished countdown should announce itself, and asking if so. */
+export async function setNotify(on) {
+  notify = !!on;
+  remember();
+  if (notify && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+    try {
+      await Notification.requestPermission();
+    } catch {
+      // Refused, or unsupported. The vibration still happens.
+    }
+  }
+  paintRest();
+  return notify;
 }
 
 /** The hand-driven one. Opening it does not start it. */
@@ -308,21 +488,17 @@ export function openStopwatch() {
   startedAtMs = null;
   accumulatedMs = 0;
   endsAtMs = null;
+  announced = false;
   clearInterval(paintHandle);
   paintHandle = null;
-  document.getElementById('rest').classList.add('on');
+  if (view === 'closed') view = 'full';
   paintRest();
 }
 
 export function toggleTimer() {
   if (mode === 'rest') {
-    if (!expanded) {
-      // Collapsed, the bar has one meaning: this rest is over.
-      stopRest();
-      return;
-    }
-    // Expanded, it is a timer you are driving, so pause means pause. The
-    // remaining time is banked as the new length and the clock stands still.
+    // Pause means pause. The remaining time is banked as the new length and the
+    // clock stands still.
     if (running) {
       restSeconds = Math.max(0, ((endsAtMs ?? Date.now()) - Date.now()) / 1000);
       running = false;
@@ -330,6 +506,7 @@ export function toggleTimer() {
       paintHandle = null;
     } else {
       endsAtMs = Date.now() + restSeconds * 1000;
+      announced = false;
       running = true;
       repaintEvery(250);
     }
@@ -353,13 +530,7 @@ export function toggleTimer() {
 
 export function resetTimer() {
   if (mode !== 'stopwatch') {
-    // Expanded, Reset means put this countdown back to its full length rather
-    // than dismiss it — the panel is open because you are using it.
-    if (expanded) {
-      setCountdown(restSeconds);
-      return;
-    }
-    stopRest();
+    setCountdown(restSeconds);
     return;
   }
   accumulatedMs = 0;
@@ -375,14 +546,15 @@ export function stopRest() {
   endsAtMs = null;
   startedAtMs = null;
   accumulatedMs = 0;
-  expanded = false;
+  announced = false;
+  view = 'closed';
   const bar = document.getElementById('rest');
-  if (bar) bar.classList.remove('on', 'stop', 'big');
+  if (bar) bar.classList.remove('on', 'stop', 'big', 'done');
 }
 
 /** For tests: the timer's own state, without reaching into the module. */
 export function timerState() {
-  return { ...snapshot(), expanded, restSeconds };
+  return { ...snapshot(), view, restSeconds, notify, bubbleAt };
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

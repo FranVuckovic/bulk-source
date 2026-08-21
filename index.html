@@ -29,6 +29,9 @@
 <div class="top" id="top"><div class="row">
   <div class="idt"><h1 id="ttl">Bulk</h1><button class="ver" id="ver" data-act="about-build" aria-label="Which build is running"></button></div>
   <button class="chip" id="chip" data-act="chip-tap"></button>
+  <!-- The timer, from anywhere. Blue and round like the bubble it opens, so the
+       two read as the same object. -->
+  <button class="tmr" data-act="open-timer" aria-label="Timer" title="Timer"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6M18.5 5.5l1.5 1.5"/></svg></button>
   <button class="gear" data-act="settings" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 7 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H1a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 2.6 7a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H7a1.7 1.7 0 0 0 1-1.5V1a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V7a1.7 1.7 0 0 0 1.5 1H23a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" transform="translate(0.5,0.5) scale(0.96)"/></svg></button>
 </div>
 <div class="demostrip" id="demostrip" hidden><b>DEMO DATA</b> · nothing here is real<button data-act="demo-off">Back to my data</button></div>
@@ -36,20 +39,38 @@
 
 <div class="wrap" id="view"></div>
 
-<div class="rest" id="rest">
-  <div class="rhead">
-    <div class="rread" data-act="rest-expand" role="button" tabindex="0" aria-label="Open the timer">
-      <div class="l" id="rl">Rest</div><div class="t" id="rt">3:00</div>
-    </div>
-    <div class="rbtns">
-      <button id="rest-toggle" data-act="rest-toggle">Pause</button>
-      <button data-act="rest-reset">Reset</button>
-      <button data-act="rest-skip">Close</button>
-    </div>
-    <div class="rgrip" aria-hidden="true"></div>
-  </div>
+<!--
+  The timer, in three states.
 
-  <div class="rbody">
+  closed  — nothing on screen; the Timer control on Train opens it
+  bubble  — a small draggable blue disc showing the reading, out of the way
+  full    — about half the screen, with everything needed to drive it
+
+  It never closes itself. A countdown that reaches zero stays on screen saying
+  so, because a timer that vanishes at the moment you look up from a set is the
+  same as no timer at all.
+-->
+<div class="rest" id="rest">
+  <button class="bub" id="rest-bubble" data-act="rest-expand" aria-label="Open the timer">
+    <span class="bt" id="rt-b">3:00</span>
+  </button>
+
+  <div class="panel">
+    <div class="phead">
+      <div class="pl" id="rl">Rest</div>
+      <div class="pbtns">
+        <button data-act="rest-collapse" aria-label="Minimise the timer" title="Minimise">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13h14"/></svg>
+        </button>
+        <button data-act="rest-skip" aria-label="Close the timer" title="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="pt" id="rt">3:00</div>
+    <div class="pdone" id="rdone">Time is up</div>
+
     <div class="rmode">
       <button data-act="rest-mode" data-id="rest">Count down</button>
       <button data-act="rest-mode" data-id="stopwatch">Count up</button>
@@ -67,14 +88,15 @@
     <div class="radjust" id="radjust">
       <button data-act="rest-adjust" data-sec="-30">&minus;30s</button>
       <button data-act="rest-adjust" data-sec="30">+30s</button>
+      <button data-act="rest-custom">Custom…</button>
     </div>
 
     <div class="rbig">
-      <button class="prime" id="rest-toggle-big" data-act="rest-toggle">Pause</button>
+      <button class="prime" id="rest-toggle" data-act="rest-toggle">Pause</button>
       <button data-act="rest-reset">Reset</button>
     </div>
-    <button class="rmin" data-act="rest-collapse">Minimise</button>
-    <button class="rclose" data-act="rest-skip">Close the timer</button>
+
+    <label class="rnote"><input type="checkbox" id="rest-notify" data-act-change="rest-notify"><span>Tell me when it is up</span></label>
   </div>
 </div>
 

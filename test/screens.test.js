@@ -272,25 +272,68 @@ test('every screen survives a rotation at each block boundary', () => {
   }
 });
 
-test('the timer panel offers everything the bar cannot', () => {
-  // The timer used to exist only as a consequence of logging a set: a bar with
-  // Pause, Reset and Close. Everything else — a length, a nudge, counting up,
-  // opening it at all without logging something — had no control anywhere.
+test('the timer has three states, and the controls each one needs', () => {
+  /*
+   * Requested after using the two-state version in a gym: a bar pinned across
+   * the bottom covers the exercise you are looking at, and a closed timer is
+   * one you forget to start. So: closed, a draggable bubble, and the panel.
+   */
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const bar = html.slice(html.indexOf('<div class="rest"'), html.indexOf('<div class="sheet"'));
 
-  assert.match(bar, /data-act="rest-expand"/, 'the reading opens the panel');
-  assert.match(bar, /data-act="rest-collapse"/, 'and it folds back');
-  assert.match(bar, /data-act="rest-mode" data-id="stopwatch"/, 'counting up is reachable');
-  assert.match(bar, /data-act="rest-mode" data-id="rest"/, 'and counting down');
-  assert.match(bar, /data-act="rest-adjust" data-sec="30"/);
-  assert.match(bar, /data-act="rest-adjust" data-sec="-30"/);
+  assert.match(bar, /id="rest-bubble"[^>]*data-act="rest-expand"/, 'the bubble opens the panel');
+  assert.match(bar, /data-act="rest-collapse"/, 'and the panel folds back to it');
+  assert.match(bar, /data-act="rest-skip"/, 'and closes');
+  assert.match(html, /class="tmr" data-act="open-timer"/, 'and there is a control in the header on every screen');
+
+  // Minimise and close are symbols with real labels behind them, not words.
+  const head = bar.slice(bar.indexOf('<div class="pbtns">'), bar.indexOf('</div>', bar.indexOf('<div class="pbtns">')));
+  assert.match(head, /aria-label="Minimise the timer"/);
+  assert.match(head, /aria-label="Close the timer"/);
+  assert.equal(head.match(/<svg/g)?.length, 2, 'both are drawn, not typed');
+  assert.doesNotMatch(head, />Minimise<|>Close</, 'no words in the buttons themselves');
+
+  assert.match(bar, /data-act="rest-custom"/, 'a length that is not a preset');
+  assert.match(bar, /id="rest-notify"/, 'and an opt-in for being told when it is up');
 
   const presets = [...bar.matchAll(/data-act="rest-preset" data-sec="(\d+)"/g)].map((m) => Number(m[1]));
   assert.deepEqual(presets, [60, 90, 120, 180, 240, 300], 'the lengths this plan actually rests for');
+});
 
-  // Only the reading expands. Making the whole bar the target puts an invisible
-  // tap area under Pause and Close, so tapping either one opened the panel
-  // instead of doing what it said.
-  assert.doesNotMatch(bar, /class="rhead" data-act=/, 'the head itself is not a button');
+test('the countdown-only controls are grouped so they can be hidden together', () => {
+  // Counting up, a preset length and a ±30s nudge either do nothing or change
+  // the mode under you. They are hidden rather than left to be discovered.
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const bar = html.slice(html.indexOf('<div class="rest"'), html.indexOf('<div class="sheet"'));
+  assert.match(bar, /id="rpresets"/);
+  assert.match(bar, /id="radjust"/);
+
+  const source = readFileSync(new URL('../js/ui/components.js', import.meta.url), 'utf8');
+  const paint = source.slice(source.indexOf('function paintRest()'), source.indexOf('function placeBubble()'));
+  assert.match(paint, /countdownOnly/, 'and the paint hides them by mode');
+  assert.match(paint, /group\.hidden = mode !== 'rest'/);
+});
+
+test('a finished countdown stays on screen', () => {
+  // It used to dismiss itself the moment it reached zero, which is exactly when
+  // you look up from a set and want to see it.
+  const source = readFileSync(new URL('../js/ui/components.js', import.meta.url), 'utf8');
+  const paint = source.slice(source.indexOf('function paintRest()'), source.indexOf('function placeBubble()'));
+
+  assert.doesNotMatch(paint, /stopRest\(\)/, 'reaching zero does not close it');
+  assert.match(paint, /announce\(\)/, 'it says so instead');
+  assert.match(paint, /endsAtMs != null/, 'and a countdown that never started has not finished');
+});
+
+test('the bubble remembers where it was put, and being told is opt-in', () => {
+  const source = readFileSync(new URL('../js/ui/components.js', import.meta.url), 'utf8');
+  assert.match(source, /let notify = false;/, 'off until asked for');
+  assert.match(source, /Notification\.permission === 'default'/, 'permission is requested only when switched on');
+  assert.match(source, /localStorage\.setItem/, 'the position survives a reload');
+  assert.match(source, /catch \{/, 'and storage being unavailable is not an error');
+
+  const drag = source.slice(source.indexOf('export function wireTimerDrag()'));
+  assert.match(drag, /pointerdown/, 'one path for a finger and a mouse');
+  assert.match(drag, /moved < 4/, 'a small movement is a tap, not a drag');
+  assert.match(drag, /Math\.min\(Math\.max/, 'and it is clamped inside the viewport');
 });
