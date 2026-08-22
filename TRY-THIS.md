@@ -17,7 +17,7 @@ data (nothing) and how to roll back (exactly).
 
 ```bash
 git checkout claude/project-onboarding-verify-lz3ob6
-npm test          # expect 372 passing, 0 failing
+npm test          # expect 386 passing, 0 failing
 npm run serve     # then open http://localhost:8123
 ```
 
@@ -68,6 +68,18 @@ Worth looking at specifically:
 
 `docs/release-v2.6.0.md` is the full list. No exercise, set, rep, RPE, rotation
 or block rule changed, and the database schema is still v3.
+
+### New in v2.12.0
+
+| Where | What is new |
+|---|---|
+| Train → Swap | **Substitutes ranked by what they actually train**, closest first. The plan's own suggestions lead; suggestions with no exercise behind them are named rather than shown as dead "not tracked" buttons. |
+| Train → Swap | **+ An exercise the plan does not have.** Name it, say what it trains the same things as, and it is yours — counted in your volume, offered as a substitute next time, carried in every backup. |
+| Train | **Last time** is a proper panel now: the loads and reps large, and **which session it was and how many days ago**. |
+
+**Waiting on you:** `docs/leg-training-proposal.md` — why session D was
+unusable, what to do about it, and six questions about your gym I need answered
+before writing either option.
 
 ### New in v2.11.0
 
@@ -203,8 +215,8 @@ v2.4.0 publish. Nothing on this branch has touched `main` or your database.
 `dev/publish.sh` force-pushes over the public repo and replaces its history.
 Ask before running it. The checklist:
 
-1. `npm test` — 372, 0 failing.
-2. Check `sw.js` VERSION reads `v2.11.0`. The publish set is derived from the
+1. `npm test` — 386, 0 failing.
+2. Check `sw.js` VERSION reads `v2.12.0`. The publish set is derived from the
    `SHELL` array in that file, and `js/demo.js` was added to it — a test
    enforces that the shell covers the module graph, so this cannot silently go
    wrong.
