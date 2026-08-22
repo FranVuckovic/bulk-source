@@ -123,41 +123,71 @@ forgets which rotation you are on is not a backup.
 
 ## Restoring the measurements that were overwritten
 
-The readings from **20 August** are not in the database and not in the export.
-The overwrite happened on `v2.7.0`, before the audit log recorded replacements,
-so the only copy is the photograph.
+Checked against the export of 22 August. The state today:
 
-From `v2.9.0` you can put them back on the right day:
+| | `measurements` | `daily` |
+|---|---|---|
+| **20 Aug** | 79.6 / 104.6 / 122.7 / 32.9 / 32.9 / 55.7 / 56.4 / 40 | 86.05 kg, 10.6%, 7.5 h |
+| **21 Aug** | *(no row)* | *(no row)* |
+| **22 Aug** | correct, saved on the day | correct, saved on the day |
 
-1. **Body → Change day → Yesterday** (or pick 20 August).
-2. The header turns amber and reads *not today — check this is what you want*.
-   That is the confirmation that you are writing to a past date on purpose.
-3. Type the readings from the photograph:
+**The row dated 20 August holds the 21st's readings.** There is no 21 August
+row at all — the overwrite did not create one, it replaced the 20th's. The
+audit log has six entries and none of them is an `overwrite`, because it
+happened on `v2.7.0`, before a replacement kept what it replaced.
 
-   | | |
-   |---|---|
-   | Waist | 80 |
-   | Chest | 105 |
-   | Shoulders | 124 |
-   | Arm L | 32.6 |
-   | Arm R | 32.5 |
-   | Quad L | 55.6 |
-   | Quad R | 56.2 |
-   | Neck | 39.5 |
+So the repair is two writes, in this order. **Do the 21st first** — the numbers
+you need for it are the ones currently sitting on the 20th, and the second step
+writes over them.
 
-4. Save. It will warn that an entry already exists for that day and that the
-   values it replaces are kept — that is the 21st's readings, which were written
-   to the 20th by the bug.
-5. **Body → Change day → Today**, and enter the 21st's readings on the 21st:
-   waist 79.6, chest 104.6, shoulders 122.7, arms 32.9 / 32.9, quads 55.7 /
-   56.4, neck 40.
+### 1 · Put the 21st's readings on the 21st
 
-You end with two dated rows instead of one, and **Log → the 20 August entry →
-Replaced values** will show the 21st's numbers as what step 4 replaced — so
-even that is recoverable.
+**Body → Change day → 21 August.** The header turns amber and reads *not today —
+check this is what you want*. Type:
 
-**The weigh-in from the 20th cannot be recovered.** The export holds one `daily`
-row, dated the 20th, carrying the 21st's numbers (86.05 kg, 10.6% body fat,
-7.5 h sleep). Nothing anywhere holds what the 20th's actually was. If you
-remember it, enter it the same way; if not, a missing day is a gap, and a gap
-is honest — the trend lines are built to survive them.
+| | |
+|---|---|
+| Waist | 79.6 |
+| Chest | 104.6 |
+| Shoulders | 122.7 |
+| Arm L / Arm R | 32.9 / 32.9 |
+| Quad L / Quad R | 55.7 / 56.4 |
+| Neck | 40 |
+
+Leave the four new sites blank — you were not taking them yet, and blank is
+honest. Save. Then the weigh-in on the same day: **86.05 kg, 10.6% body fat,
+7.5 h sleep.**
+
+Nothing exists on the 21st yet, so both buttons will say *Save*, not *Replace*.
+
+### 2 · Put the 20th's real readings back on the 20th
+
+**Change day → 20 August.** Both cards will now say **Already logged** and both
+buttons will read **Replace** — that is the confirmation you are correcting a
+day rather than adding one. From the photograph:
+
+| | |
+|---|---|
+| Waist | 80 |
+| Chest | 105 |
+| Shoulders | 124 |
+| Arm L / Arm R | 32.6 / 32.5 |
+| Quad L / Quad R | 55.6 / 56.2 |
+| Neck | 39.5 |
+
+And the weigh-in: **85.5 kg**. Leave body fat and sleep blank unless you
+remember them — the 10.6% and 7.5 h currently on that row belong to the 21st,
+and step 1 has already put them there.
+
+### 3 · Change day → Today
+
+So the next thing you log goes on the right day.
+
+**Afterwards, both replacements are readable.** Log → the 20 August entry →
+**Replaced values** will show what step 2 wrote over. That is the safety net
+that did not exist when this happened.
+
+### Take a backup first
+
+Log → Backups → *Export a zip*. Five taps of typing is not much to lose, but a
+backup before a repair costs one tap and means the repair itself is reversible.

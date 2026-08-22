@@ -216,9 +216,6 @@ function dateBar(ctx) {
   const draft = state.bodyDraft;
   const today = state.todayISO;
   const on = draft.dateISO === today;
-  const existing =
-    state.daily.some((d) => d.dateISO === draft.dateISO) ||
-    state.measurements.some((m) => m.dateISO === draft.dateISO);
 
   return `<div class="datebar${on ? '' : ' off'}">
     <div>
@@ -226,17 +223,50 @@ function dateBar(ctx) {
       <span>${escape(on ? shortDate(draft.dateISO) : 'not today — check this is what you want')}</span>
     </div>
     <button class="pill" data-act="body-date">Change day</button>
-  </div>${
-    existing
-      ? `<p class="hint" style="margin:-4px 2px 12px">There is already an entry for this day. Saving replaces it — the values it replaces are kept in the log.</p>`
-      : ''
-  }`;
+  </div>`;
+}
+
+/**
+ * Whether this day already has an entry in this store, and when it was written.
+ *
+ * Reported twice from real use, and the second time as the mechanism of a data
+ * loss: the fields were already full, which reads as "the form did not clear"
+ * rather than "you already logged this day and these are the saved values".
+ * One record per date is the design — a weigh-in you re-enter is the same
+ * weigh-in — but nothing on screen said so, so saving looked like adding when
+ * it was replacing.
+ *
+ * `daily` and `measurements` are separate records, so this is asked separately
+ * for each. Logging only a weigh-in must not make the tape card claim it is
+ * already done.
+ */
+function alreadyLogged(state, store) {
+  const row = (state[store] || []).find((entry) => entry.dateISO === state.bodyDraft.dateISO);
+  if (!row) return null;
+  const at = row.savedAtISO ? new Date(row.savedAtISO) : null;
+  return {
+    row,
+    at:
+      at && !Number.isNaN(at.getTime())
+        ? `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+        : null,
+  };
+}
+
+/** The strip that says these boxes are showing something already saved. */
+function loggedBanner(logged, what) {
+  if (!logged) return '';
+  return `<div class="logged"><b>Already logged${logged.at ? ` at ${escape(logged.at)}` : ''}</b>
+    <span>These are the saved values for this day. ${escape(what)} replaces them — what it
+    replaces is kept, and readable from Log → this entry.</span></div>`;
 }
 
 export function view(ctx) {
   const { state } = ctx;
   const unit = state.settings.unit;
   const draft = state.bodyDraft;
+  const loggedDaily = alreadyLogged(state, 'daily');
+  const loggedTape = alreadyLogged(state, 'measurements');
 
   const weights = state.daily
     .filter((d) => Number.isFinite(d.bodyweight))
@@ -254,7 +284,7 @@ export function view(ctx) {
     'today',
     'Today · about 8 seconds',
     shortDate(draft.dateISO),
-    `<div class="card"><div class="g3">
+    `<div class="card">${loggedBanner(loggedDaily, 'Saving')}<div class="g3">
       ${field('bodyweight', `Weight (${unit})`, draft.bodyweight)}
       ${field('bodyfatPct', 'Body fat %', draft.bodyfatPct)}
       ${field('sleepHours', 'Sleep h', draft.sleepHours, { step: '0.5' })}
@@ -300,7 +330,9 @@ export function view(ctx) {
             rate == null ? '' : ` · ${rate >= 0 ? '+' : ''}${fmtNum(toDisplay(rate, unit), 2)} ${unit}/week`
           } · body fat is a low-trust number, the trend is what counts</p>`
     }
-    <button class="big mt" data-act="save-daily">Save today</button></div>`,
+    <button class="big mt ${loggedDaily ? 'warn' : ''}" data-act="save-daily">${
+      loggedDaily ? 'Replace this weigh-in' : 'Save today'
+    }</button></div>`,
     state.shut
   )}
 
@@ -308,7 +340,7 @@ export function view(ctx) {
     'week',
     'This week · about a minute',
     '',
-    `<div class="card"><div class="g3">
+    `<div class="card">${loggedBanner(loggedTape, 'Saving')}<div class="g3">
       ${MEASUREMENT_SITES.slice(0, 3).map(([id, label]) => field(`m-${id}`, label, draft[`m-${id}`], { how: id })).join('')}
     </div><div class="g3 mt">
       ${MEASUREMENT_SITES.slice(3, 6).map(([id, label]) => field(`m-${id}`, label, draft[`m-${id}`], { how: id })).join('')}
@@ -330,7 +362,9 @@ export function view(ctx) {
           : ''
       }
     </div>
-    <button class="big mt" data-act="save-measurements">Save measurements</button>
+    <button class="big mt ${loggedTape ? 'warn' : ''}" data-act="save-measurements">${
+      loggedTape ? 'Replace these measurements' : 'Save measurements'
+    }</button>
     <button class="big ghost mt" data-act="measure-how" data-id="all">How to measure \u2014 read this once</button>
     <p class="hint">Leave anything blank. Empty is stored as empty, never as zero. Waist at the navel, relaxed — it is the lean-bulk discriminator, so consistency matters more than precision. <b>Same time of day, every time</b>: the waist moves more between waking and bedtime than it does in a good week, so two readings taken at different times are not comparable. Anything recorded before this was added has no time against it and says so rather than guessing.</p></div>`,
     state.shut
@@ -469,6 +503,10 @@ export const actions = {
     const unit = ctx.state.settings.unit;
     const row = {
       dateISO: draft.dateISO,
+      // When it was written, so the screen can say "already logged at 07:12"
+      // rather than presenting full boxes with no explanation. Rows written
+      // before this existed have none and say so rather than guessing.
+      savedAtISO: new Date().toISOString(),
       bodyweight: ctx.toKg(parse(draft.bodyweight)),
       bodyfatPct: parse(draft.bodyfatPct),
       sleepHours: parse(draft.sleepHours),
@@ -538,6 +576,7 @@ export const actions = {
     const timeOfDay = draft.measureTime || DEFAULT_MEASUREMENT_TIME;
     const row = {
       dateISO: draft.dateISO,
+      savedAtISO: new Date().toISOString(),
       timeOfDay,
       // Only meaningful for "other", and stored as null otherwise rather than
       // left holding whatever was typed before the choice changed.

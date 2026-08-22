@@ -169,7 +169,7 @@ export function toCsv(rows, columns) {
 export const CSV_COLUMNS = Object.freeze({
   sessionLogs: ['id', 'dateISO', 'startedAt', 'endedAt', 'sessionId', 'blockId', 'rotationIndex', 'bodyweight', 'sessionRpe', 'note', 'isPartial', 'timingReliable'],
   sets: ['id', 'sessionLogId', 'exerciseId', 'slotIndex', 'setIndex', 'load', 'bodyweightUsed', 'reps', 'rpe', 'rir', 'toFailure', 'isAmrap', 'isIndexSet', 'isMyoRep', 'velocity', 'note', 'wasPrescribed', 'prescribedLoad', 'timestampISO', 'gripWidth', 'variantUsed', 'pauseStyle'],
-  daily: ['dateISO', 'bodyweight', 'scale', 'scaleNote', 'bodyfatPct', 'sleepHours', 'steps', 'mood', 'caffeine', 'note'],
+  daily: ['dateISO', 'savedAtISO', 'bodyweight', 'scale', 'scaleNote', 'bodyfatPct', 'sleepHours', 'steps', 'mood', 'caffeine', 'note'],
   /*
    * Every measurement site, in the order the Body screen shows them, plus the
    * columns around them. Sites are only ever added; a row written before a site
@@ -182,6 +182,7 @@ export const CSV_COLUMNS = Object.freeze({
    */
   measurements: [
     'dateISO',
+    'savedAtISO',
     'timeOfDay',
     'timeOfDayNote',
     'waist',

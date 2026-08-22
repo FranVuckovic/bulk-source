@@ -17,7 +17,7 @@ data (nothing) and how to roll back (exactly).
 
 ```bash
 git checkout claude/project-onboarding-verify-lz3ob6
-npm test          # expect 369 passing, 0 failing
+npm test          # expect 372 passing, 0 failing
 npm run serve     # then open http://localhost:8123
 ```
 
@@ -68,6 +68,17 @@ Worth looking at specifically:
 
 `docs/release-v2.6.0.md` is the full list. No exercise, set, rep, RPE, rotation
 or block rule changed, and the database schema is still v3.
+
+### New in v2.11.0
+
+| Where | What is new |
+|---|---|
+| Body | **"Already logged at 07:12"** on each card that has an entry for the chosen day, and the button changes to **Replace this weigh-in** / **Replace these measurements**. Full boxes are now explained instead of looking like a form that failed to clear. |
+| Body | The weigh-in and the tape are asked about **separately** — logging one no longer makes the other claim it is done. |
+| Everywhere | Saves record **when** they were written, so the app can say so. Old rows have no stamp and say "already logged" without a time rather than inventing one. |
+
+**Restoring 20 August:** `docs/data-safety.md`, last section — checked against
+the 22 August export, two writes in a stated order.
 
 ### New in v2.10.0
 
@@ -192,8 +203,8 @@ v2.4.0 publish. Nothing on this branch has touched `main` or your database.
 `dev/publish.sh` force-pushes over the public repo and replaces its history.
 Ask before running it. The checklist:
 
-1. `npm test` — 369, 0 failing.
-2. Check `sw.js` VERSION reads `v2.10.0`. The publish set is derived from the
+1. `npm test` — 372, 0 failing.
+2. Check `sw.js` VERSION reads `v2.11.0`. The publish set is derived from the
    `SHELL` array in that file, and `js/demo.js` was added to it — a test
    enforces that the shell covers the module graph, so this cannot silently go
    wrong.

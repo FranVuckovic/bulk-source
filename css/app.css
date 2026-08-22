@@ -273,6 +273,9 @@ nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.9;st
 .mini{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
 .mini button{font-size:12px;padding:7px 11px;border-radius:8px;border:1px solid var(--line);background:var(--raised);color:var(--ink2);cursor:pointer;font-family:inherit;font-weight:600}
 .mini button.warn{color:var(--s2);border-color:var(--s2)}
+/* A save that is really a replace. Not danger — replacing today's weigh-in with
+   a corrected one is normal — but not the same colour as adding something new. */
+.big.warn{background:var(--s2);color:#fff}
 .ex-actions{margin-top:10px;border-top:1px solid var(--grid)}
 .action-group{display:grid;grid-template-columns:56px minmax(0,1fr);gap:7px;align-items:start;padding:7px 0;border-bottom:1px solid var(--grid)}
 .action-group>span{padding-top:8px;color:var(--muted);font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
@@ -580,3 +583,12 @@ table.phases tr.borrowed td:first-child{color:var(--warn)}
 .rest .rnote span{display:block}
 .rest .rnote input{width:20px;height:20px;accent-color:#fff;margin:0;flex:0 0 auto;
   border-radius:6px;cursor:pointer}
+
+/* "You already logged this day, and these are the saved values."
+   The boxes being full is the whole reason a day of readings was once written
+   over, so the state is stated rather than left to be inferred. */
+.logged{background:color-mix(in srgb, var(--s1) 14%, transparent);
+  border:1px solid color-mix(in srgb, var(--s1) 42%, transparent);
+  border-radius:11px;padding:9px 11px;margin:0 0 12px}
+.logged b{display:block;font-size:12.5px;font-weight:750;color:var(--s1)}
+.logged span{display:block;font-size:11.5px;color:var(--ink2);margin-top:2px;line-height:1.45}

@@ -110,3 +110,62 @@ test('a blank site is never stored as zero', () => {
     assert.equal(row[id] ?? null, null, `${id} reads as blank when it was never taken`);
   }
 });
+
+test('a save stamps when it was written, and old rows without one still work', async () => {
+  /*
+   * Reported twice: the fields were already full after saving, which reads as
+   * "the form did not clear" rather than "you already logged this day". The
+   * second time it was the mechanism of a data loss.
+   *
+   * `savedAtISO` is what lets the screen say "already logged at 07:12". It is
+   * added like any other field — rows written before it exist simply have none,
+   * and the screen says "already logged" without a time rather than inventing
+   * one.
+   */
+  const { MEASUREMENT_SITES: sites } = await import('../js/ui/body.js');
+  void sites;
+
+  const older = { dateISO: '2026-08-20', waist: 80, chest: 105 };
+  const newer = { dateISO: '2026-08-22', savedAtISO: '2026-08-22T07:12:00.000Z', waist: 79.2, chest: 103 };
+
+  const snapshot = {
+    data: {
+      sessionLogs: [], sets: [], daily: [], niggles: [], media: [], maxes: [], maxHistory: [],
+      settings: [], cycles: [], auditLog: [],
+      measurements: [older, newer],
+    },
+  };
+
+  const { zip } = buildExport(snapshot, null, {});
+  const parsed = parseImport(zip);
+
+  assert.deepEqual(parsed.data.measurements[0], older, 'the old row is unchanged and gains no invented stamp');
+  assert.equal(parsed.data.measurements[1].savedAtISO, '2026-08-22T07:12:00.000Z');
+});
+
+test('the CSV has a column for the save stamp', async () => {
+  const source = await import('node:fs').then(({ readFileSync }) =>
+    readFileSync(new URL('../js/export.js', import.meta.url), 'utf8')
+  );
+  for (const store of ['measurements', 'daily']) {
+    const start = source.indexOf(`${store}: [`);
+    const block = source.slice(start, source.indexOf('],', start));
+    assert.ok(block.includes("'savedAtISO'"), `${store} does not carry savedAtISO into a backup`);
+  }
+});
+
+test('daily and measurements are asked about separately', async () => {
+  // They are separate records. Logging only a weigh-in must not make the tape
+  // card claim it is already done — the earlier check used `||` and did.
+  const source = await import('node:fs').then(({ readFileSync }) =>
+    readFileSync(new URL('../js/ui/body.js', import.meta.url), 'utf8')
+  );
+  const fn = source.slice(source.indexOf('function alreadyLogged'), source.indexOf('function loggedBanner'));
+  assert.match(fn, /state\[store\]/, 'it takes the store as an argument');
+
+  const view = source.slice(source.indexOf('export function view(ctx)'));
+  assert.match(view, /alreadyLogged\(state, 'daily'\)/);
+  assert.match(view, /alreadyLogged\(state, 'measurements'\)/);
+  assert.match(view, /Replace this weigh-in/, 'and the button says what it will do');
+  assert.match(view, /Replace these measurements/);
+});
