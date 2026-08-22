@@ -30,6 +30,17 @@ export const DEFAULT_SETTINGS = Object.freeze({
   increment: 2.5,
   lastBackupISO: null,
   formatVersion: FORMAT_VERSION,
+  /*
+   * Exercises the gym has and the plan does not.
+   *
+   * Kept in `settings` rather than in a store of their own, deliberately: a new
+   * store means a schema migration, and this needs none. A settings row is a
+   * key and an arbitrary value, so an older build reading a database that has
+   * this simply ignores a key it does not know, and a newer build reading a
+   * database without it gets the default. Settings already travel in every
+   * export, so custom exercises travel with them.
+   */
+  customExercises: [],
 });
 
 /* ═══════════════════════════════════════════════════════════════════════

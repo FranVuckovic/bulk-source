@@ -618,3 +618,173 @@ export function sameExerciseElsewhere(plan, exerciseId, rotation, { exclude = nu
   }
   return out;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Finding a substitute
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * How alike two exercises are, from the muscles they train.
+ *
+ * Cosine similarity on the muscle-weight vectors every exercise already
+ * carries, so nothing new has to be written down and nothing can drift out of
+ * date: change what an exercise trains and its neighbours change with it.
+ *
+ * The primary muscle is weighted separately because cosine alone is too
+ * forgiving — a leg press and a hip thrust share hamstrings and glutes enough
+ * to look close, when what you actually want when replacing a leg press is
+ * something whose *main* job is quads. Sharing a primary is worth as much as
+ * the whole rest of the overlap.
+ */
+export function exerciseSimilarity(a, b) {
+  const left = a?.m || {};
+  const right = b?.m || {};
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  if (!keys.size) return 0;
+
+  let dot = 0;
+  let leftLen = 0;
+  let rightLen = 0;
+  for (const key of keys) {
+    const l = left[key] || 0;
+    const r = right[key] || 0;
+    dot += l * r;
+    leftLen += l * l;
+    rightLen += r * r;
+  }
+  if (!leftLen || !rightLen) return 0;
+  const cosine = dot / (Math.sqrt(leftLen) * Math.sqrt(rightLen));
+
+  const primary = (weights) => {
+    let best = null;
+    let peak = 0;
+    for (const [key, value] of Object.entries(weights)) {
+      if (value > peak) {
+        peak = value;
+        best = key;
+      }
+    }
+    return best;
+  };
+  const shared = primary(left) && primary(left) === primary(right) ? 1 : 0;
+
+  /*
+   * Cosine ignores magnitude, and magnitude is most of what matters here. Box
+   * jumps are `{quads: 0.3}` and a hack squat is `{quads: 1, hams: 0.3}`; those
+   * vectors point almost the same way, so cosine called them a 0.98 match and
+   * offered jumps as a substitute for a squat. They train the same muscle to
+   * wildly different degrees, which is the opposite of substitutable.
+   *
+   * So the score is scaled by how much total stimulus the two agree on. A 0.3
+   * exercise standing in for a 1.3 one keeps less than a quarter of its score.
+   */
+  const total = (weights) => Object.values(weights).reduce((sum, value) => sum + value, 0);
+  const leftTotal = total(left);
+  const rightTotal = total(right);
+  const magnitude = Math.min(leftTotal, rightTotal) / Math.max(leftTotal, rightTotal);
+
+  return ((cosine + shared) / 2) * magnitude;
+}
+
+/**
+ * Every exercise that could stand in for this one, closest first.
+ *
+ * Three tiers, in this order:
+ *
+ *   `listed`     — named in the exercise's own `subs`, and resolvable to a real
+ *                  exercise. Someone chose these deliberately; they lead.
+ *   `similar`    — everything else, ranked by muscle overlap, above a floor.
+ *   `unlisted`   — a `subs` name with no exercise behind it. Reported rather
+ *                  than dropped: it is a real suggestion the plan makes, and
+ *                  silently omitting it is how "not tracked" appeared with no
+ *                  explanation.
+ *
+ * `custom` exercises are included like any other. They are the answer to
+ * equipment the gym does not have.
+ */
+export function substitutesFor(plan, exerciseId, { floor = 0.35, limit = 24 } = {}) {
+  const source = plan.exercises?.[exerciseId];
+  if (!source) return { listed: [], similar: [], unlisted: [] };
+
+  const byName = new Map(
+    Object.entries(plan.exercises).map(([id, exercise]) => [exercise.name.toLowerCase(), id])
+  );
+
+  const listed = [];
+  const unlisted = [];
+  for (const name of source.subs || []) {
+    const id = byName.get(String(name).toLowerCase());
+    if (id && id !== exerciseId) listed.push({ id, exercise: plan.exercises[id], name, listed: true });
+    else if (!id) unlisted.push(name);
+  }
+
+  const taken = new Set([exerciseId, ...listed.map((entry) => entry.id)]);
+  const similar = Object.entries(plan.exercises)
+    .filter(([id]) => !taken.has(id))
+    .map(([id, exercise]) => ({ id, exercise, score: exerciseSimilarity(source, exercise) }))
+    .filter((entry) => entry.score >= floor)
+    .sort((a, b) => b.score - a.score || a.exercise.name.localeCompare(b.exercise.name))
+    .slice(0, limit);
+
+  return { listed, similar, unlisted };
+}
+
+/**
+ * The plan, plus the exercises you added yourself.
+ *
+ * Custom exercises are ordinary entries in `plan.exercises`: everything
+ * downstream — prescriptions, volume counting, the Log, similarity, the phases
+ * view — reads them the same way as the plan's own, because there is nothing to
+ * tell apart except a `custom` flag used for labelling.
+ *
+ * A custom exercise's muscle map is COPIED from the plan exercise it stands in
+ * for. Asking someone to weight six muscles by hand is a form nobody fills in
+ * correctly; "it trains the same things as a leg press" is one tap and is right.
+ *
+ * Ids are namespaced so they can never collide with a plan id, present or
+ * future, and are never reused — a set logged against one keeps pointing at it.
+ */
+export function withCustomExercises(plan, customs) {
+  if (!Array.isArray(customs) || !customs.length) return plan;
+
+  const exercises = { ...plan.exercises };
+  for (const entry of customs) {
+    if (!entry?.id || !entry.name) continue;
+    // A custom exercise never overwrites a plan one, whatever it claims.
+    if (plan.exercises[entry.id]) continue;
+    const modelled = plan.exercises[entry.basedOn] || null;
+    exercises[entry.id] = {
+      name: entry.name,
+      tracksMax: false,
+      maxConf: 'low',
+      m: entry.m || modelled?.m || {},
+      how: entry.how || [],
+      why: modelled ? `Added by you, in place of ${modelled.name}.` : 'Added by you.',
+      subs: [],
+      watch: null,
+      grips: null,
+      unit: entry.unit || modelled?.unit || 'kg',
+      defaultRestSec: entry.defaultRestSec || modelled?.defaultRestSec || 120,
+      refPhotoId: null,
+      bodyweightLoaded: !!(entry.bodyweightLoaded ?? modelled?.bodyweightLoaded),
+      custom: true,
+      basedOn: entry.basedOn || null,
+    };
+  }
+  return { ...plan, exercises };
+}
+
+/** A stable, collision-proof id for an exercise you add. */
+export function customExerciseId(name, existing = []) {
+  const slug =
+    String(name)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 32) || 'exercise';
+  let id = `custom-${slug}`;
+  let n = 2;
+  const taken = new Set(existing);
+  while (taken.has(id)) id = `custom-${slug}-${n++}`;
+  return id;
+}

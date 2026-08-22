@@ -49,7 +49,15 @@ import {
 } from './progress.js';
 import { e1rm, systemLoad, estimateForSet, isHighConfidence } from './calc.js';
 import { localDate, nowISO, timeZone, utcOffsetMinutes, daysBetween } from './dates.js';
-import { blockFor, effortModeFor, resolveSession, toDisplaySession, validatePlan } from './plan.js';
+import {
+  blockFor,
+  effortModeFor,
+  resolveSession,
+  toDisplaySession,
+  validatePlan,
+  withCustomExercises,
+  customExerciseId,
+} from './plan.js';
 import {
   newCycle,
   cycleProgress,
@@ -257,7 +265,7 @@ function buildHistory() {
     if (!log) continue;
     const entry = latest.get(set.exerciseId);
     if (!entry || log.dateISO > entry.dateISO) {
-      latest.set(set.exerciseId, { dateISO: log.dateISO, logId: log.id, sets: [set] });
+      latest.set(set.exerciseId, { dateISO: log.dateISO, logId: log.id, sessionId: log.sessionId, sets: [set] });
     } else if (log.id === entry.logId) {
       entry.sets.push(set);
     }
@@ -891,6 +899,36 @@ const ctx = {
     state.bodyDraft = { ...state.bodyDraft, dateISO };
     fillBodyDraftFrom(dateISO);
     render();
+  },
+
+  /**
+   * Add an exercise the plan does not have, and keep it.
+   *
+   * Stored in `settings`, which needs no schema migration and already travels
+   * in every export. The muscle map is copied from the exercise it stands in
+   * for — asking anyone to weight six muscles by hand produces a form nobody
+   * fills in correctly, and "it trains the same things as a leg press" is one
+   * tap and is right.
+   *
+   * Returns the new id so the caller can switch to it immediately.
+   */
+  async addCustomExercise({ name, basedOn }) {
+    const clean = String(name || '').trim();
+    if (!clean) throw new Error('An exercise needs a name.');
+
+    const existing = state.settings.customExercises || [];
+    if ([...existing, ...Object.values(state.plan.exercises)].some((e) => e.name.toLowerCase() === clean.toLowerCase())) {
+      throw new Error(`There is already an exercise called ${clean}.`);
+    }
+
+    const id = customExerciseId(clean, existing.map((e) => e.id));
+    const next = [...existing, { id, name: clean, basedOn: basedOn || null, addedAtISO: nowISO() }];
+
+    await writeSetting(state.db, 'customExercises', next);
+    state.settings.customExercises = next;
+    state.plan = withCustomExercises(state.plan, next);
+    render();
+    return id;
   },
 
   async saveDaily(row) {
@@ -2097,7 +2135,20 @@ async function boot() {
     // so a 0.4 kg morning fluctuation cannot move every prescription.
     bodyweight: settings.bodyweight ?? state.plan.meta.referenceBodyweightKg ?? 90,
     barKg: settings.barKg ?? 20,
+    // Exercises you added. Kept in state so the Settings screen and the swap
+    // sheet can both read the list, and merged into the plan below.
+    customExercises: Array.isArray(settings.customExercises) ? settings.customExercises : [],
   };
+
+  /*
+   * The plan the rest of the app sees includes what you added to it.
+   *
+   * Merged once, here, before anything renders — so prescriptions, volume
+   * counting, the Log, the similarity search and the phases view all read a
+   * custom exercise the same way as one of the plan's own. There is nothing
+   * downstream that needs to know the difference.
+   */
+  state.plan = withCustomExercises(state.plan, state.settings.customExercises);
 
   await loadEverything();
   resetBodyDraft();

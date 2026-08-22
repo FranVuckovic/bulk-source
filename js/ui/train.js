@@ -38,8 +38,10 @@ import {
   slotById,
   companionSlots,
   BORROWABLE_FIELDS,
+  substitutesFor,
 } from '../plan.js';
 import { exerciseNoteHistory } from '../analytics.js';
+import { daysBetween } from '../dates.js';
 import {
   escape,
   fmtLoad,
@@ -220,14 +222,64 @@ function lastTime(state, exerciseId) {
   const loads = previous.sets.map((s) => s.load);
   const sameLoad = loads.every((l) => l === loads[0]);
   const reps = previous.sets.map((s) => (s.reps == null ? '—' : s.reps)).join(',');
+
+  // How long ago, in the unit anyone actually uses for it.
+  const days = daysBetween(previous.dateISO, state.todayISO ?? previous.dateISO);
+  const ago =
+    days == null || days < 0
+      ? null
+      : days === 0
+        ? 'today'
+        : days === 1
+          ? 'yesterday'
+          : `${days} days ago`;
+
   return {
     ...previous,
+    ago,
+    days,
     summary: sameLoad
       ? `${fmtLoad(loads[0], state.settings.unit)} ${state.settings.unit} × ${reps}`
       : previous.sets
           .map((s) => `${fmtLoad(s.load, state.settings.unit)}×${s.reps ?? '—'}`)
           .join(' · '),
   };
+}
+
+/**
+ * What you did last time, at a size you can read between sets.
+ *
+ * It used to be one grey hint line under the sets, in the same weight as
+ * everything else on the card, giving the loads and a bare ISO date. The number
+ * you are trying to beat is the most useful thing on the screen at the moment
+ * you are standing over the bar, so it is now the most legible: the loads and
+ * reps large, and beside them which session it was and how long ago, because
+ * "session B, three days ago" tells you whether to expect to beat it and
+ * "2026-08-19" does not.
+ */
+function lastTimePanel(state, previous) {
+  if (!previous) return '<div class="lastbox none">No previous data — today sets the baseline.</div>';
+
+  const unit = state.settings.unit;
+  const best = previous.sets.reduce(
+    (top, set) => (set.load != null && (top == null || set.load > top.load) ? set : top),
+    null
+  );
+
+  return `<div class="lastbox">
+    <div class="lb-h">Last time${previous.sessionId ? ` · session ${escape(previous.sessionId)}` : ''}${
+      previous.ago ? ` · ${escape(previous.ago)}` : ''
+    }</div>
+    <div class="lb-v">${escape(previous.summary)}</div>
+    ${
+      best?.rpe != null
+        ? `<div class="lb-s">Top set ${escape(fmtLoad(best.load, unit))} ${escape(unit)} × ${
+            best.reps ?? '—'
+          } at RPE ${escape(String(best.rpe))}</div>`
+        : ''
+    }
+    ${previous.note ? `<div class="lb-n">${escape(previous.note)}</div>` : ''}
+  </div>`;
 }
 
 /**
@@ -611,6 +663,71 @@ function phaseTable(state, slotId, here, { slotIndex, borrowed, main }) {
 }
 
 /**
+ * The substitutes for one slot, closest first.
+ *
+ * Three groups, and the order is the point. The plan's own suggestions lead,
+ * because someone chose them. Then everything else the app knows, ranked by
+ * how much of the same work it does — derived from the muscle map rather than
+ * written down, so it cannot drift. Then the suggestions with no exercise
+ * behind them, named rather than dropped: they used to render as dead buttons
+ * saying "not tracked", which reads as a bug rather than as an invitation.
+ *
+ * That last group is what "add your own" is for. The gym that has no hack squat
+ * is the reason this screen exists.
+ */
+function swapSheet(state, slotIndex, slot, exercise) {
+  const { listed, similar, unlisted } = substitutesFor(state.plan, slot.ex);
+
+  const row = (entry, badge) => {
+    const other = entry.exercise;
+    const share = Object.entries(other.m || {})
+      .filter(([, weight]) => weight >= 0.5)
+      .map(([id]) => state.plan.muscles[id]?.label || id)
+      .slice(0, 3)
+      .join(', ');
+    return `<button data-act="do-swap" data-si="${slotIndex}" data-id="${escape(entry.id)}">
+      ${escape(other.name)}${badge ? `<i class="tag">${escape(badge)}</i>` : ''}
+      <span>${escape(share || 'no counted stimulus')}${
+        other.custom ? ' · added by you' : ''
+      }</span></button>`;
+  };
+
+  return `<div class="ttl">Swap ${escape(exercise.name)}</div>
+
+    <button class="big mt" data-act="open-custom-exercise" data-si="${slotIndex}">
+      + An exercise the plan does not have</button>
+    <p class="hint" style="margin:6px 2px 14px">Kept for next time, counted in your volume, and it travels in your
+    backups. Use it when the gym does not have what the plan asks for.</p>
+
+    ${
+      listed.length
+        ? `<h4>The plan's own substitutes</h4>
+           <div class="picklist">${listed.map((entry) => row(entry, 'listed')).join('')}</div>`
+        : ''
+    }
+
+    ${
+      similar.length
+        ? `<h4>Closest by what they train</h4>
+           <div class="picklist" style="max-height:38vh;overflow:auto">${similar
+             .map((entry) => row(entry, null))
+             .join('')}</div>`
+        : '<p class="hint" style="margin:10px 2px">Nothing else in the plan trains this closely enough to stand in for it.</p>'
+    }
+
+    ${
+      unlisted.length
+        ? `<h4>Suggested, but not in the app</h4>
+           <p class="hint" style="margin:0 2px 8px">${escape(
+             unlisted.join(' · ')
+           )} — add one above and it becomes trackable like any other.</p>`
+        : ''
+    }
+
+    <button class="big ghost mt" data-act="sheet-close">Cancel</button>`;
+}
+
+/**
  * What you wrote down last time you did this exercise.
  *
  * The seat height you worked out three weeks ago was in the database and not on
@@ -717,15 +834,13 @@ function exerciseBlock(state, slot, slotIndex) {
         }</span></div>
       <div class="car">›</div></div>
     <div class="exbody">${rows}
-      <p class="hint">Last time · <b>${previous ? escape(previous.summary) : 'no previous data'}</b>${
-        previous ? ` <span style="color:var(--muted)">· ${escape(previous.dateISO)}</span>` : ''
-      }</p>
+      ${lastTimePanel(state, previous)}
       ${
         prescribed != null
           ? prescriptionHint(state, slot, prescribed, workingMax)
           : `<p class="hint"><b>${slot.idx ? 'Find your baseline.' : 'No stored max for this one.'}</b> Pick a weight you think lands at the target RPE, log what actually happened, and the app carries it forward from here.</p>`
       }
-      ${previous?.note ? `<p class="hint">Your last note · <b>${escape(previous.note)}</b></p>` : ''}
+
       ${
         slot.note
           ? `<div class="cue" style="border-left-color:${slot.isTest || slot.role === 'hold' ? 'var(--crit)' : 'var(--s1)'}">${escape(
@@ -1473,26 +1588,48 @@ export const actions = {
         <button class="big ghost mt" data-act="sheet-close">Keep ${escape(exercise.name)}</button>`);
       return;
     }
-    const byId = Object.entries(state.plan.exercises);
-    const suggested = exercise.subs
-      .map((name) => byId.find(([, x]) => x.name.toLowerCase() === name.toLowerCase()))
-      .filter(Boolean);
 
-    openSheet(`<div class="ttl">Swap ${escape(exercise.name)}</div>
-      <p style="font-size:13px;margin:12px 0 4px;color:var(--ink2)"><b style="color:var(--ink)">Recommended substitutes</b> — these hit the same muscles in the same way.</p>
-      <div class="picklist">${exercise.subs
-        .map((name, i) => {
-          const match = suggested.find(([, x]) => x.name.toLowerCase() === name.toLowerCase());
-          return match
-            ? `<button data-act="do-swap" data-si="${data.si}" data-id="${match[0]}">${escape(name)}</button>`
-            : `<button data-act="sheet-close" title="Not in the plan's exercise list">${escape(name)}<span>not tracked — log it as an added exercise</span></button>`;
-        })
-        .join('')}</div>
-      <p style="font-size:12px;margin:12px 0 4px;color:var(--muted)">Or pick anything from the full list.</p>
-      <div class="picklist" style="max-height:34vh;overflow:auto">${byId
-        .map(([id, x]) => `<button data-act="do-swap" data-si="${data.si}" data-id="${id}">${escape(x.name)}</button>`)
-        .join('')}</div>
-      <button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
+    openSheet(swapSheet(state, slotIndex, slot, exercise));
+  },
+
+  /** Name it, say what it stands in for, and it is yours from now on. */
+  'open-custom-exercise'(ctx, data) {
+    const { state } = ctx;
+    const slotIndex = Number(data.si);
+    const slot = slotsFor(state)[slotIndex];
+    const exercise = state.plan.exercises[slot.ex];
+
+    openSheet(`<div class="ttl">An exercise of your own</div>
+      <p style="font-size:13px;margin:12px 0 12px;color:var(--ink2)">It is kept, counted in your volume like any other,
+      and it travels in your backups. Nothing about it is temporary.</p>
+
+      <div><label for="cx-name">What is it called</label>
+        <input id="cx-name" type="text" placeholder="Smith machine squat" autocomplete="off"></div>
+
+      <div class="mt"><label for="cx-based">It trains the same things as</label>
+        <select id="cx-based">${Object.entries(state.plan.exercises)
+          .filter(([, e]) => !e.custom && Object.keys(e.m || {}).length)
+          .sort((a, b) => a[1].name.localeCompare(b[1].name))
+          .map(
+            ([id, e]) =>
+              `<option value="${escape(id)}" ${id === slot.ex ? 'selected' : ''}>${escape(e.name)}</option>`
+          )
+          .join('')}</select></div>
+      <p class="hint" style="margin:6px 2px 0">This copies that exercise's muscles, rest and units, so your new one
+      counts correctly from the first set. Pick the closest thing — it does not have to be exact.</p>
+
+      <button class="big mt" data-act="save-custom-exercise" data-si="${slotIndex}">Add it and use it today</button>
+      <button class="big ghost mt" data-act="open-swap" data-si="${slotIndex}">Back</button>`);
+    requestAnimationFrame(() => document.getElementById('cx-name')?.focus());
+    void exercise;
+  },
+
+  async 'save-custom-exercise'(ctx, data) {
+    const name = document.getElementById('cx-name')?.value ?? '';
+    const basedOn = document.getElementById('cx-based')?.value ?? null;
+    const id = await ctx.addCustomExercise({ name, basedOn });
+    // Straight into today's session, because that is why you added it.
+    await actions['do-swap'](ctx, { si: data.si, id });
   },
 
   'confirm-swap'(ctx, data) {
