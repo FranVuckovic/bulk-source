@@ -22,7 +22,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { createFakeEnv } from './helpers/fake-indexeddb.js';
-import { openDatabase, put, getAll, putDatedRow, confirmWorkingMax, ALL_STORES } from '../js/db.js';
+import { openDatabase, put, getAll, editDatedRow, confirmWorkingMax, ALL_STORES } from '../js/db.js';
 
 const source = readFileSync(new URL('../js/db.js', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
@@ -32,8 +32,6 @@ const app = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
  * what stops a replacement being a loss.
  */
 const NATURAL_KEYS = {
-  daily: 'putDatedRow keeps the replaced values in the audit log',
-  measurements: 'putDatedRow keeps the replaced values in the audit log',
   maxes: 'confirmWorkingMax appends every value to maxHistory',
   settings: 'holds preferences, not records — a unit or an increment has no history worth keeping',
   cycles: 'the id carries the instant the rotation started, so a new one never lands on an old row',
@@ -63,19 +61,38 @@ test('every store with a natural key is accounted for', async () => {
   );
 });
 
-test('the dated stores are never written with a plain put from the app', () => {
-  // The defect was not the replacement — a weigh-in re-entered is the same
-  // weigh-in. It was that nothing recorded what the replacement replaced.
+test('the dated stores cannot be replaced by a save at all any more', async () => {
+  /*
+   * The strongest version of the fix. `daily` and `measurements` used to be
+   * keyed by `dateISO`, so a save on a day that already had one replaced it —
+   * and the whole defence was remembering to route every write through a helper
+   * that kept the old values.
+   *
+   * At v4 they are keyed by an auto-increment id. A save appends. There is no
+   * route through which a save can destroy an entry, so there is nothing left
+   * to remember.
+   */
+  const db = await openFresh();
   for (const store of ['daily', 'measurements']) {
-    assert.ok(
-      !app.includes(`put(state.db, '${store}'`),
-      `${store} is written with a plain put somewhere in app.js`
-    );
-    assert.ok(
-      app.includes(`putDatedRow(state.db, '${store}'`),
-      `${store} must go through putDatedRow`
-    );
+    const tx = db.transaction(store);
+    assert.equal(tx.objectStore(store).keyPath, 'id', `${store} is keyed by an id`);
+    assert.ok(tx.objectStore(store).indexNames.contains('dateISO'), 'with the date as an index');
   }
+
+  await put(db, 'daily', { dateISO: '2026-08-20', bodyweight: 86.05 });
+  await put(db, 'daily', { dateISO: '2026-08-20', bodyweight: 85.5 });
+  assert.equal((await getAll(db, 'daily')).length, 2, 'a save can only ever add');
+});
+
+test('editing an entry is a different call from saving one, and it is audited', () => {
+  // Editing is deliberate: you opened one entry in the Log and changed it.
+  assert.ok(app.includes("editDatedRow(state.db, store,"), 'the app has an edit path');
+  assert.ok(app.includes("put(state.db, 'daily', row)"), 'and a save path that appends');
+
+  const source = readFileSync(new URL('../js/db.js', import.meta.url), 'utf8');
+  const fn = source.slice(source.indexOf('export async function editDatedRow'));
+  assert.match(fn.slice(0, 2000), /action: 'edit'/, 'an edit is recorded');
+  assert.match(fn.slice(0, 2000), /previous:/, 'with what it replaced');
 });
 
 test('a working max never replaces its predecessor without keeping it', async () => {
@@ -109,12 +126,12 @@ test('two rotations at the same sequence do not collide', async () => {
   assert.equal((await getAll(db, 'cycles')).length, 2, 'both are stored');
 });
 
-test('a replacement in a dated store is written as an audit entry, not just overwritten', async () => {
+test('an edit in a dated store keeps what it replaced', async () => {
   const db = await openFresh();
-  await putDatedRow(db, 'measurements', { dateISO: '2026-08-20', waist: 80, chest: 105 });
-  await putDatedRow(db, 'measurements', { dateISO: '2026-08-20', waist: 79.6, chest: 104.6 });
+  const id = await put(db, 'measurements', { dateISO: '2026-08-20', waist: 80, chest: 105 });
+  await editDatedRow(db, 'measurements', id, { waist: 79.6, chest: 104.6 });
 
-  const audit = (await getAll(db, 'auditLog')).filter((row) => row.action === 'overwrite');
+  const audit = (await getAll(db, 'auditLog')).filter((row) => row.action === 'edit');
   assert.equal(audit.length, 1);
   assert.equal(audit[0].previous.waist, 80);
   assert.equal(audit[0].previous.chest, 105);

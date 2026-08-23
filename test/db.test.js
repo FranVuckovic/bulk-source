@@ -126,10 +126,10 @@ test('blanks stay blank — nothing is coerced to zero', async () => {
 test('stored values are copies, not live references', async () => {
   const { db } = await freshDb();
   const row = { dateISO: '2026-08-20', bodyweight: 90.4 };
-  await put(db, 'daily', row);
+  const id = await put(db, 'daily', row);
 
   row.bodyweight = 999;
-  assert.equal((await get(db, 'daily', '2026-08-20')).bodyweight, 90.4);
+  assert.equal((await get(db, 'daily', id)).bodyweight, 90.4);
 });
 
 test('a session and its sets are written in one transaction', async () => {
@@ -167,9 +167,11 @@ test('a failed write rolls the whole transaction back', async () => {
   const { db } = await freshDb();
   await put(db, 'sessionLogs', { dateISO: '2026-08-20', sessionId: 'A' });
 
-  // 'daily' is keyed by dateISO, so a row without one cannot be stored.
-  await assert.rejects(() => put(db, 'daily', { bodyweight: 90 }));
-  assert.equal(await count(db, 'daily'), 0);
+  // `maxes` is keyed by exerciseId, so a row without one cannot be stored.
+  // (`daily` stopped being a useful example at v4: it is keyed by an
+  // auto-increment id now, so any row at all is storable.)
+  await assert.rejects(() => put(db, 'maxes', { workingMax: 120 }));
+  assert.equal(await count(db, 'maxes'), 0);
   assert.equal(await count(db, 'sessionLogs'), 1, 'the earlier write is untouched');
 });
 
@@ -211,7 +213,7 @@ test('deleting removes only what was asked for', async () => {
 /* ── migrations ──────────────────────────────────────────────────────── */
 
 test('the migration list is ordered, contiguous and ends at DB_VERSION', () => {
-  assert.deepEqual(MIGRATIONS.map((m) => m.version), [1, 2, 3]);
+  assert.deepEqual(MIGRATIONS.map((m) => m.version), [1, 2, 3, 4]);
   assert.equal(MIGRATIONS[MIGRATIONS.length - 1].version, DB_VERSION);
 });
 

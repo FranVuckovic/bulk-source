@@ -29,8 +29,8 @@ export const MEASUREMENT_SITES = [
   ['chest', 'Chest'],
   ['shoulders', 'Shoulders'],
   ['armL', 'Arm L'],
-  ['armR', 'Arm R'],
   ['armLFlex', 'Arm L flexed'],
+  ['armR', 'Arm R'],
   ['armRFlex', 'Arm R flexed'],
   ['forearmL', 'Forearm L'],
   ['forearmR', 'Forearm R'],
@@ -240,33 +240,40 @@ function dateBar(ctx) {
  * for each. Logging only a weigh-in must not make the tape card claim it is
  * already done.
  */
-function alreadyLogged(state, store) {
-  const row = (state[store] || []).find((entry) => entry.dateISO === state.bodyDraft.dateISO);
-  if (!row) return null;
-  const at = row.savedAtISO ? new Date(row.savedAtISO) : null;
-  return {
-    row,
-    at:
-      at && !Number.isNaN(at.getTime())
-        ? `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
-        : null,
+function entriesToday(state, store) {
+  const rows = (state[store] || []).filter((entry) => entry.dateISO === state.bodyDraft.dateISO);
+  const at = (row) => {
+    const stamp = row.savedAtISO ? new Date(row.savedAtISO) : null;
+    return stamp && !Number.isNaN(stamp.getTime())
+      ? `${String(stamp.getHours()).padStart(2, '0')}:${String(stamp.getMinutes()).padStart(2, '0')}`
+      : null;
   };
+  return rows.map((row) => ({ row, at: at(row) }));
 }
 
-/** The strip that says these boxes are showing something already saved. */
-function loggedBanner(logged, what) {
-  if (!logged) return '';
-  return `<div class="logged"><b>Already logged${logged.at ? ` at ${escape(logged.at)}` : ''}</b>
-    <span>These are the saved values for this day. ${escape(what)} replaces them — what it
-    replaces is kept, and readable from Log → this entry.</span></div>`;
+/**
+ * What is already on this day, and the promise that saving will not touch it.
+ *
+ * The form starts empty and saving appends, so this is information rather than
+ * a warning: two readings a day is a thing you can do on purpose, and the
+ * screen says which ones are already there.
+ */
+function loggedBanner(entries, what) {
+  if (!entries.length) return '';
+  const times = entries.map((entry) => entry.at).filter(Boolean);
+  return `<div class="logged"><b>${entries.length} ${escape(what)} already today${
+    times.length ? ` · ${escape(times.join(', '))}` : ''
+  }</b>
+    <span>Saving adds another one. Nothing here is replaced — to change something you already
+    saved, open it in <b>Log</b>.</span></div>`;
 }
 
 export function view(ctx) {
   const { state } = ctx;
   const unit = state.settings.unit;
   const draft = state.bodyDraft;
-  const loggedDaily = alreadyLogged(state, 'daily');
-  const loggedTape = alreadyLogged(state, 'measurements');
+  const loggedDaily = entriesToday(state, 'daily');
+  const loggedTape = entriesToday(state, 'measurements');
 
   const weights = state.daily
     .filter((d) => Number.isFinite(d.bodyweight))
@@ -284,7 +291,7 @@ export function view(ctx) {
     'today',
     'Today · about 8 seconds',
     shortDate(draft.dateISO),
-    `<div class="card">${loggedBanner(loggedDaily, 'Saving')}<div class="g3">
+    `<div class="card">${loggedBanner(loggedDaily, 'weigh-in')}<div class="g3">
       ${field('bodyweight', `Weight (${unit})`, draft.bodyweight)}
       ${field('bodyfatPct', 'Body fat %', draft.bodyfatPct)}
       ${field('sleepHours', 'Sleep h', draft.sleepHours, { step: '0.5' })}
@@ -330,8 +337,8 @@ export function view(ctx) {
             rate == null ? '' : ` · ${rate >= 0 ? '+' : ''}${fmtNum(toDisplay(rate, unit), 2)} ${unit}/week`
           } · body fat is a low-trust number, the trend is what counts</p>`
     }
-    <button class="big mt ${loggedDaily ? 'warn' : ''}" data-act="save-daily">${
-      loggedDaily ? 'Replace this weigh-in' : 'Save today'
+    <button class="big mt" data-act="save-daily">${
+      loggedDaily.length ? 'Save another weigh-in' : 'Save this weigh-in'
     }</button></div>`,
     state.shut
   )}
@@ -340,7 +347,7 @@ export function view(ctx) {
     'week',
     'This week · about a minute',
     '',
-    `<div class="card">${loggedBanner(loggedTape, 'Saving')}<div class="g3">
+    `<div class="card">${loggedBanner(loggedTape, 'set of readings')}<div class="g3">
       ${MEASUREMENT_SITES.slice(0, 3).map(([id, label]) => field(`m-${id}`, label, draft[`m-${id}`], { how: id })).join('')}
     </div><div class="g3 mt">
       ${MEASUREMENT_SITES.slice(3, 6).map(([id, label]) => field(`m-${id}`, label, draft[`m-${id}`], { how: id })).join('')}
@@ -362,8 +369,8 @@ export function view(ctx) {
           : ''
       }
     </div>
-    <button class="big mt ${loggedTape ? 'warn' : ''}" data-act="save-measurements">${
-      loggedTape ? 'Replace these measurements' : 'Save measurements'
+    <button class="big mt" data-act="save-measurements">${
+      loggedTape.length ? 'Save another set of readings' : 'Save these measurements'
     }</button>
     <button class="big ghost mt" data-act="measure-how" data-id="all">How to measure \u2014 read this once</button>
     <p class="hint">Leave anything blank. Empty is stored as empty, never as zero. Waist at the navel, relaxed — it is the lean-bulk discriminator, so consistency matters more than precision. <b>Same time of day, every time</b>: the waist moves more between waking and bedtime than it does in a good week, so two readings taken at different times are not comparable. Anything recorded before this was added has no time against it and says so rather than guessing.</p></div>`,

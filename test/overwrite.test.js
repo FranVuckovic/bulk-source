@@ -25,7 +25,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { createFakeEnv } from './helpers/fake-indexeddb.js';
-import { openDatabase, put, get, getAll, putDatedRow } from '../js/db.js';
+import { openDatabase, put, get, getAll, editDatedRow } from '../js/db.js';
 
 const openFresh = () => {
   const env = createFakeEnv();
@@ -55,79 +55,90 @@ test('the app notices the day changing while it is open', () => {
   assert.ok(app.includes('wireDayRollover();'), 'and the wiring is actually called');
 });
 
-test('replacing a weigh-in keeps the numbers it replaced', async () => {
+test('saving twice on the same day makes two entries, not one replacement', async () => {
+  /*
+   * The whole shape of the original loss, made impossible at v4.
+   *
+   * `daily` and `measurements` were keyed by `dateISO`, so a second save on a
+   * day replaced the first. They are keyed by an id now: a save appends. A
+   * morning weigh-in and an evening one are two entries, and a save aimed at
+   * the wrong day cannot destroy what is already there because it does not
+   * touch it.
+   */
   const db = await openFresh();
   await put(db, 'daily', { dateISO: '2026-08-20', bodyweight: 86.05, bodyfatPct: 10.6, sleepHours: 7.5 });
+  await put(db, 'daily', { dateISO: '2026-08-20', bodyweight: 86.4, bodyfatPct: 10.4, sleepHours: 7.5 });
 
-  const result = await putDatedRow(db, 'daily', {
-    dateISO: '2026-08-20',
-    bodyweight: 86.4,
-    bodyfatPct: 10.4,
-    sleepHours: 7.5,
-  });
+  const rows = await getAll(db, 'daily');
+  assert.equal(rows.length, 2, 'two entries');
+  assert.deepEqual(rows.map((r) => r.bodyweight), [86.05, 86.4], 'and neither lost its value');
+  assert.equal((await getAll(db, 'auditLog')).length, 0, 'nothing was replaced, so nothing is logged');
+});
 
-  assert.equal(result.existed, true);
+test('editing an entry keeps the numbers it replaced', async () => {
+  // Editing is the deliberate act — you opened one entry in the Log and changed
+  // it. That is where the audit belongs now.
+  const db = await openFresh();
+  const id = await put(db, 'daily', { dateISO: '2026-08-20', bodyweight: 86.05, bodyfatPct: 10.6, sleepHours: 7.5 });
+
+  const result = await editDatedRow(db, 'daily', id, { bodyweight: 85.5, bodyfatPct: 10.4 });
+
   assert.deepEqual(
     result.changed.map((c) => c.field).sort(),
     ['bodyfatPct', 'bodyweight'],
     'sleep did not change, so it is not reported as changed'
   );
 
-  const stored = await get(db, 'daily', '2026-08-20');
-  assert.equal(stored.bodyweight, 86.4, 'the new value is what is stored');
+  const stored = await get(db, 'daily', id);
+  assert.equal(stored.bodyweight, 85.5, 'the new value is what is stored');
+  assert.equal(stored.sleepHours, 7.5, 'and untouched fields are untouched');
 
-  const audit = (await getAll(db, 'auditLog')).filter((row) => row.action === 'overwrite');
+  const audit = (await getAll(db, 'auditLog')).filter((row) => row.action === 'edit');
   assert.equal(audit.length, 1);
   assert.equal(audit[0].entity, 'daily');
-  assert.equal(audit[0].entityId, '2026-08-20');
+  assert.equal(audit[0].entityId, id);
   assert.equal(audit[0].previous.bodyweight, 86.05, 'the replaced weight is still readable');
   assert.equal(audit[0].previous.bodyfatPct, 10.6);
 });
 
-test('the exact reported loss is now recoverable from the log', async () => {
-  // The real numbers, from the photograph and from the export.
+test('the exact reported loss cannot happen at all now', async () => {
+  // The real numbers, from the photograph and from the export. The 21st's
+  // readings landing on the 20th used to destroy the 20th's. Now they are two
+  // entries and both are there.
   const db = await openFresh();
-  const yesterday = {
+  const twentieth = {
     dateISO: '2026-08-20',
     timeOfDay: 'waking',
-    waist: 80,
-    chest: 105,
-    shoulders: 124,
-    armL: 32.6,
-    armR: 32.5,
-    quadL: 55.6,
-    quadR: 56.2,
-    neck: 39.5,
+    waist: 80, chest: 105, shoulders: 124,
+    armL: 32.6, armR: 32.5, quadL: 55.6, quadR: 56.2, neck: 39.5,
   };
-  await put(db, 'measurements', yesterday);
-
-  await putDatedRow(db, 'measurements', {
+  await put(db, 'measurements', twentieth);
+  await put(db, 'measurements', {
     dateISO: '2026-08-20',
     timeOfDay: 'waking',
-    waist: 79.6,
-    chest: 104.6,
-    shoulders: 122.7,
-    armL: 32.9,
-    armR: 32.9,
-    quadL: 55.7,
-    quadR: 56.4,
-    neck: 40,
+    waist: 79.6, chest: 104.6, shoulders: 122.7,
+    armL: 32.9, armR: 32.9, quadL: 55.7, quadR: 56.4, neck: 40,
   });
 
-  const audit = (await getAll(db, 'auditLog')).find((row) => row.action === 'overwrite');
-  assert.ok(audit, 'the overwrite is recorded at all — previously it was not');
+  const rows = await getAll(db, 'measurements');
+  assert.equal(rows.length, 2, 'both sets of readings exist');
   for (const site of ['waist', 'chest', 'shoulders', 'armL', 'armR', 'quadL', 'quadR', 'neck']) {
-    assert.equal(audit.previous[site], yesterday[site], `${site} survived the overwrite`);
+    assert.equal(rows[0][site], twentieth[site], `${site} survived the second save`);
   }
 });
 
-test('a first entry for a day is not reported as an overwrite', async () => {
+test('an edit that changes nothing writes nothing', async () => {
   const db = await openFresh();
-  const result = await putDatedRow(db, 'daily', { dateISO: '2026-08-21', bodyweight: 86.4 });
+  const id = await put(db, 'daily', { dateISO: '2026-08-21', bodyweight: 86.4 });
+  const result = await editDatedRow(db, 'daily', id, { bodyweight: 86.4 });
 
-  assert.equal(result.existed, false);
   assert.deepEqual(result.changed, []);
-  assert.equal((await getAll(db, 'auditLog')).length, 0, 'nothing was replaced, so nothing is logged');
+  assert.equal((await getAll(db, 'auditLog')).length, 0, 'nothing changed, so nothing is logged');
+});
+
+test('editing an entry that no longer exists is refused rather than creating one', async () => {
+  const db = await openFresh();
+  await assert.rejects(() => editDatedRow(db, 'daily', 999, { bodyweight: 90 }), /no longer exists/);
 });
 
 test('the Body screen can be pointed at another day, but never at a future one', () => {

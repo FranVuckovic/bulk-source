@@ -27,7 +27,7 @@ import {
   logicalSetKey,
   softDeleteRow,
   restoreRow,
-  putDatedRow,
+  editDatedRow,
   deletedRecords,
   deleteSessionCascade,
   claimSingleTab,
@@ -673,10 +673,21 @@ async function rollOverIfNeeded() {
   render();
 }
 
-/** The Body entries for one day, prefilled from whatever is already stored. */
+/**
+ * A blank Body form for one day.
+ *
+ * It used to prefill from whatever was already stored for the date. That is
+ * what made the boxes full when you opened the screen, which reads as "the form
+ * did not clear" rather than "you already logged this day" — and it is how a
+ * day of tape readings was written over.
+ *
+ * The form is empty now, always. Saving appends an entry and empties it again,
+ * so logging twice in a day is just logging twice. Changing something you
+ * already saved is done in the Log, on that entry, on purpose.
+ */
 function fillBodyDraftFrom(dateISO) {
-  const daily = state.daily.find((d) => d.dateISO === dateISO) || {};
-  const measurement = state.measurements.find((m) => m.dateISO === dateISO) || {};
+  const daily = {};
+  const measurement = {};
   const unit = state.settings.unit;
   const show = (value) => (value == null ? '' : String(Math.round(toDisplay(value, unit) * 10) / 10));
 
@@ -931,15 +942,38 @@ const ctx = {
     return id;
   },
 
+  /**
+   * A weigh-in is a log entry. Saving appends one; it never replaces.
+   *
+   * That is the whole point of v4. The store is keyed by an id now, so a second
+   * save on the same day is a second entry — a morning reading and an evening
+   * one, or a correction made deliberately in the Log, but never a silent
+   * overwrite of something you cannot get back.
+   */
   async saveDaily(row) {
-    const result = await putDatedRow(state.db, 'daily', row);
+    const written = await put(state.db, 'daily', row);
+    // Emptied so the next one is a fresh entry, not an edit of this one.
+    resetBodyDraft();
     await reloadDated('daily');
-    return result;
+    return { id: written };
   },
 
+  /** Tape readings are a log entry too. Same rule: append, never replace. */
   async saveMeasurements(row) {
-    const result = await putDatedRow(state.db, 'measurements', row);
+    const written = await put(state.db, 'measurements', row);
+    resetBodyDraft();
     await reloadDated('measurements');
+    return { id: written };
+  },
+
+  /**
+   * Change an entry that already exists. Only reachable from the Log, and only
+   * behind a confirmation — an edit is a deliberate act, not a side effect of
+   * opening a screen.
+   */
+  async editEntry(store, id, patch) {
+    const result = await editDatedRow(state.db, store, parseStoreKey(store, id), patch);
+    await reloadDated(store);
     return result;
   },
 

@@ -20,10 +20,10 @@ export const DB_NAME = 'bulk';
 export const DEMO_DB_NAME = 'bulk-demo';
 
 /** Bump this and add a migration. Never edit an existing migration. */
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 
 /** Written into settings so a future version can recognise this data. */
-export const FORMAT_VERSION = 3;
+export const FORMAT_VERSION = 4;
 
 export const DEFAULT_SETTINGS = Object.freeze({
   unit: 'kg',
@@ -144,6 +144,49 @@ function createStores(db, stores) {
  * version above the one on disk. A migration that touches data uses the
  * transaction it is given — opening a new one would deadlock.
  */
+/**
+ * v4 — a weigh-in and a set of tape readings become log entries.
+ *
+ * `daily` and `measurements` were keyed by `dateISO`, which made one record per
+ * day the only shape they could hold. Two consequences, and the app hit both:
+ *
+ *   Saving the same day twice REPLACED the first, which is how a full set of
+ *   tape readings was destroyed by a stale idea of what "today" was.
+ *   You could not take a reading in the morning and another before bed, even
+ *   though `timeOfDay` existed to tell them apart.
+ *
+ * Keyed by an id now, with `dateISO` as an ordinary index. Saving always
+ * appends; nothing is ever replaced by a save. Correcting a past entry is a
+ * deliberate act performed on that entry, in the Log, behind a confirmation.
+ *
+ * IndexedDB cannot change a store's keyPath in place, so each store is read,
+ * dropped and rebuilt inside the upgrade transaction. Rows keep every field
+ * they had, including `dateISO`, and gain an id.
+ *
+ * Exports stay compatible in both directions. A new export's rows still carry
+ * `dateISO`, so an older build — whose store is keyed by it — imports them and
+ * ignores the extra `id`. An older export's rows have no `id`, so this build's
+ * auto-increment assigns one.
+ */
+function relKeyToId(db, tx, name, indexes) {
+  const request = tx.objectStore(name).getAll();
+  request.onsuccess = () => {
+    const rows = request.result || [];
+
+    // Every row is in hand; only now is it safe to drop the store.
+    db.deleteObjectStore(name);
+    const store = db.createObjectStore(name, { keyPath: 'id', autoIncrement: true });
+    for (const index of indexes) {
+      store.createIndex(index.name, index.keyPath, { unique: !!index.unique });
+    }
+    for (const row of rows) {
+      const { id, ...rest } = row;
+      void id;
+      store.put(rest);
+    }
+  };
+}
+
 export const MIGRATIONS = [
   {
     version: 1,
@@ -223,6 +266,14 @@ export const MIGRATIONS = [
       };
 
       tx.objectStore('settings').put({ key: 'formatVersion', value: 3 });
+    },
+  },
+  {
+    version: 4,
+    upgrade(db, tx) {
+      relKeyToId(db, tx, 'daily', [{ name: 'dateISO', keyPath: 'dateISO' }]);
+      relKeyToId(db, tx, 'measurements', [{ name: 'dateISO', keyPath: 'dateISO' }]);
+      tx.objectStore('settings').put({ key: 'formatVersion', value: 4 });
     },
   },
 ];
@@ -822,8 +873,8 @@ export const RECOVERABLE_STORES = Object.freeze(['daily', 'measurements', 'niggl
 export const KEY_PATHS = Object.freeze({
   sessionLogs: 'id',
   sets: 'id',
-  daily: 'dateISO',
-  measurements: 'dateISO',
+  daily: 'id',
+  measurements: 'id',
   niggles: 'id',
   media: 'id',
   cycles: 'id',
@@ -868,55 +919,50 @@ export async function restoreRow(db, storeName, id) {
 }
 
 /**
- * Write a row keyed by its date, keeping what it replaced.
+ * Change an entry that already exists, keeping what it held before.
  *
- * `daily` and `measurements` are keyed by `dateISO`, so a second write for the
- * same day replaces the first. That is correct — a weigh-in you re-enter is the
- * same weigh-in — but the old values used to vanish with nothing to notice
- * them by, and a write aimed at the wrong day was therefore silent and
- * unrecoverable. Reported from real use: yesterday's tape readings were
- * overwritten by today's, and only survived because they had been
- * photographed.
+ * Saving never comes through here. A save appends a new entry — that is what
+ * v4 made possible and it is what stops a day of tape readings being destroyed
+ * by a stale idea of what "today" is. This is the deliberate act: you opened
+ * one entry in the Log and changed it.
  *
- * The replacement still happens. What is new is that the values it replaced are
- * kept in the audit log, so the change is visible and the numbers are still
- * there to read back.
+ * What it replaced is kept in the audit log, so an edit is visible and the old
+ * numbers are still there to read back.
  */
-export async function putDatedRow(db, storeName, row) {
+export async function editDatedRow(db, storeName, id, patch) {
   return withTransaction(db, [storeName, 'auditLog'], 'readwrite', async ([store, audit]) => {
-    const key = row[store.keyPath];
-    const existing = key == null ? null : await request(store.get(key));
+    const existing = await request(store.get(id));
+    if (!existing) throw new Error('that entry no longer exists');
+
+    const next = { ...existing, ...patch, id: existing.id };
 
     const changed = [];
-    if (existing) {
-      const fields = new Set([...Object.keys(existing), ...Object.keys(row)]);
-      for (const field of fields) {
-        if (field === store.keyPath || field === 'deletedAtISO') continue;
-        const before = existing[field] ?? null;
-        const after = row[field] ?? null;
-        if (before !== after && before !== null) changed.push({ field, from: before, to: after });
-      }
+    const fields = new Set([...Object.keys(existing), ...Object.keys(next)]);
+    for (const field of fields) {
+      if (field === 'id' || field === 'deletedAtISO') continue;
+      const before = existing[field] ?? null;
+      const after = next[field] ?? null;
+      if (before !== after) changed.push({ field, from: before, to: after });
     }
 
-    await request(store.put(row));
+    if (!changed.length) return { changed: [] };
 
-    if (changed.length) {
-      await request(
-        audit.put({
-          atISO: new Date().toISOString(),
-          entity: storeName,
-          entityId: key,
-          action: 'overwrite',
-          fields: changed.map((c) => c.field),
-          previous: Object.fromEntries(changed.map((c) => [c.field, c.from])),
-          // Not one-tap restorable: putting it back is a decision about which
-          // reading was the real one, and only you know that.
-          restorable: false,
-        })
-      );
-    }
+    await request(store.put(next));
+    await request(
+      audit.put({
+        atISO: new Date().toISOString(),
+        entity: storeName,
+        entityId: id,
+        action: 'edit',
+        fields: changed.map((c) => c.field),
+        previous: Object.fromEntries(changed.map((c) => [c.field, c.from])),
+        // Not one-tap restorable: putting a value back is a decision about which
+        // reading was the real one, and only you know that.
+        restorable: false,
+      })
+    );
 
-    return { existed: !!existing, changed };
+    return { changed };
   });
 }
 

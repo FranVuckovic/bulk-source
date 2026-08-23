@@ -25,7 +25,7 @@ const openFresh = () => {
 
 test('a deleted weigh-in leaves the live set and comes back whole', async () => {
   const db = await openFresh();
-  // `daily` is keyed by its date, not by an id — one weigh-in per day.
+  // Since v4, `daily` is keyed by an id: a day can hold more than one weigh-in.
   const id = await put(db, 'daily', { dateISO: '2026-08-01', bodyweight: 90.4, sleepHours: 7.5 });
   await put(db, 'daily', { dateISO: '2026-08-02', bodyweight: 90.6 });
 
@@ -41,7 +41,7 @@ test('a deleted weigh-in leaves the live set and comes back whole', async () => 
   assert.equal(entry.restorable, true);
 
   await restoreRow(db, 'daily', id);
-  const restored = alive(await getAll(db, 'daily')).find((row) => row.dateISO === id);
+  const restored = alive(await getAll(db, 'daily')).find((row) => row.id === id);
   assert.equal(restored.bodyweight, 90.4, 'the values are unchanged');
   assert.equal(restored.sleepHours, 7.5, 'including the ones nothing else reads');
 });

@@ -154,18 +154,26 @@ test('the CSV has a column for the save stamp', async () => {
   }
 });
 
-test('daily and measurements are asked about separately', async () => {
+test('daily and measurements are counted separately', async () => {
   // They are separate records. Logging only a weigh-in must not make the tape
-  // card claim it is already done — the earlier check used `||` and did.
+  // card claim anything about itself — the earlier check used `||` and did.
   const source = await import('node:fs').then(({ readFileSync }) =>
     readFileSync(new URL('../js/ui/body.js', import.meta.url), 'utf8')
   );
-  const fn = source.slice(source.indexOf('function alreadyLogged'), source.indexOf('function loggedBanner'));
+  const fn = source.slice(source.indexOf('function entriesToday'), source.indexOf('function loggedBanner'));
   assert.match(fn, /state\[store\]/, 'it takes the store as an argument');
 
   const view = source.slice(source.indexOf('export function view(ctx)'));
-  assert.match(view, /alreadyLogged\(state, 'daily'\)/);
-  assert.match(view, /alreadyLogged\(state, 'measurements'\)/);
-  assert.match(view, /Replace this weigh-in/, 'and the button says what it will do');
-  assert.match(view, /Replace these measurements/);
+  assert.match(view, /entriesToday\(state, 'daily'\)/);
+  assert.match(view, /entriesToday\(state, 'measurements'\)/);
+  assert.match(view, /Save another weigh-in/, 'and the button says a save adds rather than replaces');
+  assert.match(view, /Save another set of readings/);
+});
+
+test('the arms read relaxed then flexed, left then right', () => {
+  // Asked for so the four arm numbers can be compared down the screen in the
+  // order they are taken. Display order only — every key is unchanged, so no
+  // reading moves.
+  const arms = ids.filter((id) => id.startsWith('arm'));
+  assert.deepEqual(arms, ['armL', 'armLFlex', 'armR', 'armRFlex']);
 });

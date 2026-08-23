@@ -139,7 +139,10 @@ test('demo seeding is repeatable and cannot alter the personal database', async 
       'reloading the demo replaces its generated history instead of duplicating it'
     );
 
-    assert.deepEqual(await getAll(personal, 'daily'), [{ dateISO: '2026-08-20', bodyweight: 90 }]);
+    const personalDaily = await getAll(personal, 'daily');
+    assert.equal(personalDaily.length, 1, 'the personal weigh-in is untouched');
+    assert.equal(personalDaily[0].dateISO, '2026-08-20');
+    assert.equal(personalDaily[0].bodyweight, 90);
     assert.equal((await getAll(personal, 'sessionLogs')).length, 0);
   } finally {
     globalThis.document = previousDocument;
