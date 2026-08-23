@@ -629,6 +629,29 @@ table.phases tr.borrowed td:first-child{color:var(--warn)}
 .lastbox .lb-e .e-u{font-size:11px;color:var(--muted)}
 .lastbox .lb-e .e-bw{flex-basis:100%;font-size:10.5px;color:var(--muted)}
 
+/* ── Best estimated max, on the Exercises tab ───────────────────────────
+   One row per exercise you have ever logged a usable set for. */
+.bestwrap{margin:0 0 12px;background:var(--surface);border:1px solid var(--grid);border-radius:var(--r);
+  overflow:hidden}
+.bestwrap > summary{padding:12px 14px;font-weight:700;font-size:14px;cursor:pointer;list-style:none}
+.bestwrap > summary::-webkit-details-marker{display:none}
+.bestwrap > summary::after{content:'›';float:right;transform:rotate(90deg);color:var(--muted)}
+.bestwrap[open] > summary::after{transform:rotate(-90deg)}
+.bestwrap > .c{padding:0 14px 14px}
+.besttable{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.besttable th{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);text-align:right;padding:0 0 6px}
+.besttable th:first-child{text-align:left}
+.besttable td{padding:8px 0;border-top:1px solid var(--grid);text-align:right;vertical-align:top}
+.besttable tr{cursor:pointer}
+.besttable tr:active td{background:var(--sunk)}
+.besttable .bx{text-align:left;font-size:13.5px;font-weight:600;line-height:1.3;padding-right:8px}
+.besttable .bv{font-size:17px;font-weight:800;letter-spacing:-.02em;white-space:nowrap;padding-right:8px}
+.besttable .bu{font-size:10px;font-weight:600;color:var(--muted);margin-left:3px}
+.besttable .bf{font-size:11.5px;color:var(--ink2);white-space:nowrap;line-height:1.45}
+.besttable .bd{color:var(--muted);font-size:10.5px}
+.lowmark{color:var(--s2);font-weight:800;margin-left:4px}
+
 /* ── RPE calculator ─────────────────────────────────────────────────────
    A scratch pad, not a log. Nothing it does writes anything. */
 .calcb svg rect{fill:none}

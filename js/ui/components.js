@@ -129,8 +129,19 @@ let running = false;
  */
 let view = 'closed';
 
-/** Where the bubble sits, as a fraction of the viewport. Dragged, and remembered. */
-let bubbleAt = { x: 0.86, y: 0.62 };
+/**
+ * Where the bubble sits: `x` as a fraction of the width, `up` as pixels above
+ * the bottom edge.
+ *
+ * The vertical axis is pixels rather than a fraction on purpose. A phone's
+ * viewport height is not a constant — it grows and shrinks as the address bar
+ * hides and comes back — so anything stored as a fraction of it slides down the
+ * screen when you scroll down and back up when you scroll up. Which is exactly
+ * what "the timer scrolls with the page" was, on an element that never left
+ * `position: fixed`. The bottom edge is the one that stays still, so the bubble
+ * is measured from there.
+ */
+let bubbleAt = { x: 0.86, up: 300 };
 
 /** Rest: the instant it finishes. Stopwatch: unused. */
 let endsAtMs = null;
@@ -161,7 +172,12 @@ function remember() {
 function recall() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
-    if (saved.bubbleAt && Number.isFinite(saved.bubbleAt.x)) bubbleAt = saved.bubbleAt;
+    if (saved.bubbleAt && Number.isFinite(saved.bubbleAt.x)) {
+      const { x, up, y } = saved.bubbleAt;
+      // Positions saved before the vertical axis became pixels are fractions.
+      const height = window.visualViewport?.height ?? window.innerHeight ?? 800;
+      bubbleAt = { x, up: Number.isFinite(up) ? up : clampUp(height * (1 - (y ?? 0.62)), height) };
+    }
     if (typeof saved.notify === 'boolean') notify = saved.notify;
     if (Number.isFinite(saved.restSeconds)) restSeconds = saved.restSeconds;
   } catch {
@@ -293,11 +309,32 @@ function paintRest() {
   }
 }
 
+/**
+ * Put the bubble where it was dragged to — on the glass, not in the document.
+ *
+ * A percentage on a `position: fixed` element resolves against the *layout*
+ * viewport, and on a phone that grows and shrinks as the address bar hides and
+ * comes back. So a bubble parked at 62% slid 45 pixels down when you scrolled
+ * down and 45 back up when you scrolled up: the reported "the timer scrolls
+ * with the page", from an element that never left `position: fixed`.
+ *
+ * The visual viewport is the part you can actually see. Resolving the stored
+ * fraction against that, in pixels, and offsetting by however far it has been
+ * pushed, pins the bubble to one spot on the screen through the address bar,
+ * the on-screen keyboard and a pinch-zoom alike.
+ */
+/** Keep the bubble on screen whatever the viewport just did to itself. */
+const clampUp = (up, height) => Math.min(Math.max(up, 96), Math.max(height - 40, 96));
+
 function placeBubble() {
   const bubble = document.getElementById('rest-bubble');
   if (!bubble) return;
-  bubble.style.left = `${bubbleAt.x * 100}%`;
-  bubble.style.top = `${bubbleAt.y * 100}%`;
+  const view = window.visualViewport;
+  const width = view?.width ?? window.innerWidth;
+  const height = view?.height ?? window.innerHeight;
+  bubble.style.left = `${bubbleAt.x * width}px`;
+  bubble.style.top = 'auto';
+  bubble.style.bottom = `${clampUp(bubbleAt.up, height) - 33}px`;
 }
 
 const repaintEvery = (ms) => {
@@ -316,6 +353,17 @@ if (typeof document !== 'undefined') {
   });
   window.addEventListener('pageshow', paintRest);
   window.addEventListener('focus', paintRest);
+
+  // The visible viewport moves and resizes constantly on a phone. Every one of
+  // those is a reason to re-place the bubble, and none of them is a scroll of
+  // the document.
+  const view = window.visualViewport;
+  if (view) {
+    view.addEventListener('resize', placeBubble);
+    view.addEventListener('scroll', placeBubble);
+  }
+  window.addEventListener('orientationchange', placeBubble);
+  window.addEventListener('resize', placeBubble);
 }
 
 /**
@@ -351,10 +399,11 @@ export function wireTimerDrag() {
     bubble.classList.add('dragging');
 
     const margin = 34;
-    const bottom = 96;
-    const x = Math.min(Math.max(event.clientX - offsetX, margin), window.innerWidth - margin);
-    const y = Math.min(Math.max(event.clientY - offsetY, margin), window.innerHeight - bottom);
-    bubbleAt = { x: x / window.innerWidth, y: y / window.innerHeight };
+    const height = window.visualViewport?.height ?? window.innerHeight;
+    const width = window.visualViewport?.width ?? window.innerWidth;
+    const x = Math.min(Math.max(event.clientX - offsetX, margin), width - margin);
+    const y = Math.min(Math.max(event.clientY - offsetY, margin), height - 96);
+    bubbleAt = { x: x / width, up: clampUp(height - y, height) };
     placeBubble();
   });
 

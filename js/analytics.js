@@ -15,7 +15,7 @@
  * Pure: records in, metrics out.
  */
 
-import { estimateForSet, isHighConfidence, systemLoad, e1rm, setDifficulty } from './calc.js';
+import { estimateForSet, isHighConfidence, systemLoad, e1rm, setDifficulty, noEstimateReason } from './calc.js';
 import { daysBetween, weekStart } from './dates.js';
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -774,6 +774,66 @@ export function records(sets, { exercises, logs }) {
     heaviest: [...heaviest.values()].sort((a, b) => b.dateISO.localeCompare(a.dateISO)),
     estimated: [...bestEstimate.values()].sort((a, b) => b.dateISO.localeCompare(a.dateISO)),
   };
+}
+
+/**
+ * The best estimated max ever recorded for every exercise, in one list.
+ *
+ * Deliberately a looser question than `records()`. That one answers "what may
+ * claim a personal record", so it counts only index sets on lifts whose max is
+ * trustworthy — which is the right bar for a record and the wrong bar for
+ * "what is my best ever on the leg press". This answers the second question,
+ * and carries the confidence along rather than quietly mixing the two.
+ *
+ * Every row says how many sets it had to choose from and how many were thrown
+ * away, with the reason. A best-ever from one estimable set out of thirty is a
+ * different claim from one out of thirty, and the screen should be able to say
+ * so.
+ */
+export function bestEstimates(sets, { exercises, logs, bodyweight = 0 } = {}) {
+  const byLog = new Map((logs || []).map((log) => [log.id, log]));
+  const rows = new Map();
+
+  const row = (id, name) => {
+    if (!rows.has(id)) {
+      rows.set(id, {
+        exerciseId: id, name, value: null, load: null, reps: null, rpe: null, dateISO: null,
+        confidence: null, samples: 0, estimable: 0, excluded: [],
+      });
+    }
+    return rows.get(id);
+  };
+
+  for (const set of sets || []) {
+    if (set.deletedAtISO) continue;
+    const exercise = exercises[set.exerciseId];
+    if (!exercise) continue;
+
+    const here = row(set.exerciseId, exercise.name);
+    here.samples += 1;
+
+    const estimate = estimateForSet(set, { bodyweight: exercise.bodyweightLoaded ? bodyweight : 0 });
+    if (!estimate?.value) {
+      const why = noEstimateReason(set.load, set.reps, set.rpe, { short: true });
+      if (why && !here.excluded.includes(why)) here.excluded.push(why);
+      continue;
+    }
+
+    here.estimable += 1;
+    if (here.value != null && estimate.value <= here.value) continue;
+
+    const log = byLog.get(set.sessionLogId);
+    here.value = estimate.value;
+    here.load = set.load;
+    here.reps = set.reps;
+    here.rpe = set.rpe ?? null;
+    here.confidence = estimate.confidence;
+    here.dateISO = (log?.localDate || log?.dateISO || '').slice(0, 10) || null;
+  }
+
+  return [...rows.values()]
+    .filter((entry) => entry.value != null)
+    .sort((a, b) => b.value - a.value);
 }
 
 /**

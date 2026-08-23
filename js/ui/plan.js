@@ -17,7 +17,8 @@ import {
   DIMINISHING_RETURNS_SETS,
 } from '../volume.js';
 import { resolveSession, toDisplaySession } from '../plan.js';
-import { escape, subnav } from './components.js';
+import { escape, subnav, fmtLoad } from './components.js';
+import { bestEstimates } from '../analytics.js';
 import { estimateMinutes } from './train.js';
 
 const VOLUME_SCALE = 24;
@@ -322,6 +323,55 @@ function volumeBars(state, volume, frequency, wholeMuscle = null) {
    Sub-sections
    ═══════════════════════════════════════════════════════════════════════ */
 
+/**
+ * Your best estimated max on everything you have ever logged, in one place.
+ *
+ * The Progress screen answers this one lift at a time, which is the right shape
+ * for watching a bench move and the wrong shape for "what am I best at" or
+ * "have I ever actually recorded a number for this". Every figure comes from
+ * `bestEstimates` — this draws it and does no arithmetic, like every other
+ * view here.
+ *
+ * Deliberately looser than the Records list on Progress: that one counts only
+ * index sets on lifts whose max is trustworthy, because it decides what may
+ * claim a personal record. This counts every set that produced an estimate at
+ * all, and marks the ones the table could not underwrite.
+ */
+function bestList(state) {
+  const rows = bestEstimates(state.sets, {
+    exercises: state.plan.exercises,
+    logs: state.logs,
+    bodyweight: state.settings.bodyweight,
+  });
+  if (!rows.length) {
+    return `<div class="card" style="margin-bottom:12px"><p style="margin:0;color:var(--muted);font-size:13px">
+      No estimated maxes yet. Log a set with an effort rating and it appears here.</p></div>`;
+  }
+
+  const unit = state.settings.unit;
+  return `<details class="bestwrap" ${state.bestOpen ? 'open' : ''}>
+    <summary>Best estimated max · ${rows.length} exercise${rows.length === 1 ? '' : 's'}</summary>
+    <div class="c">
+      <table class="besttable"><thead><tr>
+        <th>Exercise</th><th>Best e1RM</th><th>From</th>
+      </tr></thead><tbody>${rows
+        .map(
+          (row) => `<tr data-act="plan-jump-exercise" data-id="${escape(row.exerciseId)}">
+        <td class="bx">${escape(row.name)}${
+          row.confidence === 'high' ? '' : '<span class="lowmark" title="estimated without an RPE">~</span>'
+        }</td>
+        <td class="bv">${escape(fmtLoad(row.value, unit))}<span class="bu">${escape(unit)}</span></td>
+        <td class="bf">${escape(fmtLoad(row.load, unit))} × ${row.reps}${
+          row.rpe == null ? '' : ` @${escape(String(row.rpe))}`
+        }<br><span class="bd">${escape(row.dateISO || '—')}</span></td>
+      </tr>`
+        )
+        .join('')}</tbody></table>
+      <p class="hint" style="margin:10px 2px 0">Best ever, not most recent — tap a row for the exercise. A <span class="lowmark">~</span> means the set had no effort rating, so the estimate is a formula rather than the table.</p>
+    </div>
+  </details>`;
+}
+
 function exercisesView(state) {
   const usedIn = (id) => state.plan.sessions.filter((s) => s.slots.some((slot) => slot.ex === id)).map((s) => s.id);
   const search = state.exerciseSearch || '';
@@ -331,6 +381,7 @@ function exercisesView(state) {
 
   return `<h3 style="margin-top:0">Exercises</h3>
   <p style="margin:0 2px 12px">How to perform it, what it trains, why it is in the plan, and what to use instead if the equipment is taken.</p>
+  ${bestList(state)}
   <div style="margin:0 0 11px"><input type="search" placeholder="Search ${
     Object.keys(state.plan.exercises).length
   } exercises…" value="${escape(search)}" data-act-input="exercise-search"></div>
@@ -519,6 +570,13 @@ export const actions = {
   'plan-session'(ctx, data) {
     ctx.state.planOpenSession = ctx.state.planOpenSession === data.id ? null : data.id;
     ctx.render();
+  },
+
+  'plan-jump-exercise'(ctx, data) {
+    const target = document.getElementById(`x-${data.id}`);
+    if (!target) return;
+    target.open = true;
+    target.scrollIntoView({ block: 'center' });
   },
 
   'plan-section'(ctx, data) {

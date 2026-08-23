@@ -277,6 +277,27 @@ function buildHistory() {
     entry.sets.sort((a, b) => (a.setIndex ?? 0) - (b.setIndex ?? 0));
     entry.note = entry.sets.map((s) => s.note).find(Boolean) || null;
   }
+
+  /*
+   * An exercise split in two inherits the history of the one it came from,
+   * until it has some of its own.
+   *
+   * "Cable pronation / supination" was one exercise and is now two, and every
+   * set ever logged is filed under the old id. Rewriting those sets to pick a
+   * half would be inventing a fact the record does not contain — a logged set
+   * says what was lifted, not which direction. So nothing is rewritten: the old
+   * sets keep their own exercise and their own name in the Log, and the two new
+   * halves read the parent's last session as their starting point.
+   *
+   * The moment a half has a session of its own, the inheritance stops and it
+   * carries its own history from there.
+   */
+  for (const [id, exercise] of Object.entries(state.plan.exercises)) {
+    if (!exercise.splitFrom || latest.has(id)) continue;
+    const parent = latest.get(exercise.splitFrom);
+    if (parent) latest.set(id, { ...parent, inheritedFrom: exercise.splitFrom });
+  }
+
   state.lastByExercise = latest;
 }
 

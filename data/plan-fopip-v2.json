@@ -1368,7 +1368,7 @@
    "bodyweightLoaded": false
   },
   "cableRotation": {
-   "name": "Cable pronation / supination",
+   "name": "Cable pronation / supination (retired)",
    "tracksMax": false,
    "maxConf": null,
    "m": {
@@ -1379,7 +1379,7 @@
     "Full controlled range in both directions.",
     "Light load; this is a rotation drill, not a curl."
    ],
-   "why": "The rotational component of forearm training, absent from v1. Cheap, and it complements flexion and extension work.",
+   "why": "The rotational component of forearm training, absent from v1. Cheap, and it complements flexion and extension work. Split into two exercises so each direction is tracked separately; kept here so sets logged before the split keep their name.",
    "subs": [
     "Dumbbell pronation/supination",
     "Zottman curl"
@@ -1389,7 +1389,8 @@
    "unit": "kg",
    "defaultRestSec": 60,
    "refPhotoId": null,
-   "bodyweightLoaded": false
+   "bodyweightLoaded": false,
+   "retired": true
   },
   "wristFlex": {
    "name": "Supported wrist flexion",
@@ -1438,6 +1439,56 @@
    "defaultRestSec": 60,
    "refPhotoId": null,
    "bodyweightLoaded": false
+  },
+  "cablePronation": {
+   "name": "Cable pronation",
+   "tracksMax": false,
+   "maxConf": null,
+   "m": {
+    "forearm": 1.0
+   },
+   "how": [
+    "Elbow pinned to your side and fixed — the forearm is the only thing that moves.",
+    "Start palm-up, rotate to palm-down against the cable, and control the way back.",
+    "Light. This is a rotation drill, not a curl."
+   ],
+   "why": "The pronating half of the forearm rotation work, separated so each direction is loaded and progressed on its own.",
+   "subs": [
+    "Dumbbell pronation",
+    "Zottman curl (lowering phase)"
+   ],
+   "watch": null,
+   "grips": null,
+   "unit": "kg",
+   "defaultRestSec": 60,
+   "refPhotoId": null,
+   "bodyweightLoaded": false,
+   "splitFrom": "cableRotation"
+  },
+  "cableSupination": {
+   "name": "Cable supination",
+   "tracksMax": false,
+   "maxConf": null,
+   "m": {
+    "forearm": 1.0
+   },
+   "how": [
+    "Elbow pinned to your side and fixed — the forearm is the only thing that moves.",
+    "Start palm-down, rotate to palm-up against the cable, and control the way back.",
+    "Light. This is a rotation drill, not a curl."
+   ],
+   "why": "The supinating half of the forearm rotation work. Supination is also the biceps’ second job, so this doubles as direct biceps work at a short length.",
+   "subs": [
+    "Dumbbell supination",
+    "Zottman curl (lifting phase)"
+   ],
+   "watch": null,
+   "grips": null,
+   "unit": "kg",
+   "defaultRestSec": 60,
+   "refPhotoId": null,
+   "bodyweightLoaded": false,
+   "splitFrom": "cableRotation"
   }
  },
  "sessions": [
@@ -2625,7 +2676,29 @@
     },
     {
      "id": "E11",
-     "ex": "cableRotation",
+     "ex": "cablePronation",
+     "role": "accessory",
+     "label": "superset both directions",
+     "sets": 2,
+     "repsLow": 12,
+     "repsHigh": 20,
+     "rpe": 10,
+     "failLast": 1,
+     "failLastHigh": 1,
+     "pct": null,
+     "pctBasis": null,
+     "idx": false,
+     "amrap": false,
+     "myoOption": false,
+     "accessory": true,
+     "optional": false,
+     "restSec": 60,
+     "note": null,
+     "effort": null
+    },
+    {
+     "id": "E12",
+     "ex": "cableSupination",
      "role": "accessory",
      "label": "superset both directions",
      "sets": 2,
@@ -3417,7 +3490,7 @@
   {
    "s": "Start here",
    "t": "How long each session should take",
-   "c": "<p>These assume you actually take the prescribed rest periods. If you are finishing much faster, you are rushing; much slower, you are on your phone.</p>\n<ul>\n<li><strong>A · Heavy bench + back — 27 sets, 85–95 min.</strong> The longest, because heavy singles need 3–5 min between attempts.</li>\n<li><strong>B · Lower + arms — 30 sets, 75–85 min.</strong> Dense; most of it is 60–90 s rests.</li>\n<li><strong>C · AMRAP + bench variation — 27 sets, 70–80 min.</strong> The AMRAP is a measurement, so it goes first, straight after the ramp.</li>\n<li><strong>D · Lower + delts + jumps — 33 sets, 75–85 min.</strong> Four of those sets are jumps with full recovery.</li>\n<li><strong>E · Bench volume + incline Smith — 30 sets, 70–80 min.</strong></li>\n<li><strong>F · Speed bench + overhead + back — 23 sets, 75–85 min.</strong> Most exercises, but six of those sets are cheap speed work.</li>\n</ul>\n<p>Add 8–10 minutes of warm-up to each. These grew when we added the core work and the extra arm and chest volume — you said length was not a problem, so I took you at your word. If a session is consistently overrunning, tell me and I will trim it rather than have you skip the last exercises, which are always the isolation work you actually want.</p>"
+   "c": "<p>These assume you actually take the prescribed rest periods. If you are finishing much faster, you are rushing; much slower, you are on your phone.</p>\n<ul>\n<li><strong>A · Heavy bench + back — 27 sets, 85–95 min.</strong> The longest, because heavy singles need 3–5 min between attempts.</li>\n<li><strong>B · Lower + arms — 30 sets, 75–85 min.</strong> Dense; most of it is 60–90 s rests.</li>\n<li><strong>C · AMRAP + bench variation — 27 sets, 70–80 min.</strong> The AMRAP is a measurement, so it goes first, straight after the ramp.</li>\n<li><strong>D · Lower + delts + jumps — 33 sets, 75–85 min.</strong> Four of those sets are jumps with full recovery.</li>\n<li><strong>E · Bench volume + incline Smith — 32 sets, 70–80 min.</strong> Two of those are the forearm rotation split into its two directions — the same work as before, counted as two exercises instead of one, so the minutes did not move.</li>\n<li><strong>F · Speed bench + overhead + back — 23 sets, 75–85 min.</strong> Most exercises, but six of those sets are cheap speed work.</li>\n</ul>\n<p>Add 8–10 minutes of warm-up to each. These grew when we added the core work and the extra arm and chest volume — you said length was not a problem, so I took you at your word. If a session is consistently overrunning, tell me and I will trim it rather than have you skip the last exercises, which are always the isolation work you actually want.</p>"
   },
   {
    "s": "Start here",

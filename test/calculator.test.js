@@ -98,6 +98,54 @@ test('pounds are converted before the maths, not after', () => {
   assert.ok(Math.abs(inKg.value - inLb.value) < 1e-3);
 });
 
+/* ── Find the RPE ─────────────────────────────────────────────────────── */
+
+test('effort mode: a weight against a max gives the RPE', () => {
+  // 100 kg is 81.1% of 123.3, which is exactly the 5-rep RPE 8 row.
+  const result = answer(state, pad({ mode: 'effort', load: '100', max: '123.3', reps: '5' }));
+  assert.equal(result.kind, 'rpe');
+  assert.equal(result.value, 8);
+});
+
+test('effort mode round-trips against the other two directions', () => {
+  for (const [reps, rpe] of [[3, 9], [5, 8], [8, 10], [10, 7]]) {
+    const load = answer(state, pad({ mode: 'reverse', max: '150', reps: String(reps), rpe: String(rpe) }));
+    const back = answer(state, pad({ mode: 'effort', load: String(load.value), max: '150', reps: String(reps) }));
+    assert.equal(back.kind, 'rpe', `${reps}×${rpe} gave ${back.kind}`);
+    assert.equal(back.value, rpe, `${reps} reps at ${rpe} came back as ${back.value}`);
+  }
+});
+
+test('effort mode reports an off-table load instead of clamping it', () => {
+  // rpeFor() returns a flat 10 or 6 outside the table. A calculator that
+  // printed "RPE 10" for a load nobody could lift for that many reps would be
+  // stating a fact about the lifter that the table never claimed.
+  const heavy = answer(state, pad({ mode: 'effort', load: '120', max: '123.3', reps: '5' }));
+  assert.equal(heavy.kind, 'none');
+  assert.match(heavy.why, /heavier than/);
+
+  const light = answer(state, pad({ mode: 'effort', load: '60', max: '123.3', reps: '5' }));
+  assert.equal(light.kind, 'none');
+  assert.match(light.why, /lighter than RPE 6/);
+});
+
+test('effort mode waits for both numbers', () => {
+  assert.equal(answer(state, pad({ mode: 'effort', load: '100', max: '' })).kind, 'waiting');
+  assert.equal(answer(state, pad({ mode: 'effort', load: '', max: '150' })).kind, 'waiting');
+});
+
+test('effort mode asks for no RPE, and the other modes take it from buttons only', () => {
+  const effort = sheet(state, pad({ mode: 'effort', load: '100', max: '150' }));
+  assert.ok(!effort.includes('data-act-input="calc-rpe"'), 'effort mode still has an RPE field');
+  assert.ok(!effort.includes('calc-rpes'), 'effort mode still offers RPE buttons');
+
+  for (const mode of ['forward', 'reverse']) {
+    const html = sheet(state, pad({ mode }));
+    assert.ok(!html.includes('data-act-input="calc-rpe"'), `${mode} still has an RPE text field`);
+    assert.ok(html.includes('data-act="calc-rpe-pick"'), `${mode} lost the RPE buttons`);
+  }
+});
+
 test('the sheet renders every RPE column as a shortcut', () => {
   resetCalculator();
   assert.deepEqual(calculatorState(), pad());
