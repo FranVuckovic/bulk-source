@@ -25,6 +25,7 @@ import {
   effectiveRpeDetail,
   roundToIncrement,
   systemLoad,
+  estimateForSet,
   warmupRamp,
   platesFor,
   pct,
@@ -257,7 +258,7 @@ function lastTime(state, exerciseId) {
  * "session B, three days ago" tells you whether to expect to beat it and
  * "2026-08-19" does not.
  */
-function lastTimePanel(state, previous) {
+export function lastTimePanel(state, previous, slot) {
   if (!previous) return '<div class="lastbox none">No previous data — today sets the baseline.</div>';
 
   const unit = state.settings.unit;
@@ -278,9 +279,57 @@ function lastTimePanel(state, previous) {
           } at RPE ${escape(String(best.rpe))}</div>`
         : ''
     }
+    ${lastTimeEstimates(state, previous, slot)}
     ${previous.note ? `<div class="lb-n">${escape(previous.note)}</div>` : ''}
   </div>`;
 }
+
+/**
+ * Last session's estimated max, set by set, in the same order as the loads
+ * above it.
+ *
+ * The panel already answered "what did I lift"; it did not answer "was it any
+ * good", and that is the question you are actually asking at the bar. Two sets
+ * of the same weight for the same reps at RPE 8 and RPE 10 are a large
+ * difference in what they say about your max, and reading that off three
+ * separate numbers in your head between sets is not something anyone does.
+ *
+ * Every estimate comes from `estimateForSet`, so bodyweight lifts are estimated
+ * on bodyweight + added like everywhere else — marked, because a 128 kg chin-up
+ * e1RM next to a 6 kg entry is otherwise baffling. Sets the table cannot
+ * express say so instead of showing a number, and the low-confidence Epley
+ * fallback is marked rather than mixed in silently.
+ */
+function lastTimeEstimates(state, previous, slot) {
+  const bodyweight = slot ? bodyweightFor(state, slot.ex) : 0;
+  const estimates = previous.sets.map((set) => estimateForSet(set, { bodyweight }));
+  const usable = estimates.filter((estimate) => estimate?.value != null);
+  if (!usable.length) {
+    const first = previous.sets[0];
+    const why = first && noEstimateReason(first.load, first.reps, first.rpe, { short: true });
+    return why ? `<div class="lb-e none">No estimated max — ${escape(why)}</div>` : '';
+  }
+
+  const top = Math.max(...usable.map((estimate) => estimate.value));
+  const cells = estimates
+    .map((estimate) => {
+      if (estimate?.value == null) return '<span class="e-x">—</span>';
+      const text = escape(fmtLoad(estimate.value, state.settings.unit));
+      const classes = ['e-v'];
+      if (estimate.value === top) classes.push('e-top');
+      if (estimate.confidence !== 'high') classes.push('e-low');
+      return `<span class="${classes.join(' ')}" title="${escape(estimate.reason || 'from the RPE table')}">${text}</span>`;
+    })
+    .join('<i>·</i>');
+
+  return `<div class="lb-e">
+    <span class="e-k">e1RM</span>
+    ${cells}
+    <span class="e-u">${escape(state.settings.unit)}</span>
+    ${bodyweight ? '<span class="e-bw">on bodyweight + added</span>' : ''}
+  </div>`;
+}
+
 
 /**
  * The values a row shows. Anything logged wins; then the prescription, or last
@@ -834,7 +883,7 @@ function exerciseBlock(state, slot, slotIndex) {
         }</span></div>
       <div class="car">›</div></div>
     <div class="exbody">${rows}
-      ${lastTimePanel(state, previous)}
+      ${lastTimePanel(state, previous, slot)}
       ${
         prescribed != null
           ? prescriptionHint(state, slot, prescribed, workingMax)

@@ -100,6 +100,7 @@ import * as progress from './ui/progress.js';
 import * as plan from './ui/plan.js';
 import * as settings from './ui/settings.js';
 import * as history from './ui/history.js';
+import * as calculator from './ui/calculator.js';
 import { demoModeOn, setDemoMode, openDemoDatabase, seedDemoData, DEMO_ROTATIONS } from './demo.js';
 
 const PLAN_URL = './data/plan-fopip-v2.json';
@@ -166,6 +167,7 @@ const state = {
   progressSection: null,
   historyFilter: 'all',
   planSection: null,
+  tipOpen: null,
   exerciseSearch: '',
   planProgress: { sessionsDone: 0, daysElapsed: null, calendarWeek: 1, pace: null },
 };
@@ -1494,7 +1496,7 @@ const ctx = {
  * open sheet is a level too: back closes the sheet before it changes screen,
  * because that is what the gesture means when something is covering the page.
  */
-const VIEW_KEYS = ['tab', 'progressSection', 'planSection', 'logSection', 'bodySection', 'historyFilter', 'historyStatus', 'logSessionId'];
+const VIEW_KEYS = ['tab', 'progressSection', 'planSection', 'logSection', 'bodySection', 'historyFilter', 'historyStatus', 'logSessionId', 'tipOpen'];
 
 const currentView = () => Object.fromEntries(VIEW_KEYS.map((key) => [key, state[key] ?? null]));
 
@@ -1513,6 +1515,7 @@ function goTo(patch, { replace = false } = {}) {
   if (patch.tab && patch.tab !== state.tab) {
     next.progressSection = patch.progressSection ?? null;
     next.planSection = patch.planSection ?? null;
+    next.tipOpen = patch.tipOpen ?? null;
     next.logSection = patch.logSection ?? null;
     next.bodySection = patch.bodySection ?? null;
   }
@@ -1531,7 +1534,33 @@ function goTo(patch, { replace = false } = {}) {
     // offer back. Never a reason to fail the tap itself.
   }
   render();
+
+  // Landing on the top of a forty-item accordion is not arriving at the entry
+  // you were sent to. When a view names one, go to it instead.
+  //
+  // On the next frame, because closing a sheet gives its history entry back and
+  // that navigation is asynchronous: scrolling now would be undone by it.
   window.scrollTo(0, 0);
+  if (next.tipOpen) requestAnimationFrame(scrollToOpenTip);
+}
+
+/**
+ * Put the opened knowledge entry below whatever is stuck to the top.
+ *
+ * `scrollIntoView` puts it at the top of the viewport, which on this screen is
+ * underneath the title bar and the section tabs — so you land in the middle of
+ * the entry's second paragraph with no idea which entry you are in. The tabs
+ * wrap to two rows on a narrow phone, so the offset is measured rather than
+ * guessed at.
+ */
+function scrollToOpenTip() {
+  const target = document.getElementById('tip-open');
+  if (!target) return;
+  const stuck = [...document.querySelectorAll('.top, .subnav')].reduce(
+    (lowest, el) => Math.max(lowest, el.getBoundingClientRect().bottom),
+    0
+  );
+  window.scrollTo({ top: window.scrollY + target.getBoundingClientRect().top - stuck - 8 });
 }
 
 /*
@@ -1664,6 +1693,18 @@ function wireKeyboardHandling() {
 
 function wireBackButton() {
   setSheetHooks({ onOpen: onSheetOpen, onClose: onSheetClose });
+
+  // This app decides where every navigation lands — `goTo` scrolls to the top,
+  // or to the entry it was sent to. Left on 'auto', the browser also restores
+  // whatever scroll position it remembers for a history entry, asynchronously,
+  // and whichever lands second wins. Closing a sheet spends a history entry, so
+  // a link inside one (the calculator's "how this maths works") scrolled to its
+  // target and was then yanked back to zero a frame later.
+  try {
+    window.history.scrollRestoration = 'manual';
+  } catch {
+    // Not supported. The only cost is the jump this prevents.
+  }
   window.history.replaceState({ view: currentView() }, '');
 
   window.addEventListener('popstate', (event) => {
@@ -2042,7 +2083,8 @@ function wireEvents() {
       progress.actions[act] ||
       history.actions[act] ||
       plan.actions[act] ||
-      settings.actions[act];
+      settings.actions[act] ||
+      calculator.actions[act];
     if (!handler) return;
 
     // A write that fails has to say so. Silently doing nothing is the one
@@ -2098,7 +2140,8 @@ function wireEvents() {
       // handler, and silently did nothing — the same shape as the two defects
       // `shell.test.js` exists to catch. A test now checks this list against
       // the modules.
-      const handler = train.inputs[input] || plan.inputs[input] || body.inputs[input];
+      const handler =
+        train.inputs[input] || plan.inputs[input] || body.inputs[input] || calculator.inputs[input];
       Promise.resolve(handler?.(ctx, el.value)).catch(showFailure);
     }
   });

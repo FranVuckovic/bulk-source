@@ -490,13 +490,25 @@ function sessionCard(state, session, resolved, isOpen, isNext) {
 
 function tipsView(state) {
   const sections = [...new Set(state.plan.knowledge.map((t) => t.s))];
+
+  // Something elsewhere in the app can send you to the entry that explains it —
+  // the calculator's "how this maths works" link, for one. Thirty-eight
+  // collapsed summaries is not somewhere you find an explanation by scrolling,
+  // and a link that lands on the top of a long accordion has not really taken
+  // you anywhere.
+  const wanted = state.tipOpen;
   return `<h3 style="margin-top:0">General tips</h3>
   <p style="margin:0 2px 12px">Everything that decides whether this works, in the order it tends to matter.</p>
   ${sections
     .map(
       (section) => `<h3>${escape(section)}</h3><div class="card">${state.plan.knowledge
         .filter((t) => t.s === section)
-        .map((t) => `<details><summary>${escape(t.t)}</summary><div class="c">${t.c}</div></details>`)
+        .map((t) => {
+          const open = wanted && t.t === wanted;
+          return `<details${open ? ' open id="tip-open"' : ''}><summary>${escape(
+            t.t
+          )}</summary><div class="c">${t.c}</div></details>`;
+        })
         .join('')}</div>`
     )
     .join('')}`;

@@ -18,6 +18,7 @@ import { actions as progressActions } from '../js/ui/progress.js';
 import { actions as historyActions } from '../js/ui/history.js';
 import { actions as planActions, inputs as planInputs } from '../js/ui/plan.js';
 import { actions as settingsActions, files as settingsFiles } from '../js/ui/settings.js';
+import { actions as calculatorActions, inputs as calculatorInputs } from '../js/ui/calculator.js';
 
 const root = new URL('..', import.meta.url).pathname;
 const read = (path) => readFileSync(join(root, path), 'utf8');
@@ -114,6 +115,7 @@ test('every literal UI control is wired to a real handler', () => {
     ...Object.keys(historyActions),
     ...Object.keys(planActions),
     ...Object.keys(settingsActions),
+    ...Object.keys(calculatorActions),
   ]);
   for (const action of literalBindings('data-act')) {
     assert.ok(clickHandlers.has(action), `data-act="${action}" has no click handler`);
@@ -133,6 +135,7 @@ test('every literal UI control is wired to a real handler', () => {
     ...Object.keys(trainInputs),
     ...Object.keys(planInputs),
     ...Object.keys(bodyInputs),
+    ...Object.keys(calculatorInputs),
   ]);
   for (const action of literalBindings('data-act-input')) {
     assert.ok(inputHandlers.has(action), `data-act-input="${action}" has no input handler`);
@@ -143,7 +146,12 @@ test('every literal UI control is wired to a real handler', () => {
   // that list — so its date picker rendered, matched a handler, and did
   // nothing. Both halves are asserted, because only the second one runs.
   const dispatcher = app.slice(app.indexOf("const input = el.dataset.actInput;"));
-  for (const [name, module] of [['train', trainInputs], ['plan', planInputs], ['body', bodyInputs]]) {
+  for (const [name, module] of [
+    ['train', trainInputs],
+    ['plan', planInputs],
+    ['body', bodyInputs],
+    ['calculator', calculatorInputs],
+  ]) {
     if (!Object.keys(module).length) continue;
     assert.ok(
       dispatcher.includes(`${name}.inputs[input]`),

@@ -257,6 +257,22 @@ export function e1rm(load, reps, rpe) {
 }
 
 /**
+ * The inverse of `e1rm`: what to load to hit a target estimated max at a given
+ * reps and RPE.
+ *
+ * Guards identically to `e1rm`, and for the same reason — an RPE the table
+ * cannot express has no answer, and inventing one here would put a confident
+ * number on a bar. Off the table, or past the rep ceiling, returns null and the
+ * caller says why.
+ */
+export function loadForE1rm(estimate, reps, rpe) {
+  if (!estimate || !reps || reps > MAX_ESTIMABLE_REPS) return null;
+  const percentage = pct(reps, rpe);
+  if (percentage == null) return null;
+  return estimate * (percentage / 100);
+}
+
+/**
  * Epley fallback for sets logged without an RPE. Reps of 1 returns the load
  * itself — Epley's formula adds 3.3% at a single, which is nonsense for a lift
  * you actually completed.

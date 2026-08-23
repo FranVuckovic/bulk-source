@@ -20,7 +20,7 @@
  * is obvious from inside the app whether an update actually landed.
  */
 
-const VERSION = 'v2.13.0';
+const VERSION = 'v2.14.0';
 const CACHE = `bulk-${VERSION}`;
 
 const SHELL = [
@@ -48,6 +48,7 @@ const SHELL = [
   './js/ui/progress.js',
   './js/ui/settings.js',
   './js/ui/train.js',
+  './js/ui/calculator.js',
   './data/plan-fopip-v2.json',
   './icons/icon-192-v2.png',
   './icons/icon-512-v2.png',
