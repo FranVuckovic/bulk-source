@@ -534,6 +534,15 @@ function repairSheet(ctx, log) {
       session moved without them would sit on one day while its work sat on another.</p></div>
     <button class="big mt" data-act="repair-date" data-id="${log.id}">Move it to that date</button>
 
+    <div class="mt"><label for="fix-rotation">The rotation it belongs to</label>
+      <input id="fix-rotation" type="number" min="1" max="${state.plan.meta.rotations}" value="${escape(
+        String(log.cycleSequence ?? state.cycle.sequence)
+      )}">
+      <p class="hint">A session trained after a rotation finished, but before the plan was moved on, is filed against
+      the rotation that had already finished. Moving it changes only which rotation it counts towards — every set
+      stays exactly as logged.</p></div>
+    <button class="big mt" data-act="repair-rotation" data-id="${log.id}">Move it to that rotation</button>
+
     ${startRepair(ctx, log)}
 
     ${
@@ -1236,6 +1245,22 @@ export const actions = {
               longDate(result.to)
             )}.`
           : 'That is the date it was already on.'
+      }</p>
+      <button class="big mt" data-act="sheet-close">Close</button>`);
+  },
+
+  async 'repair-rotation'(ctx, data) {
+    const to = document.getElementById('fix-rotation')?.value;
+    const result = await ctx.moveSessionToCycle(Number(data.id), Number(to));
+    closeSheet();
+    ctx.render();
+    openSheet(`<div class="ttl">${result.moved ? 'Moved' : 'Not changed'}</div>
+      <p style="text-align:center;font-size:13.5px;margin:14px 0">${
+        result.moved
+          ? `Session ${escape(String(result.sessionId))} now counts towards <b>rotation ${result.to}</b>${
+              result.from ? `, not rotation ${result.from}` : ''
+            }. Its sets are untouched.`
+          : escape(result.reason || 'Nothing to do.')
       }</p>
       <button class="big mt" data-act="sheet-close">Close</button>`);
   },

@@ -1161,6 +1161,45 @@ const ctx = {
   },
 
   /**
+   * Move one session into a different rotation.
+   *
+   * The repair for a session filed against the wrong rotation — which happens
+   * when a rotation finished and the plan had not been moved on yet, so the
+   * work went into the rotation that was already complete. The session and its
+   * sets stay exactly as logged; only which rotation they count towards moves.
+   *
+   * The target cycle is created if the plan has not reached it yet, because the
+   * common case is correcting a session into the rotation you thought you were
+   * already in.
+   */
+  async moveSessionToCycle(logId, toSequence) {
+    const log = state.logs.find((row) => row.id === logId);
+    if (!log) return { moved: false, reason: 'that session is no longer here' };
+
+    const to = Math.min(Math.max(1, Number(toSequence)), state.plan.meta.rotations);
+    const from = log.cycleSequence ?? null;
+    if (to === from) return { moved: false, reason: 'it is already in that rotation' };
+
+    let cycle = state.cycles.find((c) => c.sequence === to);
+    if (!cycle) {
+      cycle = newCycle(state.plan, { sequence: to, startedAtISO: nowISO(), localStartDate: todayISO() });
+      await put(state.db, 'cycles', cycle);
+    }
+
+    await put(state.db, 'sessionLogs', { ...log, cycleId: cycle.id, cycleSequence: to, blockId: blockFor(state.plan, to).id });
+    await put(state.db, 'auditLog', {
+      atISO: nowISO(), entity: 'sessionLogs', entityId: logId, action: 'edit',
+      fields: ['cycleSequence'], previous: { cycleSequence: from },
+      reason: 'moved to another rotation', restorable: false,
+    });
+
+    await loadEverything();
+    buildHistory();
+    render();
+    return { moved: true, from, to, sessionId: log.sessionId };
+  },
+
+  /**
    * Correct the rotation number by hand, with a reason recorded.
    *
    * Needed after an import, a mis-tap, or training that happened away from the
@@ -1871,6 +1910,11 @@ const globalActions = {
     const result = await ctx.advanceCycle();
     closeSheet();
     if (result.moved) {
+      // The rotation moved, so the screen behind the sheet has to move with it
+      // — otherwise you close this and are still looking at the old rotation's
+      // session picker.
+      state.trainSessionId = state.position.nextSessionId;
+      render();
       openSheet(`<div class="ttl">Rotation ${result.to}</div>
         <p style="text-align:center;font-size:14px;margin:14px 0 4px;color:var(--ink)">${escape(state.block.name)}</p>
         <p style="text-align:center;font-size:13px">${escape(state.block.theme)}</p>

@@ -382,11 +382,37 @@ export function view(ctx) {
     for (let i = 0; i < slot.sets; i++) if (state.loggedSets.has(setKey(si, i))) doneSets++;
   });
 
-  const isNext = !isCustom && state.trainSessionId === state.position.nextSessionId;
+  /*
+   * Where this session sits in the rotation, and whether it has already been
+   * done in it.
+   *
+   * A finished rotation used to preselect the next rotation's first session
+   * while the app was still on the old one — so training it filed the session
+   * against a rotation that was already complete, gave position A a second log,
+   * and produced "that completes rotation N" all over again. Nothing here
+   * advances the rotation, which is deliberate; what it does now is refuse to
+   * pretend the rotation has advanced.
+   */
+  const rotationFinished = !isCustom && state.cycleProgress.finished;
+  const positionStatus = isCustom
+    ? null
+    : state.cycleProgress.positions.find((p) => p.position === state.trainSessionId)?.status ?? 'pending';
+  const alreadyDone = positionStatus === 'complete' || positionStatus === 'partial';
+
+  const isNext = !isCustom && !rotationFinished && state.trainSessionId === state.position.nextSessionId;
   const label = isCustom
     ? `Outside the rotation · next remains ${escape(state.position.nextSessionId)}`
+    : rotationFinished
+    ? `Rotation ${state.cycle.sequence} is complete`
     : isNext
-    ? `Next in rotation · session ${state.position.sessionsDone + 1}`
+    ? // Which session of *this* rotation, not how many have ever been trained.
+      // It read "session 7" on the first session of rotation 2, which is true
+      // of the plan and useless on a screen about a six-session rotation.
+      `Next in rotation · session ${state.plan.meta.rotationOrder.indexOf(state.trainSessionId) + 1} of ${
+        state.plan.meta.rotationOrder.length
+      }`
+    : alreadyDone
+    ? `Already done this rotation · next up is ${escape(state.position.nextSessionId)}`
     : `Picked manually · next up is ${escape(state.position.nextSessionId)}`;
 
   return `
@@ -429,6 +455,8 @@ export function view(ctx) {
         : `<div class="mini" style="margin-top:10px"><button data-act="open-cycle-control">Rotation ${state.cycle.sequence} · correct</button></div>`
     }
   </div>
+
+  ${rotationFinished && !state.activeLog ? rotationDoneCard(state) : ''}
 
   ${
     state.activeLog
@@ -575,6 +603,33 @@ export function estimateMinutes(state, slots) {
   }, 0);
   const minutes = Math.round(seconds / 60);
   return `${Math.round(minutes * 0.9 / 5) * 5}–${Math.round(minutes * 1.1 / 5) * 5}`;
+}
+
+/**
+ * The rotation is finished and the plan has not been moved on yet.
+ *
+ * This is the state the owner got stuck in. The app will not advance on its
+ * own — that is a deliberate rule, because the rotation number decides the
+ * block, the effort wave and every prescribed load — but leaving the screen
+ * looking like an ordinary session is how a session ends up filed against a
+ * rotation that finished a week ago.
+ */
+function rotationDoneCard(state) {
+  const last = state.cycle.sequence >= state.plan.meta.rotations;
+  return `<div class="rotdone">
+    <div class="rd-h">Rotation ${state.cycle.sequence} of ${state.plan.meta.rotations} is complete</div>
+    <p>All six sessions are done. ${
+      last
+        ? 'That is the last rotation of the plan.'
+        : `Anything you train now is still recorded against <b>rotation ${state.cycle.sequence}</b> until you move the plan on.`
+    }</p>
+    ${
+      last
+        ? ''
+        : `<button class="big" data-act="advance-cycle">Start rotation ${state.cycle.sequence + 1}</button>
+           <p class="hint">You can still train without advancing — it just goes into rotation ${state.cycle.sequence}.</p>`
+    }
+  </div>`;
 }
 
 /**
@@ -1736,7 +1791,49 @@ export const actions = {
   },
 
   /** Start the clock without logging anything. */
+  /**
+   * Starting a session that this rotation has already had.
+   *
+   * The last line of defence for the misfiling loop. Even with the screen
+   * saying the rotation is finished, you can pick a session and start it — and
+   * you may genuinely want to, after a session that went badly. What you must
+   * not do is start it *believing* you are in the next rotation. So the app
+   * says which rotation the work is about to be filed under, and offers the
+   * advance instead.
+   */
   async 'start-session'(ctx) {
+    const { state } = ctx;
+    const status =
+      state.trainSessionId === CUSTOM_SESSION_ID
+        ? null
+        : state.cycleProgress.positions.find((p) => p.position === state.trainSessionId)?.status;
+
+    if (status === 'complete' || status === 'partial') {
+      const last = state.cycle.sequence >= state.plan.meta.rotations;
+      openSheet(`<div class="ttl">Already done this rotation</div>
+        <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">Session <b>${escape(
+          state.trainSessionId
+        )}</b> is already logged as ${escape(status)} in <b>rotation ${state.cycle.sequence}</b>.</p>
+        <p style="text-align:center;font-size:13px">Starting it now records a second ${escape(
+          state.trainSessionId
+        )} in rotation ${state.cycle.sequence}${
+          last ? '.' : ` — not in rotation ${state.cycle.sequence + 1}.`
+        }</p>
+        ${
+          last
+            ? ''
+            : `<button class="big mt" data-act="advance-cycle">Start rotation ${state.cycle.sequence + 1} first</button>`
+        }
+        <button class="big ghost mt" data-act="do-start-session">Train it in rotation ${state.cycle.sequence} anyway</button>
+        <button class="big ghost mt" data-act="sheet-close">Go back</button>`);
+      return;
+    }
+
+    await ctx.startSession();
+  },
+
+  async 'do-start-session'(ctx) {
+    closeSheet();
     await ctx.startSession();
   },
 
