@@ -629,6 +629,18 @@ table.phases tr.borrowed td:first-child{color:var(--warn)}
 .lastbox .lb-e .e-u{font-size:11px;color:var(--muted)}
 .lastbox .lb-e .e-bw{flex-basis:100%;font-size:10.5px;color:var(--muted)}
 
+/* ── Correcting a logged entry ──────────────────────────────────────────
+   Every field the entry can hold, including the blank ones. */
+.editgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:0 2px 10px}
+.editf{display:flex;flex-direction:column;gap:4px;min-width:0}
+.editf.wide{margin:0 2px 10px}
+.editf span{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.editf span i{font-style:normal;font-weight:600;color:var(--axis)}
+.editf input{width:100%;padding:10px;border-radius:10px;border:1px solid var(--grid);
+  background:var(--raised);color:var(--ink);font:inherit;font-size:16px;font-weight:650;
+  font-variant-numeric:tabular-nums;min-width:0}
+.editf input[type=date],.editf input[type=text]{font-weight:600;font-size:15px}
+
 /* ── Best estimated max, on the Exercises tab ───────────────────────────
    One row per exercise you have ever logged a usable set for. */
 .bestwrap{margin:0 0 12px;background:var(--surface);border:1px solid var(--grid);border-radius:var(--r);

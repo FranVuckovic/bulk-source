@@ -15,7 +15,7 @@
 import { e1rm, systemLoad, setDifficulty, noEstimateReason, roughE1rm, roughConfidence } from '../calc.js';
 import { sessionTiming, sessionAnalysis } from '../analytics.js';
 import { escape, fmtLoad, fmtNum, subnav, flag, openSheet, closeSheet } from './components.js';
-import { measurementTimeLabel, scaleLabel } from './body.js';
+import { measurementTimeLabel, scaleLabel, MEASUREMENT_SITES } from './body.js';
 import { rowBars, barChart } from './charts.js';
 
 const KINDS = [
@@ -82,8 +82,13 @@ export function entries(state, { deleted = false } = {}) {
     }),
     ...state.daily.map((row) => ({
       kind: 'daily',
-      key: `daily:${row.dateISO}`,
-      id: row.dateISO,
+      // Keyed by the row, not by the day. Since v4 a day can hold several
+      // weigh-ins, and both of these used to be the date: two entries on one
+      // day collided on the same key, and `store.get('2026-08-22')` against a
+      // store keyed by an auto-increment id matches nothing at all — so
+      // deleting one from here threw instead of deleting it.
+      key: `daily:${row.id}`,
+      id: row.id,
       dateISO: dayOf(row.dateISO),
       title: 'Daily',
       summary: [
@@ -98,8 +103,8 @@ export function entries(state, { deleted = false } = {}) {
     })),
     ...state.measurements.map((row) => ({
       kind: 'measurement',
-      key: `measurement:${row.dateISO}`,
-      id: row.dateISO,
+      key: `measurement:${row.id}`,
+      id: row.id,
       dateISO: dayOf(row.dateISO),
       title: 'Measurements',
       summary:
@@ -933,17 +938,27 @@ function replacedValues(state, row) {
   const store = { daily: 'daily', measurement: 'measurements', niggle: 'niggles', media: 'media' }[row.kind];
   if (!store) return '';
 
+  // Entries written before v4 are filed under the date, and everything since
+  // under the row id. Both are this row's history.
+  const identities = [row.record.id, row.record.dateISO].filter((value) => value != null);
   const history = (state.auditLog || [])
-    .filter((entry) => entry.action === 'overwrite' && entry.entity === store && entry.entityId === row.record.dateISO)
+    .filter(
+      (entry) =>
+        ['overwrite', 'edit'].includes(entry.action) &&
+        entry.entity === store &&
+        identities.includes(entry.entityId)
+    )
     .sort((a, b) => b.atISO.localeCompare(a.atISO));
   if (!history.length) return '';
 
-  return `<details class="card" style="margin-top:12px"><summary>Replaced values · ${history.length}</summary><div class="c">
-    <p class="hint" style="margin:0 0 8px">Every time this entry was written over, and what it held before.</p>
+  return `<details class="card" style="margin-top:12px"><summary>Earlier values · ${history.length}</summary><div class="c">
+    <p class="hint" style="margin:0 0 8px">Every time this entry was changed, and what it held before.</p>
     ${history
       .map(
         (entry) => `<div style="margin:0 0 10px">
-          <b style="font-size:12.5px">Written over on ${escape(longDate(entry.atISO.slice(0, 10)))}</b>
+          <b style="font-size:12.5px">${entry.action === 'edit' ? 'Edited' : 'Written over'} on ${escape(
+            longDate(entry.atISO.slice(0, 10))
+          )}</b>
           <table><tbody>${Object.entries(entry.previous || {})
             .map(([field, value]) => `<tr><td>${escape(field)}</td><td>${escape(value)}</td></tr>`)
             .join('')}</tbody></table></div>`
@@ -965,8 +980,115 @@ export function plainDetail(state, row) {
     <p style="text-align:center;font-size:13px;margin:10px 0 12px">${escape(longDate(row.dateISO))}</p>
     <table><tbody>${fields || '<tr><td>Every field is blank</td><td></td></tr>'}</tbody></table>
     ${replacedValues(state, row)}
+    ${
+      EDITABLE[row.kind]
+        ? `<button class="big mt" data-act="history-edit" data-key="${escape(row.key)}">Edit this entry</button>`
+        : ''
+    }
     <button class="big danger mt" data-act="history-delete" data-key="${escape(row.key)}">Delete this entry</button>
     <button class="big ghost mt" data-act="sheet-close">Close</button>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Editing an entry
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Which entries can be corrected here, and what they are made of.
+ *
+ * Only the body entries. A session is not edited from a sheet — it has its own
+ * screen, where the sets, the date and the start time each have their own
+ * repair with their own explanation, because getting one of those wrong means
+ * something different every time.
+ */
+const EDITABLE = {
+  daily: {
+    store: 'daily',
+    what: 'weigh-in',
+    fields: [
+      ['bodyweight', 'Bodyweight', 'kg'],
+      ['bodyfatPct', 'Body fat', '%'],
+      ['sleepHours', 'Sleep', 'h'],
+      ['steps', 'Steps', ''],
+    ],
+  },
+  measurement: {
+    store: 'measurements',
+    what: 'set of measurements',
+    fields: MEASUREMENT_SITES.map(([key, label]) => [key, label, 'cm']),
+  },
+};
+
+/**
+ * The correction form.
+ *
+ * Every field the entry can hold, filled in with what it holds now — including
+ * the blank ones, because "I forgot to write my neck down" is as much a
+ * correction as "I typed 9.2 for 92". The date is editable too: the whole
+ * reason this screen exists is that a reading once landed on the wrong day.
+ *
+ * Nothing here writes. The button leads to a confirmation that shows exactly
+ * what is about to change, and that confirmation is what writes.
+ */
+export function editSheet(state, row) {
+  const spec = EDITABLE[row.kind];
+  if (!spec) return plainDetail(state, row);
+  const value = (key) => {
+    const held = row.record[key];
+    return held == null || held === '' ? '' : String(held);
+  };
+
+  return `<div class="ttl">Edit this ${escape(spec.what)}</div>
+    <p class="hint" style="text-align:center;margin:8px 0 14px">Logged on ${escape(longDate(row.dateISO))}. Change
+    what is wrong and leave the rest alone — nothing is saved until you confirm it.</p>
+
+    <label class="editf wide"><span>Date</span>
+      <input type="date" data-edit-field="dateISO" value="${escape(value('dateISO'))}"></label>
+
+    <div class="editgrid">${spec.fields
+      .map(
+        ([key, label, unit]) => `<label class="editf"><span>${escape(label)}${
+          unit ? ` <i>${escape(unit)}</i>` : ''
+        }</span>
+        <input type="number" inputmode="decimal" step="0.1" data-edit-field="${escape(key)}" value="${escape(
+          value(key)
+        )}"></label>`
+      )
+      .join('')}</div>
+
+    <label class="editf wide"><span>Note</span>
+      <input type="text" data-edit-field="note" value="${escape(value('note'))}"></label>
+
+    <button class="big mt" data-act="history-edit-review" data-key="${escape(row.key)}">Review the change</button>
+    <button class="big ghost mt" data-act="history-open" data-key="${escape(row.key)}">Cancel</button>`;
+}
+
+/** What the form currently holds, as a patch against the row. */
+function readEditForm(row) {
+  const spec = EDITABLE[row.kind];
+  const patch = {};
+  for (const input of document.querySelectorAll('[data-edit-field]')) {
+    const key = input.dataset.editField;
+    const raw = input.value.trim();
+    if (key === 'dateISO' || key === 'note') {
+      patch[key] = raw === '' ? null : raw;
+      continue;
+    }
+    if (!spec.fields.some(([field]) => field === key)) continue;
+    patch[key] = raw === '' ? null : Number(raw);
+  }
+  return patch;
+}
+
+/** Only what actually differs, so the confirmation is about the change itself. */
+function diffOf(row, patch) {
+  return Object.entries(patch)
+    .filter(([key, next]) => {
+      const held = row.record[key] ?? null;
+      const value = next ?? null;
+      return String(held) !== String(value);
+    })
+    .map(([key, next]) => ({ key, from: row.record[key] ?? null, to: next ?? null }));
 }
 
 export const actions = {
@@ -986,6 +1108,70 @@ export const actions = {
     }
     ctx.state.logSessionId = row.id;
     ctx.goTo({ tab: 'log', logSection: 'session' });
+  },
+
+  /* ── Correcting an entry, in three deliberate steps ──────────────────
+     open the form → review exactly what changes → write it. The middle step
+     is not decoration: overwriting a logged measurement without being asked
+     is what destroyed the 20 August readings. */
+
+  'history-edit'(ctx, data) {
+    const row = entries(ctx.state).find((entry) => entry.key === data.key);
+    if (row) openSheet(editSheet(ctx.state, row));
+  },
+
+  'history-edit-review'(ctx, data) {
+    const row = entries(ctx.state).find((entry) => entry.key === data.key);
+    if (!row) return;
+    const patch = readEditForm(row);
+    const changes = diffOf(row, patch);
+
+    if (!changes.length) {
+      openSheet(`<div class="ttl">Nothing changed</div>
+        <p style="text-align:center;font-size:13.5px;margin:14px 0">Every field still holds what it held before, so
+        there is nothing to save.</p>
+        <button class="big mt" data-act="history-edit" data-key="${escape(row.key)}">Back to the form</button>
+        <button class="big ghost mt" data-act="sheet-close">Close</button>`);
+      return;
+    }
+
+    const show = (value) => (value == null || value === '' ? '<i>blank</i>' : escape(String(value)));
+    openSheet(`<div class="ttl">Save this change?</div>
+      <p style="text-align:center;font-size:13.5px;margin:12px 0 4px">This rewrites the ${escape(
+        EDITABLE[row.kind].what
+      )} logged on ${escape(longDate(row.dateISO))}.</p>
+      <p class="hint" style="text-align:center;margin:0 0 12px">${changes.length} field${
+        changes.length === 1 ? '' : 's'
+      } will change. What is there now is kept in this entry's history, so this is reversible.</p>
+      <table><tbody>${changes
+        .map(
+          (change) =>
+            `<tr><td>${escape(change.key)}</td><td>${show(change.from)} → <b>${show(change.to)}</b></td></tr>`
+        )
+        .join('')}</tbody></table>
+      <button class="big mt" data-act="history-edit-save" data-key="${escape(row.key)}" data-patch="${escape(
+        JSON.stringify(patch)
+      )}">Yes, save it</button>
+      <button class="big ghost mt" data-act="history-edit" data-key="${escape(row.key)}">Back to the form</button>`);
+  },
+
+  async 'history-edit-save'(ctx, data) {
+    const row = entries(ctx.state).find((entry) => entry.key === data.key);
+    if (!row) return;
+    const spec = EDITABLE[row.kind];
+    // Returned, not fired and forgotten: a write that fails has to reach the
+    // central handler and be shown, or a correction silently does not land.
+    const result = await ctx.editEntry(spec.store, row.id, JSON.parse(data.patch));
+    ctx.render();
+    openSheet(`<div class="ttl">Saved</div>
+      <p style="text-align:center;font-size:13.5px;margin:14px 0">${
+        result?.changed?.length
+          ? `${result.changed.length} field${result.changed.length === 1 ? '' : 's'} updated: ${escape(
+              result.changed.map((change) => change.field).join(', ')
+            )}. The previous values are kept in this entry's history.`
+          : 'Nothing needed changing.'
+      }</p>
+      <button class="big mt" data-act="sheet-close">Close</button>`);
   },
 
   'history-filter'(ctx, data) {

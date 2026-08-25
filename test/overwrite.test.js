@@ -175,10 +175,14 @@ test('the Log shows what a replacement replaced', async () => {
   };
 
   const html = plainDetail(state, row);
-  assert.match(html, /Replaced values · 1/);
+  // The panel covers edits as well as replacements now, so it is titled for
+  // both — but an audit entry written before v4, filed under the date rather
+  // than the row id, still has to be found. That is the compatibility point.
+  assert.match(html, /Earlier values · 1/);
   assert.match(html, /waist<\/td><td>80</, 'the number that was replaced is readable');
   assert.match(html, /chest<\/td><td>105</);
   assert.doesNotMatch(html, /undefined|NaN|\[object Object\]/);
+  assert.match(html, /Written over on/, 'an overwrite is still labelled as one');
 });
 
 test('an entry that was never replaced shows no panel', async () => {
