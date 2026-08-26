@@ -14,7 +14,7 @@
 
 import { e1rm, systemLoad, setDifficulty, noEstimateReason, roughE1rm, roughConfidence } from '../calc.js';
 import { sessionTiming, sessionAnalysis } from '../analytics.js';
-import { escape, fmtLoad, fmtNum, subnav, flag, openSheet, closeSheet } from './components.js';
+import { escape, fmtLoad, fmtNum, fmtLength, lengthLabel, subnav, flag, openSheet, closeSheet } from './components.js';
 import { measurementTimeLabel, scaleLabel, MEASUREMENT_SITES } from './body.js';
 import { rowBars, barChart } from './charts.js';
 
@@ -109,8 +109,8 @@ export function entries(state, { deleted = false } = {}) {
       title: 'Measurements',
       summary:
         [
-          row.waist == null ? null : `waist ${row.waist}`,
-          row.chest == null ? null : `chest ${row.chest}`,
+          row.waist == null ? null : `waist ${fmtLength(row.waist, state.settings.lengthUnit)}`,
+          row.chest == null ? null : `chest ${fmtLength(row.chest, state.settings.lengthUnit)}`,
           // Two tape readings taken at different times of day are not
           // comparable, so which one this was belongs on the row rather than
           // two taps inside it.
@@ -977,12 +977,22 @@ function replacedValues(state, row) {
 }
 
 export function plainDetail(state, row) {
+  // Tape sites are stored in cm and read in whichever unit is set, so they are
+  // converted and labelled rather than printed raw beside the fields that are
+  // not lengths at all.
+  const sites = new Set(MEASUREMENT_SITES.map(([key]) => key));
+  const suffix = lengthLabel(state.settings?.lengthUnit);
   const fields = Object.entries(row.record)
     .filter(([key, value]) => !['id', 'imageBlob'].includes(key) && value != null && value !== '')
-    .map(
-      ([key, value]) =>
-        `<tr><td>${escape(key)}</td><td>${escape(typeof value === 'object' ? JSON.stringify(value) : value)}</td></tr>`
-    )
+    .map(([key, value]) => {
+      const text =
+        row.kind === 'measurement' && sites.has(key)
+          ? `${fmtLength(value, state.settings?.lengthUnit)} ${suffix}`
+          : typeof value === 'object'
+            ? JSON.stringify(value)
+            : value;
+      return `<tr><td>${escape(key)}</td><td>${escape(text)}</td></tr>`;
+    })
     .join('');
 
   return `<div class="ttl">${escape(row.title)}</div>

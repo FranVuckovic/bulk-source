@@ -61,6 +61,13 @@ export function view(ctx) {
     <button class="${unit === 'lb' ? 'on' : ''}" data-act="unit" data-id="lb">Pounds</button></div>
     <p class="hint">Changes every number in the app, everywhere, instantly. <b>Data is always stored in kg</b> — this is a display setting only, so switching back and forth can never corrupt anything or introduce rounding drift.</p>
 
+    <div class="seg mt">
+      <button class="${state.settings.lengthUnit !== 'in' ? 'on' : ''}" data-act="lengthUnit" data-id="cm">Centimetres</button>
+      <button class="${state.settings.lengthUnit === 'in' ? 'on' : ''}" data-act="lengthUnit" data-id="in">Inches</button></div>
+    <p class="hint">For tape measurements. <b>Always written down in cm</b>, and the Body form stays in cm whichever
+    this is — so a reading can never be typed into the wrong unit. This changes what you read on Progress and in the
+    Log.</p>
+
     <div class="mt"><label for="inc">Load increment</label>
       <select id="inc" data-act-change="increment">
         ${[2.5, 1, 5]

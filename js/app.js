@@ -2071,6 +2071,22 @@ const globalActions = {
     await writeSetting(state.db, 'unit', to);
     render();
   },
+
+  /**
+   * Centimetres or inches, for tape measurements.
+   *
+   * A view setting and nothing more. Every measurement is written to the
+   * database in centimetres whatever this says, and the entry form stays in
+   * centimetres too — the owner logs in cm and wants to *read* in inches, and a
+   * form that silently changed unit under him is how a cm number gets typed
+   * into an inches box.
+   */
+  async lengthUnit(_ctx, data) {
+    if (state.settings.lengthUnit === data.id) return;
+    state.settings.lengthUnit = data.id;
+    await writeSetting(state.db, 'lengthUnit', data.id);
+    render();
+  },
 };
 
 const changeHandlers = {

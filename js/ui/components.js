@@ -26,6 +26,27 @@ export const fmtLoad = (kg, unit) =>
 export const fmtNum = (value, digits = 1) =>
   value == null || Number.isNaN(value) ? '—' : Number(value).toFixed(digits);
 
+/*
+ * Tape measurements: stored in centimetres, always.
+ *
+ * The same rule as loads, for the same reason — one unit in the database, a
+ * transform on the way to the screen, so switching the display back and forth
+ * can never introduce rounding drift into what was written down. Inches carry
+ * two decimals rather than one: a tape reads to a millimetre, and 0.1 cm is
+ * 0.04 in, so one decimal would quietly throw away the resolution you measured
+ * at.
+ */
+export const CM_PER_INCH = 2.54;
+
+export const toLength = (cm, lengthUnit) => (lengthUnit === 'in' ? cm / CM_PER_INCH : cm);
+
+export const fromLength = (value, lengthUnit) => (lengthUnit === 'in' ? value * CM_PER_INCH : value);
+
+export const lengthLabel = (lengthUnit) => (lengthUnit === 'in' ? 'in' : 'cm');
+
+export const fmtLength = (cm, lengthUnit) =>
+  cm == null ? '—' : toLength(cm, lengthUnit).toFixed(lengthUnit === 'in' ? 2 : 1);
+
 /** The step the +/− buttons move by: plate size in kg, 5 lb in pounds. */
 export const stepFor = (unit, increment) => (unit === 'lb' ? 5 : increment);
 

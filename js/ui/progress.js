@@ -41,7 +41,7 @@ import { rollUpFromSets, plannedVsCompleted } from '../volume.js';
 import { resolveSession, toDisplaySession } from '../plan.js';
 import { alive } from '../db.js';
 import { addDays } from '../dates.js';
-import { escape, fmtLoad, fmtNum, toDisplay, flag, subnav, openSheet, closeSheet } from './components.js';
+import { escape, fmtLoad, fmtNum, toDisplay, flag, subnav, openSheet, closeSheet , fmtLength, toLength, lengthLabel } from './components.js';
 import {
   barChart,
   heatmap,
@@ -270,16 +270,30 @@ function strengthView(ctx, state, m, unit) {
 }
 
 function bodyView(state, m, unit) {
+  const len = state.settings.lengthUnit === 'in' ? 'in' : 'cm';
   return `
   <h3 style="margin-top:0">Bodyweight — 7-day average</h3>
   ${bodyweightCard(state, m, unit)}
 
   <h3>Waist at navel</h3>
-  ${waistCard(m)}
+  ${waistCard(m, len)}
 
   <h3>Tape measurements</h3>
+  ${lengthToggle(len)}
   ${measurementsCard(state)}`;
 }
+
+/**
+ * Read the tape in inches without leaving the screen.
+ *
+ * It lives in Settings too, but this is where the measurements are actually
+ * looked at, and "easy toggling" was the request. Display only — every reading
+ * is written down in centimetres whatever this says.
+ */
+const lengthToggle = (len) => `<div class="seg lenseg">
+  <button class="${len === 'cm' ? 'on' : ''}" data-act="lengthUnit" data-id="cm">cm</button>
+  <button class="${len === 'in' ? 'on' : ''}" data-act="lengthUnit" data-id="in">inches</button>
+</div>`;
 
 function volumeView(state, m) {
   return `
@@ -608,12 +622,19 @@ function bodyweightCard(state, m, unit) {
     }</p></div>`;
 }
 
-function waistCard(m) {
+function waistCard(m, len = 'cm') {
+  const lu = lengthLabel(len);
   return `<div class="card">
-    ${timeChart(m.waist, { color: 'var(--s3)', unit: ' cm', label: (p) => `${p.dateISO} · ${fmtNum(p.value, 1)} cm` })}
+    ${timeChart(m.waist.map((p) => ({ ...p, value: toLength(p.value, len) })), {
+      color: 'var(--s3)',
+      unit: ` ${lu}`,
+      label: (p) => `${p.dateISO} · ${fmtNum(p.value, len === 'in' ? 2 : 1)} ${lu}`,
+    })}
     <p class="hint">Waist against bodyweight is the lean-bulk discriminator. Weight up, waist flat, lifts up is what
     it is supposed to look like.${
-      m.waistTrend.ok ? ` Currently <b>${fmtNum(m.waistTrend.perWeek, 2)} cm/week</b> over ${m.waistTrend.spanDays} days.` : ''
+      m.waistTrend.ok
+        ? ` Currently <b>${fmtLength(m.waistTrend.perWeek, len)} ${lu}/week</b> over ${m.waistTrend.spanDays} days.`
+        : ''
     }</p></div>`;
 }
 
@@ -1100,7 +1121,13 @@ function measurementsCard(state) {
   const firstWeight = comparison.find((row) => row.b != null)?.b ?? null;
   const lastWeight = [...comparison].reverse().find((row) => row.b != null)?.b ?? null;
   const bwChange = firstWeight != null && lastWeight != null && firstWeight !== lastWeight ? lastWeight - firstWeight : null;
-  const direction = focus.change === 0 ? 'held steady' : `${focus.change > 0 ? 'rose' : 'fell'} ${fmtNum(Math.abs(focus.change), 1)} cm`;
+  // Tape numbers are stored in cm. `len` is what this screen reads them in.
+  const len = state.settings.lengthUnit;
+  const lu = lengthLabel(len);
+  const direction =
+    focus.change === 0
+      ? 'held steady'
+      : `${focus.change > 0 ? 'rose' : 'fell'} ${fmtLength(Math.abs(focus.change), len)} ${lu}`;
 
   return `<div class="card">
     <div class="measure-picks">${rows
@@ -1111,13 +1138,15 @@ function measurementsCard(state) {
       )
       .join('')}</div>
     <p class="chart-title">${escape(focus.label)} · ${escape(focus.firstDate)} to ${escape(focus.lastDate)}</p>
-    ${timeChart(focus.points, {
+    ${timeChart(focus.points.map((point) => ({ ...point, value: toLength(point.value, len) })), {
       color: 'var(--s3)',
-      unit: ' cm',
-      label: (point) => `${point.dateISO} · ${fmtNum(point.value, 1)} cm`,
+      unit: ` ${lu}`,
+      label: (point) => `${point.dateISO} · ${fmtNum(point.value, len === 'in' ? 2 : 1)} ${lu}`,
     })}
     <p class="measure-readout"><b>${escape(focus.label)} ${direction}</b> across ${focus.points.length} readings.${
-      focus.rate == null ? '' : ` The fitted rate is ${focus.rate >= 0 ? '+' : ''}${fmtNum(focus.rate, 2)} cm/week.`
+      focus.rate == null
+        ? ''
+        : ` The fitted rate is ${focus.rate >= 0 ? '+' : ''}${fmtLength(focus.rate, len)} ${lu}/week.`
     }${
       bwChange == null
         ? ''
@@ -1128,9 +1157,9 @@ function measurementsCard(state) {
         names: { a: focus.label, b: 'Bodyweight' },
         colors: { a: 'var(--s3)', b: 'var(--s2)' },
       })}
-      <p class="hint">Both lines start at 100, so their directions can be compared despite using centimetres and ${escape(
-        unit
-      )}. A weigh-in may match a tape date by up to three days; no farther date is substituted.</p>
+      <p class="hint">Both lines start at 100, so their directions can be compared despite using ${escape(
+        len === 'in' ? 'inches' : 'centimetres'
+      )} and ${escape(unit)}. A weigh-in may match a tape date by up to three days; no farther date is substituted.</p>
     </div></details>
     <table class="measure-table"><thead><tr><th>Site</th><th>First</th><th>Latest</th><th>Change</th></tr></thead><tbody>
       ${rows
@@ -1138,14 +1167,14 @@ function measurementsCard(state) {
           (row) => `<tr><td>${escape(row.label)}${
             row.rate == null
               ? ''
-              : `<small>${row.rate >= 0 ? '+' : ''}${fmtNum(row.rate, 2)} cm/wk</small>`
-          }</td><td>${fmtNum(row.first, 1)}<small>${escape(row.firstDate)}</small></td><td>${fmtNum(row.last, 1)}<small>${escape(
-            row.lastDate
-          )}</small></td>
-          <td style="color:${row.change > 0 ? 'var(--goodtx)' : 'var(--ink2)'};font-weight:650">${row.change >= 0 ? '+' : ''}${fmtNum(
-            row.change,
-            1
-          )}</td></tr>`
+              : `<small>${row.rate >= 0 ? '+' : ''}${fmtLength(row.rate, len)} ${lu}/wk</small>`
+          }</td><td>${fmtLength(row.first, len)}<small>${escape(row.firstDate)}</small></td><td>${fmtLength(
+            row.last,
+            len
+          )}<small>${escape(row.lastDate)}</small></td>
+          <td style="color:${row.change > 0 ? 'var(--goodtx)' : 'var(--ink2)'};font-weight:650">${
+            row.change >= 0 ? '+' : ''
+          }${fmtLength(row.change, len)}</td></tr>`
         )
         .join('')}
     </tbody></table>

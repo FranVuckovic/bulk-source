@@ -27,6 +27,8 @@ export const FORMAT_VERSION = 4;
 
 export const DEFAULT_SETTINGS = Object.freeze({
   unit: 'kg',
+  /* Tape measurements are stored in cm always; this is a display setting. */
+  lengthUnit: 'cm',
   increment: 2.5,
   lastBackupISO: null,
   formatVersion: FORMAT_VERSION,

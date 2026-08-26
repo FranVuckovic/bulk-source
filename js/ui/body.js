@@ -347,7 +347,9 @@ export function view(ctx) {
     'week',
     'This week · about a minute',
     '',
-    `<div class="card">${loggedBanner(loggedTape, 'set of readings')}<div class="g3">
+    `<div class="card">${loggedBanner(loggedTape, 'set of readings')}
+    <p class="hint" style="margin:0 2px 10px">All readings in <b>centimetres</b>. Progress and the Log can show them
+    in inches — this form always takes centimetres, so a number can never go in under the wrong unit.</p><div class="g3">
       ${MEASUREMENT_SITES.slice(0, 3).map(([id, label]) => field(`m-${id}`, label, draft[`m-${id}`], { how: id })).join('')}
     </div><div class="g3 mt">
       ${MEASUREMENT_SITES.slice(3, 6).map(([id, label]) => field(`m-${id}`, label, draft[`m-${id}`], { how: id })).join('')}
