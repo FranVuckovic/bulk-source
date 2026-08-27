@@ -754,6 +754,33 @@ function resetBodyDraft() {
   fillBodyDraftFrom(state.todayISO);
 }
 
+/**
+ * The Body screen's draft, in the two independent parts it is really made of.
+ *
+ * Saving one part used to clear the whole draft, so a set of tape readings
+ * typed but not yet saved was wiped by saving the weigh-in above it. Nothing
+ * was lost from the database — it had never reached the database — which is
+ * exactly why it was worse: several minutes of measuring, gone with no warning
+ * and nothing to recover.
+ */
+const DRAFT_SECTIONS = Object.freeze({
+  daily: ['bodyweight', 'bodyfatPct', 'sleepHours', 'steps', 'mood', 'caffeine', 'scale', 'scaleNote', 'note'],
+  measurements: ['measureTimeNote'],
+});
+
+/** Empty only the fields belonging to the section that was just saved. */
+function clearDraftSection(section) {
+  refreshToday();
+  state.bodyDraft.dateISO = state.todayISO;
+
+  for (const field of DRAFT_SECTIONS[section] ?? []) state.bodyDraft[field] = '';
+
+  if (section === 'measurements') {
+    for (const [id] of body.MEASUREMENT_SITES) state.bodyDraft[`m-${id}`] = '';
+    state.bodyDraft.measureTime = body.DEFAULT_MEASUREMENT_TIME;
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    Screens
    ═══════════════════════════════════════════════════════════════════════ */
@@ -975,8 +1002,9 @@ const ctx = {
    */
   async saveDaily(row) {
     const written = await put(state.db, 'daily', row);
-    // Emptied so the next one is a fresh entry, not an edit of this one.
-    resetBodyDraft();
+    // Emptied so the next one is a fresh entry, not an edit of this one — but
+    // only this section. Tape readings being typed alongside it are untouched.
+    clearDraftSection('daily');
     await reloadDated('daily');
     return { id: written };
   },
@@ -984,7 +1012,7 @@ const ctx = {
   /** Tape readings are a log entry too. Same rule: append, never replace. */
   async saveMeasurements(row) {
     const written = await put(state.db, 'measurements', row);
-    resetBodyDraft();
+    clearDraftSection('measurements');
     await reloadDated('measurements');
     return { id: written };
   },
@@ -1063,7 +1091,6 @@ const ctx = {
     }
     await loadEverything();
     buildHistory();
-    resetBodyDraft();
   },
 
   /**
@@ -1094,7 +1121,6 @@ const ctx = {
     else await restoreRow(state.db, store, key);
     await loadEverything();
     buildHistory();
-    resetBodyDraft();
   },
 
   /**

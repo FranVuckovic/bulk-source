@@ -143,3 +143,56 @@ test('the only hard delete in the database layer is the one behind emptying the 
   assert.ok(calls.length <= 2, `unexpected delete calls in db.js: ${calls.length}`);
   assert.ok(source.includes('export function remove('), 'the one deliberate one');
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   The Body screen's two drafts are independent
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('saving one Body section does not empty the other', () => {
+  // Reported: "if you start inputting weekly body measurements and then you
+  // save the daily weight it will delete the weekly numbers you were typing
+  // even if they were not already saved."
+  //
+  // `saveDaily` called `resetBodyDraft`, which rebuilt the entire draft — tape
+  // fields included. Nothing was lost from the database because it had never
+  // reached the database, which is precisely what made it worse: several
+  // minutes of measuring gone with no warning and nothing to recover from.
+  const app = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+
+  const daily = app.slice(app.indexOf('async saveDaily(row)'));
+  const dailyBody = daily.slice(0, daily.indexOf('\n  },'));
+  assert.match(dailyBody, /clearDraftSection\('daily'\)/, 'saveDaily must clear only the daily fields');
+  assert.ok(!dailyBody.includes('resetBodyDraft'), 'saveDaily still empties the whole draft');
+
+  const tape = app.slice(app.indexOf('async saveMeasurements(row)'));
+  const tapeBody = tape.slice(0, tape.indexOf('\n  },'));
+  assert.match(tapeBody, /clearDraftSection\('measurements'\)/);
+  assert.ok(!tapeBody.includes('resetBodyDraft'), 'saveMeasurements still empties the whole draft');
+});
+
+test('the two sections between them cover every field the Body form writes', () => {
+  // A field in neither list is one that never clears after a save, and would
+  // ride along into the next entry as a value nobody typed for it.
+  const app = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+  const sections = app.slice(app.indexOf('const DRAFT_SECTIONS'), app.indexOf('/** Empty only the fields'));
+
+  for (const field of ['bodyweight', 'bodyfatPct', 'sleepHours', 'steps', 'mood', 'caffeine', 'scale', 'scaleNote', 'note']) {
+    assert.match(sections, new RegExp(`'${field}'`), `${field} is in neither section`);
+  }
+  // The tape sites are cleared by iterating MEASUREMENT_SITES rather than being
+  // listed, so that adding a site cannot leave one behind.
+  const clear = app.slice(app.indexOf('function clearDraftSection'));
+  assert.match(clear.slice(0, clear.indexOf('\n}')), /MEASUREMENT_SITES/);
+});
+
+test('deleting or restoring an entry leaves what you are typing alone', () => {
+  // Both used to reset the Body draft. Since v4 the draft is built empty, so
+  // there was nothing to refresh — the calls only cost you your typing.
+  const app = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+
+  const del = app.slice(app.indexOf('async deleteEntry(kind, id'));
+  assert.ok(!del.slice(0, del.indexOf('\n  },')).includes('resetBodyDraft'), 'deleteEntry still resets the draft');
+
+  const restore = app.slice(app.indexOf('async restoreEntry(store, rawKey)'));
+  assert.ok(!restore.slice(0, restore.indexOf('\n  },')).includes('resetBodyDraft'), 'restoreEntry still resets the draft');
+});
