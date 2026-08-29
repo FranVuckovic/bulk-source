@@ -142,22 +142,117 @@ That is already true of how B is written. Nothing to change.
 
 ---
 
-## If you would rather just pick a shape
+## The two shapes, written out in full
 
-**Shortest** — 10 slots, 29 sets, ~83 min *(down from 12, 31, 99)*
-A / A / A / A / A / A · single-leg press, back extension, hip thrust, hanging
-leg raise, reverse hyper removed, standing calf ×3.
-*This is the concrete proposal in `session-d-proposal.md`.*
+Both fix all five unperformable slots. Both keep legs twice a week. Neither
+touches session B.
 
-**Most complete** — 12 slots, 34 sets, ~95 min
-A / C / A / A+B / B / B · adds the second seated curl, the Pallof, the adductor
-machine and the improvised seated calf. Every gap closed, nothing shortened.
-
-**Least change** — 12 slots, 31 sets, ~97 min
-B / B / B / C / C / C · keeps the shape and the count, swaps only what you
-cannot physically do. Fixes the equipment problem and nothing else.
+**For scale, this is what session D actually gives you today** once the five
+slots you cannot do are removed: **7 slots · 17 sets · 63 minutes.** Both
+options below are an increase on that, including the short one.
 
 ---
+
+### SHORTEST · 10 slots · 29 sets · ~83 min
+
+| # | Exercise | Sets × reps | RPE | Rest |
+|---|---|---|---|---|
+| 1 | Box jumps / broad jumps | 3 × 3 | 6 | 150 s |
+| 2 | **Weighted chin-up — supinated** | 3 × 6–10 | 8 | 150 s |
+| 3 | **Single-leg leg press** | 3 × 10–15 *per leg* | 9 | 150 s |
+| 4 | **45° back extension** — hamstring-biased | 3 × 10–15 | 8 | 90 s |
+| 5 | **Hip thrust — machine** | 3 × 10–15 | 8 | 150 s |
+| 6 | Bayesian cable curl | 3 × 10–15 | 10 | 75 s |
+| 7 | Reverse pec-deck rear-delt fly | 3 × 12–20 | 10 | 75 s |
+| 8 | **Hanging leg raise** | 3 × 8–15 | 9 | 75 s |
+| 9 | **Standing calf raise** | 3 × 10–15 | 10 | 75 s |
+| 10 | Cable lateral raise | 2 × 15–25 | 9 | 75 s |
+
+**Gone:** reverse hyperextension (you have none, and slot 4 does its job) and
+the reverse cable curl (last slot of the session, and forearms are among your
+best-served muscles).
+
+**Against the current prescription** this is 2 slots and 2 sets fewer and 16
+minutes shorter. In the rotation it sits mid-pack — A is 102 min, B 87, C 98,
+E 106, F 62.
+
+**What it leaves undone:** the soleus stays untrained, knee-flexion hamstring
+work stays at 4 sets a week, and anti-rotation work still exists only in
+session E.
+
+---
+
+### MOST COMPLETE · 14 slots · 38 sets · ~105 min
+
+| # | Exercise | Sets × reps | RPE | Rest |
+|---|---|---|---|---|
+| 1 | Box jumps / broad jumps | 3 × 3 | 6 | 150 s |
+| 2 | **Weighted chin-up — supinated** | 3 × 6–10 | 8 | 150 s |
+| 3 | **Single-leg leg press** | 3 × 10–15 *per leg* | 9 | 150 s |
+| 4 | **45° back extension** — hamstring-biased | 3 × 10–15 | 8 | 90 s |
+| 5 | **Seated leg curl** | 2 × 12–20 | 10 | 75 s |
+| 6 | **Hip thrust — machine** | 3 × 10–15 | 8 | 150 s |
+| 7 | **Adductor machine** | 2 × 12–20 | 8 | 75 s |
+| 8 | Bayesian cable curl | 3 × 10–15 | 10 | 75 s |
+| 9 | Reverse pec-deck rear-delt fly | 3 × 12–20 | 10 | 75 s |
+| 10 | Cable lateral raise | 2 × 15–25 | 9 | 75 s |
+| 11 | Reverse cable / EZ curl | 2 × 10–15 | 10 | 60 s |
+| 12 | **Hanging leg raise** | 3 × 8–15 | 9 | 75 s |
+| 13 | **Pallof press** | 2 × 15–20 *per side* | 8 | 60 s |
+| 14 | **Seated calf raise — improvised** | 4 × 12–20 | 10 | 75 s |
+
+**Nothing is removed.** Every original slot that you can perform stays, the
+five broken ones get the best replacement rather than the cheapest, and the
+three gaps — hip-extension hamstrings, anti-rotation, adductors — are closed.
+
+**The honest cost: at 105 minutes this becomes the longest session in your
+rotation**, level with E. You told me D is the one that bores you. A
+105-minute D is a real risk to that.
+
+---
+
+## What the extra 22 minutes actually buys
+
+| Weekly sets | Now, as performed | Shortest | Most complete |
+|---|---|---|---|
+| **Glutes** | 3.0 | **8.1** | **8.1** |
+| Hamstrings | 6.0 | 10.8 | **12.8** |
+| Quads | 9.8 | 11.7 | 11.7 |
+| Abs | 6.8 | 9.8 | 10.6 |
+| **Obliques** | 3.8 | 4.7 | **6.7** |
+| Calves | 3.0 | 6.0 | **7.0** |
+| Forearms | 14.9 | 12.9 | 14.9 |
+| Biceps — short head | 12.4 | 11.6 | 12.4 |
+
+Everything else in the plan is identical between the two — the whole
+difference is in this table.
+
+**Read the glutes row first.** It is the same in both, it is the largest
+single change either option makes, and it comes from one slot: the hip thrust.
+
+**Then read the rest.** For 9 extra sets and 22 extra minutes, "most complete"
+buys **+2 hamstring, +2 oblique, +1 calf**, and holds forearms and short-head
+biceps where they already were. Every one of those was already inside its
+productive band under "shortest".
+
+**One caveat on the adductor machine.** The app's muscle model has no
+adductors in it, so those two sets count as nothing in the table above and
+will not appear in your volume analytics. The work is real; the app cannot
+see it. Adding the muscle is a separate change to the plan data.
+
+---
+
+## Which I would take
+
+**Shortest.** Both fix everything that is broken and both land every muscle
+inside its band. The difference between them is two hamstring sets, two
+oblique sets and a soleus — real, but small — against a session that goes
+from mid-pack to the longest in your rotation, in the slot you already find
+the least fun.
+
+**If you want one thing from the complete version**, take the **improvised
+seated calf raise** in place of the standing one at slot 9. It is the only
+genuinely absent stimulus in your whole leg programme, and it costs one set.
 
 ## What I have not done
 
