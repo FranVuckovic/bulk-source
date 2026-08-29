@@ -3,10 +3,11 @@
 **Status: a proposal. Nothing here is implemented.** `data/plan-fopip-v2.json`
 is untouched by this document.
 
-**Written 25 August 2026**, to your brief: no single-leg press, two-leg is
-simpler and quicker; you like leg press, quad extension, hip thrust, hamstring
-curl, 45° back extension and calf raises; three sets is enough for calves and
-curls; and the two sessions should differ from each other.
+**Written 25 August 2026**, revised the same day. Your brief: no single-leg
+press, two-leg is simpler and quicker; you like leg press, quad extension, hip
+thrust, hamstring curl, 45° back extension and calf raises; three sets is
+enough for calves and curls; the two sessions should differ from each other;
+**no upper-body work is to be removed**; and D gets **two sets of quads**.
 
 ---
 
@@ -63,7 +64,8 @@ reps at that depth is an RPE 9.
 
 ## Session D — the deep day
 
-**9 slots · 27 sets · ~89 min.** Down from 12 slots, 31 sets, 99 min.
+**12 slots · 33 sets · ~105 min.** Same slot count as now; 2 sets more and
+6 minutes longer.
 
 | # | Exercise | Sets × reps | RPE | Rest | Change |
 |---|---|---|---|---|---|
@@ -72,31 +74,36 @@ reps at that depth is an RPE 9.
 | 3 | **Leg press — feet high and wide, deep** | 3 × 12–20 | 9 | 120 s | was 2 × 12–20; now the session's defining lift |
 | 4 | **Hip thrust — machine, high rep** | 3 × 12–20 | 9 | 120 s | **new** — replaces the hack squat slot |
 | 5 | **45° back extension** | 3 × 10–15 | 8 | 90 s | **replaces the lying leg curl** |
-| 6 | Bayesian cable curl | 3 × 10–15 | 10 | 75 s | — |
-| 7 | Reverse pec-deck rear-delt fly | 3 × 12–20 | 10 | 75 s | — |
-| 8 | **Hanging leg raise** | 3 × 8–15 | 9 | 75 s | **replaces the ab wheel** |
-| 9 | **Standing calf raise** | 3 × 10–15 | 10 | 75 s | **replaces the seated calf**, 4 sets → 3 |
+| 6 | **Quad extension** | 2 × 15–25 | 10 | 75 s | **new** — higher reps than B's |
+| 7 | Bayesian cable curl | 3 × 10–15 | 10 | 75 s | — |
+| 8 | Reverse pec-deck rear-delt fly | 3 × 12–20 | 10 | 75 s | — |
+| 9 | **Hanging leg raise** | 3 × 8–15 | 9 | 75 s | **replaces the ab wheel** |
+| 10 | **Standing calf raise** | 3 × 10–15 | 10 | 75 s | **replaces the seated calf**, 4 sets → 3 |
+| 11 | Cable lateral raise | 2 × 15–25 | 9 | 75 s | — |
+| 12 | Reverse cable / EZ curl | 2 × 10–15 | 10 | 60 s | — |
 
-**Gone entirely:** the hack squat / Bulgarian slot *(no hack squat, and
-Bulgarians hurt your back)*, the reverse hyperextension *(you have none, and the
-back extension does its job better)*, the cable lateral raise *(side delts are
-trained in five other sessions)*, and the reverse cable curl *(last slot of the
-session, and forearms are among your best-served muscles)*.
+**Gone:** only the two slots you cannot perform and do not need — the hack
+squat / Bulgarian slot *(no hack squat, and Bulgarians hurt your back)* and the
+reverse hyperextension *(you have none, and the back extension does its job
+better)*. **No upper-body work is removed.**
 
 **How to do the leg press here:** feet high and wide on the platform, toes
 slightly out. **Three seconds down**, as deep as your pelvis allows, no bounce
-at the bottom. The weight will be a lot lighter than session B's and that is
-the entire point — this is the long-length, slow, glute-and-adductor version.
-Load it so 12–20 reps at full depth is an RPE 9.
+at the bottom. The weight will be much lighter than session B's and that is the
+entire point — this is the long-length, slow, glute-and-adductor version. Load
+it so 12–20 reps at full depth is an RPE 9.
 
-**And the hip thrust:** lighter than B's, and pause a full second at lockout
-with the ribs down. B trains the glutes against load; this trains them at the
-top of the range where they actually shorten.
+**The hip thrust:** lighter than B's, and pause a full second at lockout with
+the ribs down. B trains the glutes against load; this trains them at the top of
+the range, where they actually shorten.
 
-**And the back extension:** back flat, hinge purely at the hip, and **stop when
-your torso is in line with your legs — never above it.** Going past that line
-is lumbar extension under load, which is the mirror image of the mistake at the
-bottom of a leg press.
+**The back extension:** back flat, hinge purely at the hip, and **stop when your
+torso is in line with your legs — never above it.** Going past that line is
+lumbar extension under load, the mirror image of the mistake at the bottom of a
+leg press.
+
+**The quad extension:** deliberately higher reps than B's 12–20. B loads the
+quads; this one finishes them off at a length the press cannot reach.
 
 ---
 
@@ -113,30 +120,30 @@ actually been getting, and it is the honest comparison.
 | **Glutes** | **3.0** | **10.2** | 3.0 |
 | **Hamstrings** | **6.0** | **11.4** | 10.5 |
 | **Calves** | **3.0** | **6.0** | 6.0 |
+| **Quads** | **9.8** | **12.5** | 12.8 |
 | **Abs** | **6.8** | **9.8** | 8.8 |
-| Quads | 9.8 | 10.5 | 12.8 |
 | Obliques | 3.8 | 4.7 | 4.6 |
 | Delts — rear | 9.2 | 10.2 | 10.2 |
-| Delts — side | 16.9 | 14.9 | 16.9 |
-| Forearms | 14.9 | 12.9 | 14.9 |
-| Biceps — short head | 12.4 | 11.6 | 12.4 |
-| *Everything else* | *unchanged* | *unchanged* | *unchanged* |
+| Upper back & traps | 13.9 | 14.2 | 14.2 |
+| Delts — side | 16.9 | 16.9 | 16.9 |
+| Forearms | 14.9 | 14.9 | 14.9 |
+| Biceps — short head | 12.4 | 12.4 | 12.4 |
+| Biceps — long head | 12.9 | 12.9 | 12.9 |
+| Lats · chest · triceps · front delts | *unchanged* | *unchanged* | *unchanged* |
 
-**Glutes more than triple.** They were the worst-served muscle in the whole
-plan by a distance — 3.0 sets a week, in one session out of six, against a
-10–20 band. Two hip thrusts and a glute-biased leg press take them to 10.2.
+**Nothing goes down.** Every muscle in the plan is equal to or better than both
+what you have been getting and what the plan currently prescribes. That is the
+result of keeping the upper-body slots and adding the quad extension.
 
-**Hamstrings nearly double**, and for the first time they are trained at both
-of their jobs rather than one.
+**Glutes more than triple.** They were the worst-served muscle in the whole plan
+by a distance — 3.0 sets a week, in one session out of six, against a 10–20
+band. Two hip thrusts and a glute-biased leg press take them to 10.2.
 
-**Three things go down**, all from comfortably inside the band and none below
-it: side delts *(still five sessions a week)*, forearms *(still six)*, and
-short-head biceps.
+**Hamstrings nearly double**, and for the first time they are trained at both of
+their jobs rather than one.
 
-**Quads are the honest weak spot.** 10.5 is inside the band but at the bottom of
-it, and it is below the 12.8 the plan prescribes — though that figure includes a
-hack squat you cannot do, so 9.8 is the number you have actually been getting.
-See the variant below if this bothers you.
+**Quads come back to 12.5**, essentially where the plan intended, from the 9.8
+you have actually been getting.
 
 **One thing the table cannot see.** It counts sets, not range. A deep,
 three-second leg press at long muscle length is worth more per set than a
@@ -145,20 +152,17 @@ difference is larger than these numbers show.
 
 ---
 
-## If you want more quads
+## The one cost
 
-**Add a quad extension to D**, 3 × 15–25 at RPE 10, after the back extension.
+**D is now ~105 minutes**, six longer than the 99 it prescribes today, and
+joint-longest in the rotation with E at 106. A is 102, C is 98, B is 87, F is
+62.
 
-| | Slots | Sets | Minutes | Quads |
-|---|---|---|---|---|
-| As proposed | 9 | 27 | 89 | 10.5 |
-| **+ quad extension in D** | 10 | 30 | 98 | **13.5** |
-
-Nine minutes and three sets for three quad sets a week. Everything else is
-identical. It puts D back to roughly its current length, which is the only
-reason it is not the default.
-
----
+That is the price of keeping every upper-body slot and adding quads, and you
+chose it knowingly. If it ever feels too long in practice, **the cheapest single
+trim is the hip thrust from 3 sets to 2** — it costs about four minutes and
+takes glutes from 10.2 to 9.3, still a threefold improvement on today. I would
+not do it pre-emptively.
 
 ## What I did not change
 
