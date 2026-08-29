@@ -256,19 +256,25 @@ test('session B runs arms first, then the heavy leg work', () => {
   assert.match(names[3], /hip thrust/i);
 });
 
-test('reordering a session changed nothing about any prescription', () => {
-  // The guard against a reorder quietly becoming an edit. Every slot in B still
-  // carries exactly what it did, keyed by id so position is irrelevant.
+test('session B carries exactly the prescription it is supposed to', () => {
+  // The guard against a reorder or a rewrite quietly becoming an edit nobody
+  // asked for. Keyed by slot id, so position is irrelevant — that is the point.
+  //
+  // B3 is 3 sets, not the 4 it carried until the leg rework: the owner asked
+  // for three, in his words "I really don't think I need 4 sets of calf raises
+  // or hamstring curls in a single workout". B8, the calf raise, went 4 to 3
+  // for the same reason and is pinned here now so the pair cannot drift back.
   const B = PLAN.sessions.find((session) => session.id === 'B');
   const byId = Object.fromEntries(B.slots.map((slot) => [slot.id, slot]));
 
   const expected = {
     B1: { ex: 'hipThrust', sets: 3, repsLow: 6, repsHigh: 10, rpe: 8, restSec: 150 },
     B2: { ex: 'legpress', sets: 3, repsLow: 8, repsHigh: 12, rpe: 9, restSec: 150 },
-    B3: { ex: 'legcurlSeat', sets: 4, repsLow: 8, repsHigh: 12, rpe: 10, restSec: 75 },
+    B3: { ex: 'legcurlSeat', sets: 3, repsLow: 8, repsHigh: 12, rpe: 10, restSec: 75 },
     B4: { ex: 'quadext', sets: 3, repsLow: 12, repsHigh: 20, rpe: 10, restSec: 75 },
     B5: { ex: 'curlIncline', sets: 3, repsLow: 8, repsHigh: 12, rpe: 10, restSec: 75 },
     B6: { ex: 'curlHammer', sets: 2, repsLow: 10, repsHigh: 15, rpe: 10, restSec: 75 },
+    B8: { ex: 'calfStand', sets: 3, repsLow: 8, repsHigh: 15, rpe: 10, restSec: 75 },
   };
 
   for (const [id, want] of Object.entries(expected)) {

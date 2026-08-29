@@ -917,7 +917,7 @@
    "bodyweightLoaded": false
   },
   "legpress": {
-   "name": "Leg press",
+   "name": "Leg press — feet low and narrow",
    "tracksMax": true,
    "maxConf": "high",
    "m": {
@@ -925,11 +925,11 @@
     "hams": 0.3
    },
    "how": [
-    "Feet mid-to-high on the platform.",
+    "Feet low and mid-width on the platform. This is the quad-biased, heavier one.",
     "STOP the descent the moment your pelvis starts to tuck.",
     "Control the descent. Do not lock the knees hard at the top."
    ],
-   "why": "Your main quad driver without any spinal loading.",
+   "why": "Your main quad driver without any spinal loading. Session B's version: heavier, moderate depth, feet low.",
    "subs": [
     "Hack squat",
     "Pendulum squat",
@@ -956,7 +956,7 @@
    ],
    "why": "A second quad pattern, chosen by whichever your back tolerates on the day.",
    "subs": [
-    "Leg press",
+    "Leg press — feet low and narrow",
     "Pendulum squat",
     "Walking lunge",
     "Step-up"
@@ -1489,6 +1489,60 @@
    "refPhotoId": null,
    "bodyweightLoaded": false,
    "splitFrom": "cableRotation"
+  },
+  "legpressGlute": {
+   "name": "Leg press — feet high and wide, deep",
+   "tracksMax": false,
+   "maxConf": null,
+   "m": {
+    "quads": 0.6,
+    "glutes": 0.7,
+    "hams": 0.5
+   },
+   "how": [
+    "Feet high and wide on the platform, toes turned slightly out.",
+    "Three seconds down, as deep as your pelvis allows. No bounce at the bottom.",
+    "STOP the descent the moment your pelvis starts to tuck.",
+    "Much lighter than session B — the range is the point, not the load."
+   ],
+   "why": "The long-length, slow, glute-and-adductor half of your leg pressing. Same machine as session B, a different exercise: high and wide shortens knee travel and lengthens hip travel, so the glutes and adductors do the work the quads do in B.",
+   "subs": [
+    "Leg press, feet high, at whatever depth is clean",
+    "Hip thrust for more sets"
+   ],
+   "watch": "That pelvic tuck at the bottom is loaded lumbar flexion — the exact thing that irritates your back. A slightly shorter range with a neutral spine beats a deep rep that costs you a week.",
+   "grips": null,
+   "unit": "kg",
+   "defaultRestSec": 120,
+   "refPhotoId": null,
+   "bodyweightLoaded": false,
+   "splitFrom": "legpress"
+  },
+  "backExt45": {
+   "name": "45° back extension",
+   "tracksMax": false,
+   "maxConf": null,
+   "m": {
+    "hams": 1.0,
+    "glutes": 0.7
+   },
+   "how": [
+    "Pads at the crease of the hip, not on the thighs.",
+    "Back flat. Hinge purely at the hip, and feel it entirely in the hamstrings.",
+    "STOP when your torso is in line with your legs. Never above it.",
+    "Hug a plate to the chest only once fifteen clean bodyweight reps are easy."
+   ],
+   "why": "The hamstrings do two jobs — bending the knee and extending the hip — and the plan only ever trained the first. This is the hip-extension half, and it loads the glutes at a long length where the hip thrust loads them short.",
+   "subs": [
+    "Hip thrust for more sets",
+    "Romanian deadlift, only if your back allows it"
+   ],
+   "watch": "Coming up past the line of your legs is lumbar extension under load — the mirror image of the pelvic tuck at the bottom of a leg press. Stop at the line.",
+   "grips": null,
+   "unit": "kg",
+   "defaultRestSec": 90,
+   "refPhotoId": null,
+   "bodyweightLoaded": false
   }
  },
  "sessions": [
@@ -1735,8 +1789,8 @@
      "repsLow": 8,
      "repsHigh": 12,
      "rpe": 10,
-     "failLast": 1,
-     "failLastHigh": 2,
+     "failLast": 0,
+     "failLastHigh": 0,
      "pct": null,
      "pctBasis": null,
      "idx": false,
@@ -1757,8 +1811,8 @@
      "repsLow": 10,
      "repsHigh": 15,
      "rpe": 10,
-     "failLast": 1,
-     "failLastHigh": 1,
+     "failLast": 0,
+     "failLastHigh": 0,
      "pct": null,
      "pctBasis": null,
      "idx": false,
@@ -1790,7 +1844,7 @@
      "optional": false,
      "restSec": 150,
      "note": null,
-     "effort": "Final set RPE 9; no required failure"
+     "effort": "Heavy and quad-biased. Feet low, depth stops at the pelvic tuck."
     },
     {
      "id": "B1",
@@ -1812,7 +1866,7 @@
      "optional": false,
      "restSec": 150,
      "note": null,
-     "effort": "1–2 RIR"
+     "effort": "The heavy hip thrust of the week. Ribs down, finish with the glutes."
     },
     {
      "id": "B4",
@@ -1823,8 +1877,8 @@
      "repsLow": 12,
      "repsHigh": 20,
      "rpe": 10,
-     "failLast": 1,
-     "failLastHigh": 2,
+     "failLast": 0,
+     "failLastHigh": 0,
      "pct": null,
      "pctBasis": null,
      "idx": false,
@@ -1841,12 +1895,12 @@
      "ex": "legcurlSeat",
      "role": "accessory",
      "label": null,
-     "sets": 4,
+     "sets": 3,
      "repsLow": 8,
      "repsHigh": 12,
      "rpe": 10,
-     "failLast": 1,
-     "failLastHigh": 2,
+     "failLast": 0,
+     "failLastHigh": 0,
      "pct": null,
      "pctBasis": null,
      "idx": false,
@@ -1856,7 +1910,7 @@
      "optional": false,
      "restSec": 75,
      "note": null,
-     "effort": null
+     "effort": "Knee flexion. Session D takes the hip-extension half."
     },
     {
      "id": "B7",
@@ -1878,19 +1932,19 @@
      "optional": false,
      "restSec": 75,
      "note": null,
-     "effort": "0–2 RIR; strict spinal flexion"
+     "effort": null
     },
     {
      "id": "B8",
      "ex": "calfStand",
      "role": "accessory",
      "label": null,
-     "sets": 4,
+     "sets": 3,
      "repsLow": 8,
      "repsHigh": 15,
      "rpe": 10,
-     "failLast": 1,
-     "failLastHigh": 2,
+     "failLast": 0,
+     "failLastHigh": 0,
      "pct": null,
      "pctBasis": null,
      "idx": false,
@@ -1912,7 +1966,7 @@
      "repsHigh": 25,
      "rpe": 9,
      "failLast": 0,
-     "failLastHigh": 1,
+     "failLastHigh": 0,
      "pct": null,
      "pctBasis": null,
      "idx": false,
@@ -1922,7 +1976,7 @@
      "optional": false,
      "restSec": 75,
      "note": null,
-     "effort": "High effort, controlled"
+     "effort": null
     },
     {
      "id": "B10",
@@ -1944,7 +1998,7 @@
      "optional": false,
      "restSec": 75,
      "note": null,
-     "effort": "1–2 RIR"
+     "effort": null
     }
    ]
   },
@@ -2205,72 +2259,6 @@
      "effort": "Crisp reps; stop at any loss of height"
     },
     {
-     "id": "D2",
-     "ex": "hackBulg",
-     "role": "accessory",
-     "label": null,
-     "sets": 3,
-     "repsLow": 8,
-     "repsHigh": 12,
-     "rpe": 8,
-     "failLast": 0,
-     "failLastHigh": 0,
-     "pct": null,
-     "pctBasis": null,
-     "idx": false,
-     "amrap": false,
-     "myoOption": false,
-     "accessory": true,
-     "optional": false,
-     "restSec": 150,
-     "note": null,
-     "effort": "1–2 RIR"
-    },
-    {
-     "id": "D3",
-     "ex": "legcurlLie",
-     "role": "accessory",
-     "label": null,
-     "sets": 3,
-     "repsLow": 8,
-     "repsHigh": 12,
-     "rpe": 10,
-     "failLast": 1,
-     "failLastHigh": 2,
-     "pct": null,
-     "pctBasis": null,
-     "idx": false,
-     "amrap": false,
-     "myoOption": false,
-     "accessory": true,
-     "optional": false,
-     "restSec": 75,
-     "note": null,
-     "effort": null
-    },
-    {
-     "id": "D4",
-     "ex": "legpress",
-     "role": "accessory",
-     "label": "light, deep",
-     "sets": 2,
-     "repsLow": 12,
-     "repsHigh": 20,
-     "rpe": 9,
-     "failLast": 0,
-     "failLastHigh": 0,
-     "pct": null,
-     "pctBasis": null,
-     "idx": false,
-     "amrap": false,
-     "myoOption": false,
-     "accessory": true,
-     "optional": false,
-     "restSec": 150,
-     "note": null,
-     "effort": "Final set RPE 9"
-    },
-    {
      "id": "D5",
      "ex": "chinup",
      "role": "accessory",
@@ -2290,7 +2278,95 @@
      "optional": false,
      "restSec": 150,
      "note": null,
-     "effort": "1–2 RIR; no failure"
+     "effort": "Done fresh, second in the session."
+    },
+    {
+     "id": "D4",
+     "ex": "legpressGlute",
+     "role": "accessory",
+     "label": null,
+     "sets": 3,
+     "repsLow": 12,
+     "repsHigh": 20,
+     "rpe": 9,
+     "failLast": 0,
+     "failLastHigh": 0,
+     "pct": null,
+     "pctBasis": null,
+     "idx": false,
+     "amrap": false,
+     "myoOption": false,
+     "accessory": true,
+     "optional": false,
+     "restSec": 120,
+     "note": null,
+     "effort": "Three seconds down, feet high and wide, full clean depth. Light."
+    },
+    {
+     "id": "D13",
+     "ex": "hipThrust",
+     "role": "accessory",
+     "label": null,
+     "sets": 3,
+     "repsLow": 12,
+     "repsHigh": 20,
+     "rpe": 9,
+     "failLast": 0,
+     "failLastHigh": 0,
+     "pct": null,
+     "pctBasis": null,
+     "idx": false,
+     "amrap": false,
+     "myoOption": false,
+     "accessory": true,
+     "optional": false,
+     "restSec": 120,
+     "note": null,
+     "effort": "Lighter than B. Pause a full second at lockout."
+    },
+    {
+     "id": "D14",
+     "ex": "backExt45",
+     "role": "accessory",
+     "label": null,
+     "sets": 3,
+     "repsLow": 10,
+     "repsHigh": 15,
+     "rpe": 8,
+     "failLast": 0,
+     "failLastHigh": 0,
+     "pct": null,
+     "pctBasis": null,
+     "idx": false,
+     "amrap": false,
+     "myoOption": false,
+     "accessory": true,
+     "optional": false,
+     "restSec": 90,
+     "note": null,
+     "effort": "Hamstring-biased. Stop at the line of your legs."
+    },
+    {
+     "id": "D15",
+     "ex": "quadext",
+     "role": "accessory",
+     "label": null,
+     "sets": 2,
+     "repsLow": 15,
+     "repsHigh": 25,
+     "rpe": 10,
+     "failLast": 0,
+     "failLastHigh": 0,
+     "pct": null,
+     "pctBasis": null,
+     "idx": false,
+     "amrap": false,
+     "myoOption": false,
+     "accessory": true,
+     "optional": false,
+     "restSec": 75,
+     "note": null,
+     "effort": "Higher reps than session B. Finish the quads off."
     },
     {
      "id": "D6",
@@ -2301,8 +2377,8 @@
      "repsLow": 10,
      "repsHigh": 15,
      "rpe": 10,
-     "failLast": 1,
-     "failLastHigh": 2,
+     "failLast": 0,
+     "failLastHigh": 0,
      "pct": null,
      "pctBasis": null,
      "idx": false,
@@ -2323,8 +2399,8 @@
      "repsLow": 12,
      "repsHigh": 20,
      "rpe": 10,
-     "failLast": 1,
-     "failLastHigh": 2,
+     "failLast": 0,
+     "failLastHigh": 0,
      "pct": null,
      "pctBasis": null,
      "idx": false,
@@ -2338,7 +2414,7 @@
     },
     {
      "id": "D8",
-     "ex": "abWheel",
+     "ex": "hangingRaise",
      "role": "accessory",
      "label": null,
      "sets": 3,
@@ -2356,41 +2432,19 @@
      "optional": false,
      "restSec": 75,
      "note": null,
-     "effort": "Stop before lumbar extension"
-    },
-    {
-     "id": "D9",
-     "ex": "revhyper",
-     "role": "accessory",
-     "label": null,
-     "sets": 2,
-     "repsLow": 12,
-     "repsHigh": 15,
-     "rpe": 7,
-     "failLast": 0,
-     "failLastHigh": 0,
-     "pct": null,
-     "pctBasis": null,
-     "idx": false,
-     "amrap": false,
-     "myoOption": false,
-     "accessory": true,
-     "optional": false,
-     "restSec": 75,
-     "note": null,
-     "effort": "2–3 RIR"
+     "effort": "Curl the hips up at the top, not just legs to 90°."
     },
     {
      "id": "D10",
-     "ex": "calfSeat",
+     "ex": "calfStand",
      "role": "accessory",
      "label": null,
-     "sets": 4,
-     "repsLow": 12,
-     "repsHigh": 20,
+     "sets": 3,
+     "repsLow": 10,
+     "repsHigh": 15,
      "rpe": 10,
-     "failLast": 1,
-     "failLastHigh": 2,
+     "failLast": 0,
+     "failLastHigh": 0,
      "pct": null,
      "pctBasis": null,
      "idx": false,
@@ -2412,7 +2466,7 @@
      "repsHigh": 25,
      "rpe": 9,
      "failLast": 0,
-     "failLastHigh": 1,
+     "failLastHigh": 0,
      "pct": null,
      "pctBasis": null,
      "idx": false,
@@ -2422,7 +2476,7 @@
      "optional": false,
      "restSec": 75,
      "note": null,
-     "effort": "High effort, controlled"
+     "effort": null
     },
     {
      "id": "D12",
@@ -2433,8 +2487,8 @@
      "repsLow": 10,
      "repsHigh": 15,
      "rpe": 10,
-     "failLast": 1,
-     "failLastHigh": 1,
+     "failLast": 0,
+     "failLastHigh": 0,
      "pct": null,
      "pctBasis": null,
      "idx": false,
@@ -3490,7 +3544,7 @@
   {
    "s": "Start here",
    "t": "How long each session should take",
-   "c": "<p>These assume you actually take the prescribed rest periods. If you are finishing much faster, you are rushing; much slower, you are on your phone.</p>\n<ul>\n<li><strong>A · Heavy bench + back — 27 sets, 85–95 min.</strong> The longest, because heavy singles need 3–5 min between attempts.</li>\n<li><strong>B · Lower + arms — 30 sets, 75–85 min.</strong> Dense; most of it is 60–90 s rests.</li>\n<li><strong>C · AMRAP + bench variation — 27 sets, 70–80 min.</strong> The AMRAP is a measurement, so it goes first, straight after the ramp.</li>\n<li><strong>D · Lower + delts + jumps — 33 sets, 75–85 min.</strong> Four of those sets are jumps with full recovery.</li>\n<li><strong>E · Bench volume + incline Smith — 32 sets, 70–80 min.</strong> Two of those are the forearm rotation split into its two directions — the same work as before, counted as two exercises instead of one, so the minutes did not move.</li>\n<li><strong>F · Speed bench + overhead + back — 23 sets, 75–85 min.</strong> Most exercises, but six of those sets are cheap speed work.</li>\n</ul>\n<p>Add 8–10 minutes of warm-up to each. These grew when we added the core work and the extra arm and chest volume — you said length was not a problem, so I took you at your word. If a session is consistently overrunning, tell me and I will trim it rather than have you skip the last exercises, which are always the isolation work you actually want.</p>"
+   "c": "<p>These assume you actually take the prescribed rest periods. If you are finishing much faster, you are rushing; much slower, you are on your phone.</p>\n<ul>\n<li><strong>A · Heavy bench + back — 27 sets, 85–95 min.</strong> The longest, because heavy singles need 3–5 min between attempts.</li>\n<li><strong>B · Lower + arms — 28 sets, 75–85 min.</strong> Dense; most of it is 60–90 s rests.</li>\n<li><strong>C · AMRAP + bench variation — 27 sets, 70–80 min.</strong> The AMRAP is a measurement, so it goes first, straight after the ramp.</li>\n<li><strong>D · Lower + delts + jumps — 33 sets, 95–105 min.</strong> Four of those sets are jumps with full recovery.</li>\n<li><strong>E · Bench volume + incline Smith — 32 sets, 70–80 min.</strong> Two of those are the forearm rotation split into its two directions — the same work as before, counted as two exercises instead of one, so the minutes did not move.</li>\n<li><strong>F · Speed bench + overhead + back — 23 sets, 75–85 min.</strong> Most exercises, but six of those sets are cheap speed work.</li>\n</ul>\n<p>Add 8–10 minutes of warm-up to each. These grew when we added the core work and the extra arm and chest volume — you said length was not a problem, so I took you at your word. If a session is consistently overrunning, tell me and I will trim it rather than have you skip the last exercises, which are always the isolation work you actually want.</p>"
   },
   {
    "s": "Start here",

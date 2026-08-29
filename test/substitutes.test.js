@@ -111,7 +111,8 @@ test('the plan is untouched when there is nothing to add', () => {
 
 test('a custom exercise can never overwrite one of the plan\'s', () => {
   const plan = withCustomExercises(PLAN, [{ id: 'legpress', name: 'Not the leg press', basedOn: 'legpress' }]);
-  assert.equal(plan.exercises.legpress.name, 'Leg press');
+  assert.equal(plan.exercises.legpress.name, PLAN.exercises.legpress.name);
+  assert.notEqual(plan.exercises.legpress.name, 'Not the leg press');
 });
 
 test('ids are namespaced and never reused', () => {
