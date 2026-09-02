@@ -3,6 +3,15 @@
 **Written 2 September 2026**, from the export of the same date: 16 sessions,
 30 competition-bench sets, 14 weigh-ins.
 
+> **Correction, same day.** Sections 2–4 under-read the strength gain. I
+> checked whether the 19–25 August sets clustered at 115 and they did, but I
+> did not check whether the *later* non-AMRAP sets had moved. They had — the
+> 28 August to 1 September sets average 121.4 with every AMRAP excluded, and
+> matched pairs at identical reps and identical RPE are 5–10 kg heavier a week
+> apart. The gain is real, ~121 is the honest current max rather than 115, and
+> 120 kg is a legitimate attempt. **See `bench-plan.md`,** which supersedes
+> §2–§4 here. Section 1 (bodyweight) and §5–§7 stand.
+
 ---
 
 ## 1. Bodyweight — you are gaining about 1.7× too fast
