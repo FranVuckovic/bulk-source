@@ -188,8 +188,28 @@ export function readinessWouldReindex(state, nextReadiness) {
   return current.some((slot, i) => slot.ex !== next[i].ex);
 }
 
-const workingMaxFor = (state, exerciseId) =>
-  state.maxes.get(exerciseId)?.workingMax ?? state.plan.meta.seedWorkingMaxes[exerciseId] ?? null;
+/**
+ * The working max to prescribe from.
+ *
+ * Your own confirmed max first, then the seed. Failing both, an exercise may
+ * declare `maxFrom` — a ratio against another lift — and be derived from it.
+ *
+ * That is how the bench variations work. A close-grip max is about 90% of a
+ * competition max for almost everybody, so deriving it means the variation is
+ * loaded correctly from the first session instead of being guessed at, and
+ * confirming a new competition max recalibrates every variation at once. The
+ * moment you confirm a max for the variation itself, that wins — a derived
+ * number is a starting point, not a claim about you.
+ */
+const workingMaxFor = (state, exerciseId) => {
+  const own = state.maxes.get(exerciseId)?.workingMax ?? state.plan.meta.seedWorkingMaxes[exerciseId];
+  if (own != null) return own;
+
+  const from = state.plan.exercises[exerciseId]?.maxFrom;
+  if (!from) return null;
+  const parent = state.maxes.get(from.exerciseId)?.workingMax ?? state.plan.meta.seedWorkingMaxes[from.exerciseId];
+  return parent == null ? null : parent * from.ratio;
+};
 
 /**
  * Bodyweight counts as part of the load on pull-ups, chin-ups and dips, so the
@@ -630,6 +650,33 @@ function rotationDoneCard(state) {
            <p class="hint">You can still train without advancing — it just goes into rotation ${state.cycle.sequence}.</p>`
     }
   </div>`;
+}
+
+/**
+ * Say so when the load being logged is a long way above what was prescribed.
+ *
+ * Not a block — going heavier is allowed and sometimes right. But the whole
+ * reason the plan prescribes an RPE is that the load is supposed to land
+ * there, and a session run 7.5 kg over at three RPE points harder than asked
+ * is worth seeing at the moment it happens rather than four sessions later
+ * when the back is already sore.
+ */
+const OVERSHOOT_KG = 5;
+
+function overshootNote(state, c) {
+  const prescribed = prescriptionFor(state, c.slot);
+  if (prescribed == null || c.load == null) return '';
+  const over = c.load - prescribed;
+  if (over < OVERSHOOT_KG) return '';
+
+  const unit = state.settings.unit;
+  return `<p class="hint" style="margin:-6px 2px 12px;color:var(--s2)"><b>${escape(
+    fmtLoad(over, unit)
+  )} ${escape(unit)} above the prescription.</b> This slot asks for ${escape(
+    fmtLoad(prescribed, unit)
+  )} ${escape(unit)} at RPE ${escape(String(c.slot.rpe))}${
+    c.slot.amrap ? '' : ` × ${escape(String(c.slot.reps))}`
+  }. Going heavier is your call — just know you are choosing it, not following it.</p>`;
 }
 
 /**
@@ -1117,12 +1164,14 @@ function drawStepSheet(ctx) {
     </div>
 
     <div class="eff" id="stepEff">${stepReadout(state, c, workingMax)}</div>
+    <div id="stepOver">${overshootNote(state, c)}</div>
 
     <div class="mini" style="justify-content:center;margin-bottom:12px">
       <button data-act="flag" data-flag="toFailure" class="${c.toFailure ? 'warn' : ''}">${c.toFailure ? '\u2713 ' : ''}To failure</button>
       <button data-act="flag" data-flag="isAmrap" class="${c.isAmrap ? 'warn' : ''}">${c.isAmrap ? '\u2713 ' : ''}AMRAP</button>
       <button data-act="flag" data-flag="isMyoRep" class="${c.isMyoRep ? 'warn' : ''}">${c.isMyoRep ? '\u2713 ' : ''}Myo-reps</button>
       <button data-act="flag" data-flag="isIndexSet" class="${c.isIndexSet ? 'warn' : ''}">${c.isIndexSet ? '\u2713 ' : ''}Index set</button>
+      <button data-act="flag" data-flag="formBreakdown" class="${c.formBreakdown ? 'crit' : ''}">${c.formBreakdown ? '\u2713 ' : ''}Form broke</button>
       ${
         tracksPause(c.slot.ex)
           ? PAUSE_STYLES.map(
@@ -1134,6 +1183,20 @@ function drawStepSheet(ctx) {
           : ''
       }
     </div>
+
+    ${
+      c.formBreakdown
+        ? `<p class="hint" style="margin:-6px 2px 12px;color:var(--s2)"><b>Marked as form breakdown.</b> The set is kept
+           exactly as logged and still counts as volume — it just cannot claim a record or move a working max.</p>`
+        : ''
+    }
+    ${
+      c.isAmrap && tracksPause(c.slot.ex) && !c.pauseStyle
+        ? `<p class="hint" style="margin:-6px 2px 12px;color:var(--s2)"><b>Pick a pause style before logging this.</b>
+           An AMRAP is the plan's only measurement, and a touch-and-go rep and a paused rep at the same load are not
+           the same evidence. Both of the AMRAPs in your history have this blank.</p>`
+        : ''
+    }
 
     <div class="g2">
       <div><label for="stepVel">Bar speed (m/s)</label>
@@ -1186,6 +1249,11 @@ const repaintReadout = (ctx) => {
       workingMaxFor(ctx.state, ctx.state.sheetCtx.slot.ex)
     );
   }
+  // The overshoot warning has to repaint with the load, not be decided once
+  // when the sheet opened — the sheet opens on the prescribed weight, and
+  // typing a heavier one is exactly the moment worth saying something.
+  const over = document.getElementById('stepOver');
+  if (over) over.innerHTML = overshootNote(ctx.state, ctx.state.sheetCtx);
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1236,6 +1304,7 @@ export const actions = {
       rpe,
       toFailure,
       isAmrap: !!slot.amrap,
+      formBreakdown: false,
       // The screen shows a default grip and pause; v1 saved null for both on a
       // one-tap set, so analytics silently mixed incomparable techniques.
       gripWidth: defaultGrip(state, slot, slotIndex),
@@ -1341,6 +1410,7 @@ export const actions = {
       rpe: values.rpe,
       toFailure: values.logged ? !!values.logged.toFailure : values.toFailure,
       isAmrap: values.logged ? !!values.logged.isAmrap : !!slot.amrap,
+      formBreakdown: !!values.logged?.formBreakdown,
       isMyoRep: values.logged ? !!values.logged.isMyoRep : !!slot.myoReps && i === slot.sets - 1,
       isIndexSet: values.logged ? !!values.logged.isIndexSet : !!slot.idx,
       velocity: values.logged?.velocity ?? null,
@@ -1474,6 +1544,7 @@ export const actions = {
       rpe: c.rpe,
       toFailure: c.toFailure,
       isAmrap: c.isAmrap,
+      formBreakdown: !!c.formBreakdown,
       isMyoRep: c.isMyoRep,
       isIndexSet: c.isIndexSet,
       velocity: c.velocity,

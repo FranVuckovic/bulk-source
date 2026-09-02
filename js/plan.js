@@ -217,7 +217,19 @@ function resolveBench(plan, session, slot, { rotation, block, mode }) {
   if (slot.role === 'volume' && session.id === 'C') {
     const variation = spec.variation;
     if (!variation) return null;
-    return { ...slot, sets: variation.sets, repsLow: variation.reps, repsHigh: variation.reps, rpe: variation.rpe };
+    // The block decides which variation, not just how many sets of it. Before
+    // this, `block.variation` was a label nobody acted on and the slot always
+    // resolved to one generic "bench variation" exercise, so the load could
+    // not know what fraction of the competition lift it was supposed to be.
+    const ex = block?.variationEx;
+    return {
+      ...slot,
+      ...(ex ? { ex } : {}),
+      sets: variation.sets,
+      repsLow: variation.reps,
+      repsHigh: variation.reps,
+      rpe: variation.rpe,
+    };
   }
 
   if (slot.role === 'top_single' && session.id === 'E') {

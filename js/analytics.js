@@ -40,6 +40,10 @@ export function eligibleForStrength(sets, { exercises, logs = [] }) {
     const reject = (reason) => excluded.push({ id: set.id, exerciseId: set.exerciseId, reason });
 
     if (set.deletedAtISO) { reject('deleted'); continue; }
+    // The gate that makes the flag mean something: a set marked as form
+    // breakdown cannot move a working max, and the exclusion is reported with
+    // its reason like every other one here.
+    if (set.formBreakdown) { reject('form breakdown'); continue; }
     if (!exercise) { reject('unknown exercise'); continue; }
     if (!set.isIndexSet) { reject('not an index set'); continue; }
     if (!exercise.tracksMax || exercise.maxConf !== 'high') { reject('estimates on this lift are indicative only'); continue; }
@@ -736,6 +740,10 @@ export function records(sets, { exercises, logs }) {
 
   for (const set of sets || []) {
     if (set.deletedAtISO || set.load == null || !set.reps) continue;
+    // A set the lifter marked as form breakdown happened, counts as volume and
+    // stays in the Log — but it may not claim a record. A ground-out rep with a
+    // bounce is not the same lift as the one the record would be compared with.
+    if (set.formBreakdown) continue;
     const exercise = exercises[set.exerciseId];
     if (!exercise) continue;
     const log = byLog.get(set.sessionLogId);
@@ -811,6 +819,11 @@ export function bestEstimates(sets, { exercises, logs, bodyweight = 0 } = {}) {
 
     const here = row(set.exerciseId, exercise.name);
     here.samples += 1;
+
+    if (set.formBreakdown) {
+      if (!here.excluded.includes('form breakdown')) here.excluded.push('form breakdown');
+      continue;
+    }
 
     const estimate = estimateForSet(set, { bodyweight: exercise.bodyweightLoaded ? bodyweight : 0 });
     if (!estimate?.value) {

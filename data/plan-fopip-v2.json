@@ -210,7 +210,7 @@
    "bodyweightLoaded": false
   },
   "benchVar": {
-   "name": "Bench variation (close-grip / Spoto / pin press)",
+   "name": "Bench variation (retired — split by variation)",
    "tracksMax": true,
    "maxConf": "high",
    "m": {
@@ -223,7 +223,7 @@
     "Spoto: stop 2–3 cm above the chest, hold 1 s, press. No bounce, no contact.",
     "Pin press: bar starts dead on pins 5–10 cm off the chest. No eccentric at all."
    ],
-   "why": "Supplemental pressing strength through a different stimulus, and it spreads joint load across grips and ranges. Rotates every block, never weekly.",
+   "why": "Supplemental pressing strength through a different stimulus, and it spreads joint load across grips and ranges. Rotates every block, never weekly. Split into one exercise per variation so each carries its own percentage of the competition max; kept so sets logged before the split keep their name.",
    "subs": [
     "Floor press",
     "Larsen press (feet up)",
@@ -234,7 +234,8 @@
    "unit": "kg",
    "defaultRestSec": 165,
    "refPhotoId": null,
-   "bodyweightLoaded": false
+   "bodyweightLoaded": false,
+   "retired": true
   },
   "benchSpeed": {
    "name": "Speed bench",
@@ -1543,6 +1544,161 @@
    "defaultRestSec": 90,
    "refPhotoId": null,
    "bodyweightLoaded": false
+  },
+  "benchClose": {
+   "name": "Close-grip bench press",
+   "tracksMax": true,
+   "maxConf": "high",
+   "m": {
+    "chestMid": 0.6,
+    "triLat": 1,
+    "deltFront": 0.3
+   },
+   "how": [
+    "Hands about shoulder width — index fingers just inside the smooth rings.",
+    "Elbows tucked a little more than competition. Wrists stacked over the elbows.",
+    "Paused, one second, like the competition lift."
+   ],
+   "why": "The single best bench assistance exercise: same groove, more triceps, and it trains the transition zone where your press stalls.",
+   "subs": [
+    "Bench with a slightly narrower grip than competition",
+    "Floor press"
+   ],
+   "watch": "Do not go so narrow that your wrists hurt. Shoulder width is close grip; touching plates is a wrist exercise.",
+   "grips": null,
+   "unit": "kg",
+   "defaultRestSec": 180,
+   "refPhotoId": null,
+   "bodyweightLoaded": false,
+   "splitFrom": "benchVar",
+   "maxFrom": {
+    "exerciseId": "benchComp",
+    "ratio": 0.9
+   }
+  },
+  "benchPause": {
+   "name": "Long-pause bench press — 3 s",
+   "tracksMax": true,
+   "maxConf": "high",
+   "m": {
+    "chestMid": 0.6,
+    "triLat": 1,
+    "deltFront": 0.3
+   },
+   "how": [
+    "Competition grip and setup.",
+    "Touch, then hold motionless for a full three seconds.",
+    "Stay tight through the pause — it is not a rest. Then press hard."
+   ],
+   "why": "Removes the stretch reflex entirely, so the press starts from a dead position. Builds force off the chest and kills a bounce habit.",
+   "subs": [
+    "Spoto press",
+    "Paused bench, 1 s, heavier"
+   ],
+   "watch": "A pause is not a rest. If you go loose under the bar the shoulder takes it.",
+   "grips": null,
+   "unit": "kg",
+   "defaultRestSec": 180,
+   "refPhotoId": null,
+   "bodyweightLoaded": false,
+   "splitFrom": "benchVar",
+   "maxFrom": {
+    "exerciseId": "benchComp",
+    "ratio": 0.88
+   }
+  },
+  "benchPin": {
+   "name": "Pin press — bar set just below the sticking point",
+   "tracksMax": true,
+   "maxConf": "high",
+   "m": {
+    "chestMid": 0.6,
+    "triLat": 1,
+    "deltFront": 0.3
+   },
+   "how": [
+    "Set the pins so the bar starts with your upper arm JUST BELOW horizontal — about 2 cm under where you stall.",
+    "Bar rests dead on the pins between reps. Stay tight; do not relax under it.",
+    "Press through the sticking point, not from above it."
+   ],
+   "why": "The most specific attack on a transition-zone sticking point: you start dead at the height where you stop, with zero elastic contribution.",
+   "subs": [
+    "Long-pause bench",
+    "Close-grip bench"
+   ],
+   "watch": "Set too high and it becomes a board press and trains the lockout instead, which is not your weak point. Set it BELOW the stall.",
+   "grips": null,
+   "unit": "kg",
+   "defaultRestSec": 180,
+   "refPhotoId": null,
+   "bodyweightLoaded": false,
+   "splitFrom": "benchVar",
+   "maxFrom": {
+    "exerciseId": "benchComp",
+    "ratio": 0.88
+   }
+  },
+  "benchWide": {
+   "name": "Wide-grip bench press",
+   "tracksMax": true,
+   "maxConf": "high",
+   "m": {
+    "chestMid": 0.6,
+    "triLat": 1,
+    "deltFront": 0.3
+   },
+   "how": [
+    "A thumb-length wider than competition, no more.",
+    "Paused, one second.",
+    "Shorter range off the chest; the lockout is the hard part."
+   ],
+   "why": "Shortens the range and shifts work toward the pecs. A different reading on the same lift, once the weak point is addressed.",
+   "subs": [
+    "Competition bench",
+    "Close-grip bench"
+   ],
+   "watch": "Very wide grips are a shoulder risk for no extra benefit. One thumb-length wider is enough.",
+   "grips": null,
+   "unit": "kg",
+   "defaultRestSec": 180,
+   "refPhotoId": null,
+   "bodyweightLoaded": false,
+   "splitFrom": "benchVar",
+   "maxFrom": {
+    "exerciseId": "benchComp",
+    "ratio": 0.97
+   }
+  },
+  "benchFeetUp": {
+   "name": "Feet-up bench press",
+   "tracksMax": true,
+   "maxConf": "high",
+   "m": {
+    "chestMid": 0.6,
+    "triLat": 1,
+    "deltFront": 0.3
+   },
+   "how": [
+    "Feet on the bench or in the air. No leg drive at all.",
+    "Competition grip, paused.",
+    "Brace hard — the only thing holding position is your trunk."
+   ],
+   "why": "Removes leg drive, so it measures upper-body pressing on its own. Also exposes whether your arch is doing the work your chest should.",
+   "subs": [
+    "Larsen press",
+    "Competition bench"
+   ],
+   "watch": "Less stable. Drop the load and get a spotter.",
+   "grips": null,
+   "unit": "kg",
+   "defaultRestSec": 180,
+   "refPhotoId": null,
+   "bodyweightLoaded": false,
+   "splitFrom": "benchVar",
+   "maxFrom": {
+    "exerciseId": "benchComp",
+    "ratio": 0.92
+   }
   }
  },
  "sessions": [
@@ -2032,7 +2188,7 @@
     },
     {
      "id": "C2",
-     "ex": "benchVar",
+     "ex": "benchClose",
      "role": "volume",
      "label": null,
      "sets": 3,
@@ -2946,7 +3102,7 @@
    "type": "baseline",
    "effortWave": null,
    "accessoryMultiplier": 1.0,
-   "variation": "Close-grip",
+   "variation": "Close-grip bench press",
    "theme": "Establish every baseline number under standardised conditions. Full volume; the testing fatigue is accepted and tagged.",
    "bench": {
     "A": {
@@ -2996,7 +3152,8 @@
     "No bench AMRAP in Rotation 1 — technique work replaces it",
     "Rotation 2 runs the first standardised AMRAP",
     "Excluded from high-versus-standard failure comparisons"
-   ]
+   ],
+   "variationEx": "benchClose"
   },
   {
    "id": 1,
@@ -3006,7 +3163,7 @@
    "type": "accumulation",
    "effortWave": "counterbalanced",
    "accessoryMultiplier": 1.0,
-   "variation": "Close-grip",
+   "variation": "Close-grip bench press",
    "theme": "The base the rest of the plan sits on. Two counterbalanced effort waves test high against standard failure.",
    "bench": {
     "A": {
@@ -3051,7 +3208,8 @@
    "changes": [
     "Effort waves: high, high, standard, standard — then reversed for the second four rotations",
     "First defensible high-versus-standard comparison is Rotation 10"
-   ]
+   ],
+   "variationEx": "benchClose"
   },
   {
    "id": 2,
@@ -3061,7 +3219,7 @@
    "type": "intensification",
    "effortWave": "standard",
    "accessoryMultiplier": 0.92,
-   "variation": "Spoto press",
+   "variation": "Pin press — bar set just below the sticking point",
    "theme": "Heavier bench work at slightly reduced accessory volume so the added intensity is not confounded by accessory fatigue.",
    "bench": {
     "A": {
@@ -3107,7 +3265,8 @@
     "Static holds become available from Rotation 11, at most every other rotation",
     "Standard-failure mode throughout",
     "Accessory volume 92%"
-   ]
+   ],
+   "variationEx": "benchPin"
   },
   {
    "id": 3,
@@ -3117,7 +3276,7 @@
    "type": "recovery",
    "effortWave": "none",
    "accessoryMultiplier": 0.6,
-   "variation": "Close-grip",
+   "variation": "Close-grip bench press",
    "theme": "One rotation to make existing fitness visible again. Reducing fatigue is not losing fitness.",
    "bench": {
     "A": {
@@ -3164,7 +3323,8 @@
     "No AMRAP, no failure work, no static holds",
     "Accessory volume 60%",
     "Formal plan review after this rotation"
-   ]
+   ],
+   "variationEx": "benchClose"
   },
   {
    "id": 4,
@@ -3174,7 +3334,7 @@
    "type": "accumulation",
    "effortWave": "counterbalanced",
    "accessoryMultiplier": 1.0,
-   "variation": "Pin press",
+   "variation": "Pin press — bar set just below the sticking point",
    "theme": "Volume again, at loads that were near-maximal in Accumulation I.",
    "bench": {
     "A": {
@@ -3219,7 +3379,8 @@
    "changes": [
     "Second pair of counterbalanced effort waves",
     "Bench variation becomes the pin press"
-   ]
+   ],
+   "variationEx": "benchPin"
   },
   {
    "id": 5,
@@ -3229,7 +3390,7 @@
    "type": "intensification",
    "effortWave": "standard",
    "accessoryMultiplier": 0.92,
-   "variation": "Close-grip",
+   "variation": "Long-pause bench press — 3 s",
    "theme": "The heaviest sustained block. Two singles in A, the second heavier than the first.",
    "bench": {
     "A": {
@@ -3275,7 +3436,8 @@
    "changes": [
     "A works up to 1@8 then 1@8.5",
     "Watch the elbows: highest cumulative joint load of the plan"
-   ]
+   ],
+   "variationEx": "benchPause"
   },
   {
    "id": 6,
@@ -3285,7 +3447,7 @@
    "type": "specificity",
    "effortWave": "standard",
    "accessoryMultiplier": 0.85,
-   "variation": "Spoto press",
+   "variation": "Long-pause bench press — 3 s",
    "theme": "Express what has been built. Accessories trimmed, priority chest, triceps and delts kept closest to full.",
    "bench": {
     "A": {
@@ -3330,7 +3492,8 @@
    "changes": [
     "AMRAP only in Rotations 28 and 30; otherwise a 1×3 @8",
     "Accessory volume 85%"
-   ]
+   ],
+   "variationEx": "benchPause"
   },
   {
    "id": 7,
@@ -3340,7 +3503,7 @@
    "type": "taper",
    "effortWave": "none",
    "accessoryMultiplier": 0.6,
-   "variation": "Close-grip",
+   "variation": "Close-grip bench press",
    "theme": "Remove fatigue without removing fitness. One rotation.",
    "bench": {
     "A": {
@@ -3386,7 +3549,8 @@
    "changes": [
     "No AMRAP, no failure work, no holds",
     "Accessory volume 60%"
-   ]
+   ],
+   "variationEx": "benchClose"
   },
   {
    "id": 8,
@@ -3435,7 +3599,8 @@
     "Optional true 1RM attempt, spotted, with safeties",
     "No failure work, no AMRAP, no holds",
     "Accessory volume 55%"
-   ]
+   ],
+   "variationEx": null
   },
   {
    "id": 9,
@@ -3445,7 +3610,7 @@
    "type": "bridge",
    "effortWave": "none",
    "accessoryMultiplier": 0.75,
-   "variation": "Close-grip",
+   "variation": "Close-grip bench press",
    "theme": "Reintroduce ordinary training and decide what comes next.",
    "bench": {
     "A": {
@@ -3491,7 +3656,8 @@
     "70–80% of normal volume at ordinary RPE 7–8",
     "No mandatory AMRAP",
     "Failure work reintroduced gradually"
-   ]
+   ],
+   "variationEx": "benchClose"
   }
  ],
  "fallbacks": {
