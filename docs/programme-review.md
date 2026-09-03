@@ -1,131 +1,119 @@
-# Whole-programme review: where the bench variations go, and what else moves
+# Whole-programme review — v2
 
-3 September 2026. **Proposal — nothing in `data/plan-fopip-v2.json` has been
-changed by it.** Read with `docs/bench-variations.md`, which holds the ratios.
+3 September 2026. **Proposal. Nothing in `data/plan-fopip-v2.json` has been
+changed by it.** Ratios live in `docs/bench-variations.md`.
+
+This replaces the first version of this document, which proposed removing the
+pushdown and putting only two close-grip sets in. Both were wrong: the pushdown
+is the plan's only lateral-head isolation, and two sets is not a dose.
 
 ---
 
-## 1. The finding that changes the answer
+## 1. The finding everything else follows from
 
-Close-grip bench will not fix the triceps gap.
+Close-grip bench will not fix the triceps gap, because the gap is in the head a
+bench press cannot reach.
 
 Every bench variation in the plan is mapped `triLat: 1, triLong: 0`, and that
-mapping is right. Under a bar the shoulder stays flexed, so the long head — the
-only one of the three that crosses the shoulder joint — cannot be loaded at
-length. It is trained by overhead and behind-the-head positions. Nothing you do
-with your grip width on a bench changes that.
-
-Here is the plan's triceps volume as it stands, at rotation 3:
+is anatomically right — under a bar the shoulder stays flexed, so the long
+head, the only one of the three crossing the shoulder, is never loaded at
+length. Grip width does not change that.
 
 | | sets/week | frequency |
 |---|---|---|
-| Lateral head | **21.5** | 4 |
-| Long head | **9.0** | 3 |
+| Triceps lateral head | **21.5** | 4 |
+| Triceps long head | **9.0** | 3 |
 
-A 2.4 : 1 split, with the starved head under the 10-set floor and the fed head
-over the 20-set ceiling. And the long head is the one that does the lockout
-from a stretched position — which is your sticking point.
+2.4 : 1, with the starved head under the 10-set floor, the fed head over the
+20-set ceiling, and the starved one being the head that locks out from a
+stretched position — which is where you stall.
 
-Its only sources in the whole plan are A8 and E7 (overhead cable extension,
-3 sets each) and C6 (skullcrusher, 3 sets). C7's pushdown is 80% lateral head.
+So close grip and the long head are two separate jobs:
 
-So your instinct that close grip matters is right, and your instinct that it
-gives you triceps hypertrophy is not — those are two different problems:
-
-- **Close grip is a strength and technique tool.** The tucked elbow path, the
-  handoff at the transition, specific to the competition lift. It belongs in
-  the plan, heavy, in low reps.
-- **The long-head gap is a hypertrophy problem, and only an overhead position
-  fixes it.**
-
-Fixing one with the other wastes the sets. The proposal below does both, and
-pays for them.
+- **Close grip is a strength and technique tool** — the tucked elbow path and
+  the pec-to-triceps handoff. Heavy, low reps, three sets.
+- **The long-head gap is a hypertrophy problem**, and only an overhead
+  position fixes it.
 
 ---
 
-## 2. Why not "2 competition + 3 close grip" in the speed slot
+## 2. The budget
 
-Three reasons, and the first is the one that matters:
+Nothing is added without something paying for it. Seven sets are freed and six
+are spent, so the plan gets one set smaller.
 
-**Speed work produces almost no hypertrophy, so close-grip speed work produces
-almost no triceps hypertrophy.** The plan already says this: `benchSpeed` is
-mapped `m: {}` — no muscle volume at all — which is correct for 5 × 3 at 64% and
-RPE 6. Three close-grip speed sets would buy you exactly the thing you were
-worried about buying: nothing. You spotted this yourself.
+### Freed
 
-**It spends the one slot whose purpose is the competition groove.** F1 exists
-for bar speed and technique rehearsal on the competition lift at low fatigue.
-Giving the majority of it to a different groove removes the thing it is for.
+**F1 speed bench, 5 × 3 → 3 × 3, competition grip.** Speed work is the lowest
+value per minute in the plan — 64% at RPE 6 — and the plan's own model says so
+by giving `benchSpeed` an empty muscle map. Its job is diagnostic: *is the bar
+visibly faster than my volume sets?* Three triples answer that as well as five.
+Frees 2 sets.
 
-**It costs the same as a real close-grip slot and delivers less.** Two heavy
-close-grip sets cost about twenty minutes wherever they go, because a new bench
-variation needs its own warm-up ramp from an empty bar and the ramp dominates.
-If you are paying the ramp anyway, pay it for sets that can actually cause
-growth.
+**E2 volume, 5 × 5 → 4 × 5 @ RPE 8.** Still 20 competition reps at RPE 8 and
+still the largest block of specific volume in the plan. Frees 1 set.
 
-So: **keep F1 at 5 × 3 competition, and add a separate close-grip slot at
-2 × 4 @ RPE 8.**
+**Lateral raises, 4 → 3 sets in A9, C8, E8 and F4.** 20.9 sets a week in all six
+sessions on a muscle limiting nothing — the highest-frequency exercise in the
+whole plan, and the clearest thing in it that accumulated rather than being
+decided. Drops to 16.9, mid-band, frequency still 6. Frees 4 sets.
+
+### Spent
+
+**Close-grip bench, 3 × 4 @ RPE 8, in F, straight after the speed work.** Your
+three heavy sets. Spends 3.
+
+Why F: it was the only session with room (65 minutes against 87–115), the speed
+work leaves you warm so the ramp is cheap, and F is where the freed speed sets
+came from. Why not C: the same three sets take C from 108 minutes to about 130,
+making the heaviest day the longest as well.
+
+Cost to name: F is the day before A, so this is twelve heavy close-grip reps
+before A's single and back-offs. F1 dropping to three sets partly offsets it.
+If A's back-off loads start needing to drop, that is the signal, and F8 is the
+slot to cut.
+
+**Overhead cable extension, 3 sets, in F.** The long-head fix. Spends 3.
+
+### Swapped, costing nothing
+
+**C6 skullcrusher → overhead cable extension.** You said to watch the elbows,
+and the skullcrusher is the most elbow-aggressive movement in the plan: an EZ
+bar loaded at full elbow flexion, with the joint at its worst leverage exactly
+where the weight is heaviest. A cable overhead extension trains the same head,
+in the same lengthened position, with constant tension and no jam at the bottom.
+Same long-head volume, materially less elbow.
+
+Net elbow ledger: one harsh exercise out, two cable slots in, and three
+close-grip pressing sets in. That is roughly neutral, and it is the reason the
+close grip is affordable at all.
+
+**C7 pushdown stays.** You are right that it is the only isolation the lateral
+head gets, and it is the cheapest slot in the session.
+
+**D10 standing calf raise → seated.** Both calf slots are currently standing,
+so the soleus — most of the calf's cross-section, and only trainable with the
+knee bent — is untrained. Same sets, no cost, and `calfSeat` already exists in
+the plan unused.
 
 ---
 
-## 3. The proposal
-
-Six changes. The set count of the whole plan is unchanged — 170 before, 170
-after.
-
-**a. C2 becomes the double-pause bench**, 3 × 4–6 @ RPE 8, ratio 0.82. As in
-`docs/bench-variations.md`. This is the primary variation and the reason the
-rest fits.
-
-**b. F gains a close-grip slot: 2 × 4 @ RPE 8**, 180 s rest, straight after the
-speed work. F1 stays 5 × 3 competition at 64%.
-
-Why F: it is the only session with room — 65 minutes against 87–115 for
-everything else — and the speed work leaves you warm. It ends at 88 minutes,
-still the shortest session in the plan. Putting the same pair in C instead
-takes C from 108 to 127 minutes, which makes the heaviest day the longest day
-as well.
-
-The cost to name: F is immediately before A, so this is eight heavy reps of
-close grip the day before A's single and back-offs. Two sets is a small dose
-and A's work is competition-grip and chest-dominant, so I judge the carryover
-acceptable — but it is measurable. If A's back-off loads start needing to drop,
-that is the signal, and this is the slot to cut.
-
-**c. C7's pushdown becomes an overhead extension.** Same cable, same station,
-one attachment position higher. It moves two sets from the head at 21.5 to the
-head at 9.0 — the cheapest change in this document, and the highest-value one.
-
-**d. F gains a second overhead extension: 2 × 10–15 @ RPE 10.** F is where the
-room is, and it now becomes the plan's fourth triceps session.
-
-**e. Pay for c and d out of the side delts.** 20.9 sets a week, in all six
-sessions, on a muscle that is limiting nothing. A9, C8, E8 and F4 go from 4
-sets to 3 — that frees four sets, drops side delts to 16.9, and keeps the
-frequency at six. Mid-band, six exposures, still the most-trained muscle in the
-plan after the chest and triceps.
-
-**f. D10's standing calf raise becomes a seated calf raise.** Both calf slots
-are currently standing, so the soleus — which is most of the calf's
-cross-section and only responds with the knee bent — is untrained. Same set
-count, no cost, and `calfSeat` already exists in the plan unused.
-
-### What it does to the week
+## 3. What it does
 
 | | now | proposed | Δ | frequency |
 |---|---|---|---|---|
-| Triceps lateral | 21.5 | 23.5 | +2.0 | 4 → 4 |
-| Chest (mid) | 21.0 | 22.2 | +1.2 | 3 → **4** |
+| Triceps lateral | 21.5 | 25.2 | +3.7 | 4 → 4 |
+| Chest (mid) | 21.0 | 21.8 | +0.8 | 3 → **4** |
 | Side delts | 20.9 | **16.9** | −4.0 | 6 → 6 |
-| Front delts | 15.6 | 16.2 | +0.6 | 4 → 4 |
+| Front delts | 15.6 | 16.0 | +0.4 | 4 → 4 |
 | Lats | 15.7 | 15.7 | — | 5 |
 | Forearms | 14.9 | 14.9 | — | 6 |
 | Upper back | 14.2 | 14.2 | — | 4 |
 | Biceps long | 13.4 | 13.4 | — | 4 |
-| **Triceps long** | **9.0** | **13.0** | **+4.0** | 3 → **4** |
 | Biceps short | 13.4 | 13.4 | — | 3 |
 | Chest (upper) | 12.9 | 12.9 | — | 3 |
 | Quads | 12.5 | 12.5 | — | 2 |
+| **Triceps long** | **9.0** | **12.0** | **+3.0** | 3 → **4** |
 | Hamstrings | 11.4 | 11.4 | — | 2 |
 | Rear delts | 10.2 | 10.2 | — | 3 |
 | Glutes | 10.2 | 10.2 | — | 2 |
@@ -133,8 +121,9 @@ count, no cost, and `calfSeat` already exists in the plan unused.
 | Calves | 6.0 | 6.0 | — | 2 |
 | Obliques | 5.7 | 5.7 | — | 1 |
 
-Triceps ratio: **2.4 : 1 → 1.8 : 1**. Long head into the band. Chest gains a
-fourth weekly exposure for free, because the close-grip slot counts as one.
+Triceps ratio **2.4 : 1 → 2.1 : 1**, long head into the band, frequency 3 → 4.
+Chest gains a fourth weekly exposure free, because the close-grip slot counts
+as one.
 
 | session | sets | minutes |
 |---|---|---|
@@ -142,91 +131,88 @@ fourth weekly exposure for free, because the close-grip slot counts as one.
 | B | 28 → 28 | 87 → 87 |
 | C | 28 → 27 | 108 → 106 |
 | D | 33 → 33 | 91 → 91 |
-| E | 32 → 31 | 115 → 113 |
-| F | 23 → 26 | **65 → 88** |
+| E | 32 → 30 | 115 → 109 |
+| F | 23 → 26 | 65 → 90 |
+| **total** | **170 → 169** | spread **65–115 → 87–109** |
 
-F absorbs all of it and is still the shortest session. Everything else gets
-slightly shorter.
-
----
-
-## 4. Two things I am deliberately not fixing
-
-**Triceps lateral at 23.5 and chest at 22.2 are over the 20-set ceiling.** That
-is a choice, not an oversight. The 10–20 band is a general hypertrophy
-guideline; being above it on the two muscles the entire plan exists to grow is
-the point of a specialist plan. What was actually wrong was the ratio *inside*
-the triceps, and that is what is being fixed. If either one starts costing you
-recovery, the accessory multiplier already trims them at block boundaries.
-
-**Obliques at 5.7, frequency 1.** Under the band, and I am not adding work.
-Anti-rotation trunk work matters for bracing under a heavy bar, not for size,
-and three sets of Pallof press plus the 0.3 oblique weight carried by your
-cable crunches and hanging leg raises covers that. Inventing sets to make a
-number go green is not a reason to spend a session's time.
-
-**Calves stay at 6.0**, under the floor. You have said three sets per session
-is your ceiling and calves are not a priority, and I am taking that at face
-value — change f makes the six sets you do train both heads instead of one,
-which is the whole of the available improvement without adding a slot. Say so
-if you want a third calf exposure and I will find it.
+The sessions were badly uneven — one 65-minute session and one 115 — and F was
+carrying almost nothing. That is now the tightest the plan has ever been.
 
 ---
 
-## 5. Every bench set in the week
+## 4. Every bench set in the week
 
-At a confirmed 120 kg competition max, in block 1 (rotations 3–10). Close-grip
-max 105.0 (0.88), double-pause max 97.5 (0.82).
+Block 1 (rotations 3–10), at a confirmed 120 kg competition max. Close-grip max
+105.0 (× 0.88), double-pause max 97.5 (× 0.82).
 
-### Recommended
+| slot | lift | sets × reps @ RPE | load | why it exists |
+|---|---|---|---|---|
+| A2 | Competition | 1 × 1 @ 7.5 | 110.0 | a heavy single that is not a test |
+| A3 | Competition | 3 × 4 @ 8 | 100.0 | heavy competition reps under fatigue |
+| C11 | Competition — **attempt** | 1 × 1 | 120.0 (+2.5/wk) | the measurement |
+| C1 | Competition — **AMRAP, paused** | 1 × max | 100.0 fixed | rep record at a constant load |
+| C2 | **Double pause** | 3 × 6 @ 8 | 77.5 | the sticking point and the bounce |
+| E1 | Competition | 1 × 1 @ 7 | 107.5 | opener for the volume |
+| E2 | Competition | 4 × 5 @ 8 | 97.5 | the specific hypertrophy block |
+| F1 | Competition — speed | 3 × 3 @ 64% | 77.5 | bar-speed diagnostic, cheap |
+| F8 | **Close grip** | 3 × 4 @ 8 | 87.5 | tucked path, handoff strength |
 
-| slot | lift | sets × reps @ RPE | load |
-|---|---|---|---|
-| A2 | Competition | 1 × 1 @ 7.5 | 110.0 |
-| A3 | Competition | 3 × 4 @ 8 | 100.0 |
-| C11 | Competition — **attempt** | 1 × 1 | 120.0 (+2.5/wk) |
-| C1 | Competition — **AMRAP, paused** | 1 × max | 100.0 fixed |
-| C2 | **Double pause** | 3 × 6 @ 8 | 77.5 |
-| E1 | Competition | 1 × 1 @ 7 | 107.5 |
-| E2 | Competition | 5 × 5 @ 8 | 97.5 |
-| F1 | Competition — speed | 5 × 3 @ 64% | 77.5 |
-| F8 | **Close grip** | 2 × 4 @ 8 | 87.5 |
+**20 bench sets: 14 competition, 3 double pause, 3 close grip.**
 
-**22 bench sets: 17 competition, 3 double pause, 2 close grip.**
+By reps on the bar: about 51 competition reps a week across four sessions
+against 30 on variations — 63 / 37. Three heavy singles a week (A2, C11, E1),
+12 heavy competition reps, 20 volume reps, 9 speed reps and the AMRAP. The
+specific side is not thin.
 
-### The four earlier options, for comparison
+---
 
-| | Opt 1 | Opt 2 | Opt 3 | Opt 4 (yours) | **Recommended** |
-|---|---|---|---|---|---|
-| A2 single | comp | comp | comp | comp | comp |
-| A3 back-offs | comp 3×4 | comp 3×4 | **close 3×4** | comp 3×4 | comp 3×4 |
-| C11 attempt | ✓ | ✓ | ✓ | ✓ | ✓ |
-| C1 AMRAP | 100 kg | 100 kg | 100 kg | 100 kg | 100 kg |
-| C2 variation | dbl pause | dbl pause | dbl pause | dbl pause | dbl pause |
-| E1 + E2 | comp | comp | comp | comp | comp |
-| F1 speed 5×3 | comp | **close** | **close** | **2 comp + 3 close** | comp |
-| extra close-grip | — | — | — | **2 heavy** | **2 × 4 @ 8** |
-| Competition sets | 17 | 12 | 9 | 14 | **17** |
-| Double-pause sets | 3 | 3 | 3 | 3 | **3** |
-| Close-grip sets | 0 | 5 (all light) | 8 | 5 (2 heavy) | **2 (both heavy)** |
-| Close-grip sets that grow anything | 0 | **0** | 3 | 2 | **2** |
-| Long-head fix | no | no | no | no | **yes, +4.0 sets** |
+## 5. Things that are there on purpose, checked
 
-The last two rows are the argument. Options 2 and 3 look like they have far
-more triceps work than the recommendation, and most of it is speed work the
-plan itself counts as zero volume. And none of the first four options touch the
-head that is actually behind.
+You asked whether anything is in the plan by accident. What I found:
+
+- **Lateral raises in all six sessions.** Accidental accumulation — nobody
+  decided on 20.9 sets a week. Fixed above.
+- **Both calf slots standing.** An oversight; the soleus was untrained. Fixed.
+- **The skullcrusher.** Not accidental, but it was the harshest way to train
+  the head it trains. Swapped for the gentler equivalent.
+- **Forearms: 14.9 sets, frequency 6.** Five direct slots. Mid-band, so not a
+  volume problem, but it is six sessions of forearm work for a bench specialist.
+  Deliberate — you asked for the pronation/supination split by name — so I have
+  left it. It is the first place to look if you ever want sessions shorter.
+- **Rear delts: 10.2, the floor**, against 21.8 of chest. Not wrong, but it is
+  the thinnest thing in the upper body and worth watching if your shoulders
+  start complaining. I have not changed it because it would cost sets I have
+  already spent.
+- **E3's single index set at RPE 10 before E4's two working sets** on the same
+  machine: deliberate — the index set is a measurement, the working sets are
+  training.
+- **A1's static hold**: exists only from rotation 11, labelled an optional
+  experiment, and correctly gated.
+- **Obliques 5.7, frequency 1.** Under the band and staying there. Anti-rotation
+  work matters for bracing under a heavy bar, not for size, and three sets of
+  Pallof plus the oblique share of your crunches and leg raises covers it.
+  Adding sets to turn a number green is not a reason to spend session time.
+
+**Deliberately left over the ceiling: lateral triceps 25.2 and chest 21.8.**
+Three heavy close-grip sets cost +3.0 lateral head and there is no way around
+that — close-grip bench *is* the lateral head. Being above the general 10–20
+band on the two muscles the whole plan exists to grow is what a specialist plan
+looks like. The lever, if it ever costs you recovery: C7's pushdown from 2 sets
+to 1, then F9 from 3 to 2. The accessory multiplier already trims both at block
+boundaries.
 
 ---
 
 ## What I need from you
 
-1. **The close-grip slot: 2 × 4 @ RPE 8 in F**, and F1 staying competition.
-2. **C7's pushdown becoming an overhead extension**, and 2 more overhead sets
-   in F.
-3. **Side delts 4 → 3 sets** in A, C, E and F to pay for it.
-4. **D10 standing → seated calf raise.**
-5. Plus the still-open items from `docs/bench-variations.md`: double pause at
-   0.82 in C2, close grip 0.88, pin press 0.85, and the block schedule.
+1. **F1 speed 5 × 3 → 3 × 3**, competition grip.
+2. **E2 volume 5 × 5 → 4 × 5.**
+3. **Close grip 3 × 4 @ RPE 8 in F**, after the speed work.
+4. **Overhead cable extension, 3 sets, in F.**
+5. **C6 skullcrusher → overhead cable extension** (elbows).
+6. **Lateral raises 4 → 3** in A9, C8, E8, F4.
+7. **D10 standing → seated calf raise.**
+8. Still open from `docs/bench-variations.md`: double pause at 0.82 in C2,
+   close grip 0.88, pin press 0.85, and the block schedule.
 
-Any subset. 1–4 are independent of each other and of the ratio decisions.
+1–7 are independent of each other and of 8.
