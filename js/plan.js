@@ -72,7 +72,7 @@ export function staticHoldFor(plan, rotation) {
 const clone = (slot) => ({ ...slot });
 
 /** Roles whose prescription comes from the block, not from accessory scaling. */
-const BENCH_ROLES = ['top_single', 'backoff', 'amrap', 'volume', 'speed', 'test', 'hold'];
+const BENCH_ROLES = ['top_single', 'backoff', 'attempt', 'amrap', 'volume', 'speed', 'test', 'hold'];
 
 /**
  * Accessory volume multiplier, applied across the whole session rather than
@@ -180,6 +180,21 @@ function resolveBench(plan, session, slot, { rotation, block, mode }) {
     };
   }
 
+  /*
+   * The weekly attempt: one measured single, 2.5 kg heavier than the last one
+   * that was made. Its load does not come from here — it comes from the last
+   * attempt logged — so all this decides is whether the slot exists at all.
+   * It does not, in a rotation whose whole purpose is to shed fatigue: a
+   * deload with a maximal single in it is not a deload.
+   */
+  if (slot.role === 'attempt') {
+    if (!spec.attempt) return null;
+    return {
+      ...slot,
+      note: 'Work up to one single. Paused, spotted, with safeties. Then mark it made or missed \u2014 made writes it as your new working max and adds 2.5 kg to next week; missed keeps both where they are.',
+    };
+  }
+
   if (slot.role === 'amrap') {
     // `amrap` is true, false, or { fromRotation } — the baseline block runs
     // technique work in rotation 1 and the first standardised AMRAP in 2.
@@ -190,6 +205,10 @@ function resolveBench(plan, session, slot, { rotation, block, mode }) {
         role: 'volume',
         amrap: false,
         idx: false,
+        // The AMRAP's fixed 100 kg belongs to the AMRAP. Technique triples at
+        // RPE 7 come off the table like any other volume — carrying the fixed
+        // load through would prescribe 100 kg for a set asking for about 90.
+        fixedLoad: null,
         sets: 3,
         repsLow: 5,
         repsHigh: 5,
@@ -204,6 +223,7 @@ function resolveBench(plan, session, slot, { rotation, block, mode }) {
         role: 'volume',
         amrap: false,
         idx: false,
+        fixedLoad: null,
         sets: 1,
         repsLow: 3,
         repsHigh: 3,
@@ -211,7 +231,10 @@ function resolveBench(plan, session, slot, { rotation, block, mode }) {
         note: 'No AMRAP this rotation — a single triple at RPE 8 instead, to keep heavy work the priority.',
       };
     }
-    return { ...slot, note: 'Genuine RPE 10, safeties and a spotter. Stop when another clean paused rep is not available.' };
+    return {
+      ...slot,
+      note: 'Genuine RPE 10, safeties and a spotter. Stop when another clean paused rep is not available. The load is fixed, so the reps are the measurement \u2014 this set is a rep record at 100 kg, not an estimate of your max.',
+    };
   }
 
   if (slot.role === 'volume' && session.id === 'C') {
@@ -302,7 +325,7 @@ export function resolveSession(plan, { rotation, sessionId, readiness = 'normal'
       continue;
     }
 
-    let slot = ['top_single', 'backoff', 'amrap', 'volume', 'speed'].includes(raw.role)
+    let slot = ['top_single', 'backoff', 'attempt', 'amrap', 'volume', 'speed'].includes(raw.role)
       ? resolveBench(plan, session, raw, { rotation, block, mode })
       : clone(raw);
     if (!slot) continue;

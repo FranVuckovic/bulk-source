@@ -273,6 +273,11 @@ nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.9;st
 .mini{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
 .mini button{font-size:12px;padding:7px 11px;border-radius:8px;border:1px solid var(--line);background:var(--raised);color:var(--ink2);cursor:pointer;font-family:inherit;font-weight:600}
 .mini button.warn{color:var(--s2);border-color:var(--s2)}
+/* A selected outcome, not a warning: the attempt's made/missed pair, and
+   the form-breakdown flag, which shipped with a class the sheet set and
+   the stylesheet never defined. */
+.mini button.good{color:var(--goodtx);border-color:var(--good)}
+.mini button.crit{color:var(--crit);border-color:var(--crit)}
 /* A save that is really a replace. Not danger — replacing today's weigh-in with
    a corrected one is normal — but not the same colour as adding something new. */
 .big.warn{background:var(--s2);color:#fff}

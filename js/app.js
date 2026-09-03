@@ -460,6 +460,13 @@ async function saveSet(slotIndex, setIndex, values) {
     rir: values.rpe == null ? null : Math.max(0, 10 - values.rpe),
     toFailure: !!values.toFailure,
     isAmrap: !!values.isAmrap,
+    // Shipped in v2.21.0 as a button that set a field nothing stored, so the
+    // flag was gone the moment the sheet closed. It is the whole point of the
+    // set — a ground-out rep that cannot claim a record — so it is stored.
+    formBreakdown: !!values.formBreakdown,
+    // 'made' | 'missed' | null, on the weekly attempt only. A made attempt is
+    // the strongest evidence the app ever sees: a weight you actually pressed.
+    attemptResult: values.attemptResult ?? null,
     // The plan supplies the default, but the logger can deliberately promote
     // or demote this individual set when it is the best evidence from the day.
     isIndexSet: values.isIndexSet == null ? !!slot.idx : !!values.isIndexSet,
@@ -472,7 +479,14 @@ async function saveSet(slotIndex, setIndex, values) {
     localDate: todayISO(),
     timeZone: timeZone(),
     utcOffsetMinutes: utcOffsetMinutes(),
-    gripWidth: state.grips[`${state.trainSessionId}-${slotIndex}`] ?? null,
+    /*
+     * The one-tap path sends the grip the row is DISPLAYING, which on an
+     * untouched slot is the exercise's default rather than an entry in
+     * `state.grips`. Reading only the map stored null for exactly those sets —
+     * the same defect the one-tap comment says it fixed, fixed for pauseStyle
+     * and missed for this one, so analytics still mixed incomparable grips.
+     */
+    gripWidth: values.gripWidth ?? state.grips[`${state.trainSessionId}-${slotIndex}`] ?? null,
     // Stored per set: without it, a pull-up log stops being interpretable the
     // moment your bodyweight changes.
     bodyweightUsed: state.plan.exercises[slot.ex].bodyweightLoaded ? state.settings.bodyweight : null,
@@ -494,6 +508,33 @@ async function saveSet(slotIndex, setIndex, values) {
   // until the next full reload quietly removes them again — the same defect
   // that was fixed for the dated stores and missed here.
   state.sets = alive(await getAll(state.db, 'sets'));
+
+  /*
+   * A made attempt writes the working max, because the button that marks it
+   * made is the confirmation — a measured single is better evidence than any
+   * estimate the app can compute, and every prescription in the plan, the five
+   * bench variations included, is derived from this one number.
+   *
+   * It is not gated on being higher. If a lower single is what he actually
+   * pressed, that is what is true, and `maxHistory` is append-only, so nothing
+   * is lost by writing it.
+   */
+  if (written.attemptResult === 'made' && Number.isFinite(written.load)) {
+    await confirmWorkingMax(
+      state.db,
+      {
+        exerciseId: written.exerciseId,
+        workingMax: systemLoad(written.load, written.bodyweightUsed || 0),
+        conf: state.plan.exercises[written.exerciseId]?.maxConf ?? 'high',
+        setAtISO: nowISO(),
+        sourceSetId: written.id,
+        blockId: state.block.idx,
+      },
+      'measured-single'
+    );
+    state.maxes = new Map((await getAll(state.db, 'maxes')).map((m) => [m.exerciseId, m]));
+  }
+
   render();
 
   if (beaten) celebrate(beaten);

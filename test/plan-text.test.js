@@ -65,13 +65,17 @@ test('the baseline rotation is described the way the engine actually behaves', a
   // pointed at the wrong session and asking for something already done.
   const { resolveSession } = await import('../js/plan.js');
 
+  // By slot id, not by exercise: session C now opens with the weekly attempt,
+  // which is also benchComp, so matching on the exercise finds the wrong slot.
+  const amrapSlot = (session) => session.slots.find((slot) => slot.id === 'C1');
+
   const first = resolveSession(PLAN, { rotation: 1, sessionId: 'C' });
-  const firstBench = first.slots.find((slot) => slot.ex === 'benchComp');
+  const firstBench = amrapSlot(first);
   assert.equal(firstBench.amrap, false, 'rotation 1 runs no AMRAP');
   assert.equal(firstBench.rpe, 7, 'it is technique volume');
 
   const second = resolveSession(PLAN, { rotation: 2, sessionId: 'C' });
-  const secondBench = second.slots.find((slot) => slot.ex === 'benchComp');
+  const secondBench = amrapSlot(second);
   assert.equal(secondBench.amrap, true, 'and rotation 2 is the first real one');
   assert.equal(secondBench.rpe, 10);
 

@@ -333,6 +333,37 @@ export const DEFAULT_INCREMENT = 2.5;
  */
 export const AMRAP_FRACTION = 0.83;
 
+/**
+ * The weekly attempt ladder.
+ *
+ * One measured single per rotation, and the next one is 2.5 kg heavier if it
+ * was made. A miss repeats the same weight rather than backing off: the miss
+ * is information about that day, not evidence that the load is wrong, and
+ * dropping the bar after every failure turns a ladder into a wave.
+ */
+export const ATTEMPT_STEP = 2.5;
+
+/**
+ * What to load for the next attempt, from the ones already made.
+ *
+ * `attempts` is chronological, oldest first: [{ load, result }] where result is
+ * 'made' or 'missed'. Anything without a usable load is skipped — an attempt
+ * row with no weight on it says nothing about what comes next.
+ *
+ * Returns `seed` when there is nothing to go on, which is the working max: the
+ * first attempt is the number you already believe, and every one after it is
+ * earned.
+ */
+export function nextAttemptLoad(attempts, { seed = null, step = ATTEMPT_STEP } = {}) {
+  const usable = (attempts || []).filter(
+    (a) => a && Number.isFinite(a.load) && a.load > 0 && (a.result === 'made' || a.result === 'missed')
+  );
+  if (!usable.length) return seed == null ? null : roundToIncrement(seed, step);
+
+  const last = usable[usable.length - 1];
+  return roundToIncrement(last.result === 'made' ? last.load + step : last.load, step);
+}
+
 export function roundToIncrement(value, increment = DEFAULT_INCREMENT) {
   if (value == null || !Number.isFinite(value)) return null;
   if (!Number.isFinite(increment) || increment <= 0) return value;
@@ -369,7 +400,17 @@ export const addedLoad = (system, bodyweight = 0) =>
  * The intermediate top-single figure is rounded the same way, because it stands
  * for a load that would genuinely be on the bar that day.
  */
-export function prescribedLoad(slot, workingMax, increment = DEFAULT_INCREMENT, { bodyweight = 0 } = {}) {
+export function prescribedLoad(slot, workingMax, increment = DEFAULT_INCREMENT, { bodyweight = 0, fixedLoad = null } = {}) {
+  /*
+   * A fixed load is a number the plan states outright rather than derives: the
+   * 100 kg paused AMRAP, whose whole value is that it does NOT move when the
+   * working max does, and the weekly attempt, whose load comes from the last
+   * attempt rather than from a percentage. Both are answered before the
+   * working-max check, because neither needs one.
+   */
+  const stated = fixedLoad ?? slot?.fixedLoad ?? null;
+  if (Number.isFinite(stated)) return roundToIncrement(stated, increment);
+
   if (!slot || !workingMax) return null;
 
   /*

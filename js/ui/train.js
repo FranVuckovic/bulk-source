@@ -22,6 +22,7 @@ import {
   SET_SETUP_SECONDS,
   SECONDS_PER_REP,
   prescribedLoad,
+  nextAttemptLoad,
   effectiveRpeDetail,
   roundToIncrement,
   systemLoad,
@@ -221,8 +222,36 @@ const bodyweightFor = (state, exerciseId) =>
 
 const loadOptions = (state, exerciseId) => ({ bodyweight: bodyweightFor(state, exerciseId) });
 
+/**
+ * Every attempt logged for a lift, oldest first.
+ *
+ * Ordered by when the set was written rather than by rotation, because that is
+ * the order they were actually pressed in — a session logged late, or repaired
+ * into an earlier rotation, must not reorder the ladder underneath itself.
+ */
+const attemptsFor = (state, exerciseId) =>
+  (state.sets || [])
+    .filter((set) => set.exerciseId === exerciseId && (set.attemptResult === 'made' || set.attemptResult === 'missed'))
+    .sort((a, b) => String(a.timestampISO).localeCompare(String(b.timestampISO)))
+    .map((set) => ({ load: set.load, result: set.attemptResult }));
+
+/**
+ * What the weekly attempt should be loaded to. Null for every other slot, so
+ * the ordinary prescription path is untouched.
+ */
+export const attemptTargetFor = (state, slot) =>
+  slot?.role === 'attempt'
+    ? nextAttemptLoad(attemptsFor(state, slot.ex), {
+        seed: workingMaxFor(state, slot.ex),
+        step: state.settings.increment,
+      })
+    : null;
+
 const prescriptionFor = (state, slot) =>
-  prescribedLoad(slot, workingMaxFor(state, slot.ex), state.settings.increment, loadOptions(state, slot.ex));
+  prescribedLoad(slot, workingMaxFor(state, slot.ex), state.settings.increment, {
+    ...loadOptions(state, slot.ex),
+    fixedLoad: attemptTargetFor(state, slot),
+  });
 
 const isFailureSet = (slot, i) => !!slot.failLast && i >= slot.sets - slot.failLast;
 
@@ -663,7 +692,43 @@ function rotationDoneCard(state) {
  */
 const OVERSHOOT_KG = 5;
 
+/**
+ * The weekly attempt's two buttons, and what each one does to the plan.
+ *
+ * Made and missed are not a flag and its absence — an unanswered attempt is a
+ * third state, and it has to stay distinguishable from a missed one or the
+ * ladder cannot tell "did not say" from "did not lift it".
+ */
+function attemptButtons(state, c) {
+  if (c.slot?.role !== 'attempt') return '';
+
+  const unit = state.settings.unit;
+  const next = c.load == null ? null : c.load + state.settings.increment;
+  const made = c.attemptResult === 'made';
+  const missed = c.attemptResult === 'missed';
+
+  const outcome = made
+    ? `<b>Recorded as made.</b> Logging this sets your working max to ${escape(fmtLoad(c.load, unit))} ${escape(unit)}
+       and every prescription in the plan — the bench variations included — recalculates from it. Next week asks for
+       ${escape(fmtLoad(next, unit))} ${escape(unit)}.`
+    : missed
+      ? `<b>Recorded as missed.</b> Your working max does not move, and next week asks for
+         ${escape(fmtLoad(c.load, unit))} ${escape(unit)} again. A miss is information about the day, not proof the
+         load is wrong.`
+      : `<b>Say what happened before you log it.</b> The attempt is the only set in the plan that can move your
+         working max, so it does not move on its own.`;
+
+  return `<div class="mini" style="justify-content:center;margin-bottom:10px">
+      <button data-act="attempt-result" data-id="made" class="${made ? 'good' : ''}">${made ? '\u2713 ' : ''}Made it</button>
+      <button data-act="attempt-result" data-id="missed" class="${missed ? 'crit' : ''}">${missed ? '\u2713 ' : ''}Missed it</button>
+    </div>
+    <p class="hint" style="margin:-4px 2px 12px;color:var(--s2)">${outcome}</p>`;
+}
+
 function overshootNote(state, c) {
+  // On the weekly attempt, choosing the weight is the slot's entire purpose.
+  // Warning that a chosen attempt is heavier than the suggested one is noise.
+  if (c.slot?.role === 'attempt') return '';
   const prescribed = prescriptionFor(state, c.slot);
   if (prescribed == null || c.load == null) return '';
   const over = c.load - prescribed;
@@ -748,6 +813,8 @@ function loadBasis(slot) {
    * bench triple says 0.86 and is prescribed from the table — so reading it
    * here would put a percentage on screen that the app does not use.
    */
+  if (slot.role === 'attempt') return 'last attempt made, plus 2.5 kg';
+  if (Number.isFinite(slot.fixedLoad)) return `fixed ${slot.fixedLoad} kg \u2014 it does not move with your max`;
   if (slot.amrap) return `${Math.round(AMRAP_FRACTION * 100)}% of working max`;
   if (slot.pctTop) return `${Math.round(slot.pctTop * 100)}% of today's top single`;
   if (slot.pctBasis === 'topSingleRpe') return "from today's top single, to the target RPE";
@@ -1166,6 +1233,8 @@ function drawStepSheet(ctx) {
     <div class="eff" id="stepEff">${stepReadout(state, c, workingMax)}</div>
     <div id="stepOver">${overshootNote(state, c)}</div>
 
+    ${attemptButtons(state, c)}
+
     <div class="mini" style="justify-content:center;margin-bottom:12px">
       <button data-act="flag" data-flag="toFailure" class="${c.toFailure ? 'warn' : ''}">${c.toFailure ? '\u2713 ' : ''}To failure</button>
       <button data-act="flag" data-flag="isAmrap" class="${c.isAmrap ? 'warn' : ''}">${c.isAmrap ? '\u2713 ' : ''}AMRAP</button>
@@ -1292,7 +1361,7 @@ export const actions = {
      * measurement. v1 showed the slot's nominal six and one tap logged it,
      * fabricating the single most important data point in the plan.
      */
-    if (slot.amrap || slot.isTest) {
+    if (slot.amrap || slot.isTest || slot.role === 'attempt') {
       actions['open-step'](ctx, { si: String(slotIndex), i: String(i), field: 'reps' });
       return;
     }
@@ -1411,6 +1480,7 @@ export const actions = {
       toFailure: values.logged ? !!values.logged.toFailure : values.toFailure,
       isAmrap: values.logged ? !!values.logged.isAmrap : !!slot.amrap,
       formBreakdown: !!values.logged?.formBreakdown,
+      attemptResult: values.logged?.attemptResult ?? null,
       isMyoRep: values.logged ? !!values.logged.isMyoRep : !!slot.myoReps && i === slot.sets - 1,
       isIndexSet: values.logged ? !!values.logged.isIndexSet : !!slot.idx,
       velocity: values.logged?.velocity ?? null,
@@ -1519,6 +1589,13 @@ export const actions = {
     startRest(slot.restSec || state.plan.exercises[slot.ex].defaultRestSec);
   },
 
+  /** Made, missed, or tapped again to take it back to unanswered. */
+  'attempt-result'(ctx, data) {
+    const c = ctx.state.sheetCtx;
+    c.attemptResult = c.attemptResult === data.id ? null : data.id;
+    drawStepSheet(ctx);
+  },
+
   'pause-style'(ctx, data) {
     const c = ctx.state.sheetCtx;
     c.pauseStyle = c.pauseStyle === data.id ? null : data.id;
@@ -1545,6 +1622,7 @@ export const actions = {
       toFailure: c.toFailure,
       isAmrap: c.isAmrap,
       formBreakdown: !!c.formBreakdown,
+      attemptResult: c.slot.role === 'attempt' ? c.attemptResult : null,
       isMyoRep: c.isMyoRep,
       isIndexSet: c.isIndexSet,
       velocity: c.velocity,
