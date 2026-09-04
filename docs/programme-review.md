@@ -367,3 +367,85 @@ before you touch anything else.
 body, and the imbalance a bench specialist actually gets hurt by. I have not
 spent sets on it because they are all spoken for, but if you ever free two,
 that is where they go — not the calves.
+
+
+---
+
+## 8. F before E, or E before F
+
+The recommendation in §7 already runs **F before E** — A, D, **F, E**, rest, C, B.
+But the case is closer than I made it sound, and the strongest argument against
+my own recommendation is one I made myself earlier in this document.
+
+Both orders score identically on spacing: one adjacent pressing pair, and A gets
+its two clear days either way. The only thing that changes is which of the two
+gets run tired.
+
+### What the week is actually measuring
+
+The pair matters because the week contains three measurements and two
+calibrations, and they are not equally protected:
+
+| | what it is | protected by |
+|---|---|---|
+| C11 attempt | the working max | the rest day, in every order |
+| F1 speed | *is the bar faster than my volume sets?* | only by running F fresh |
+| E3 incline Smith index set | tracked upper-chest strength | only by running E fresh |
+| Close-grip ratio 0.88 | calibrating over 3–4 exposures | only by running F fresh |
+| Double-pause ratio 0.82 | calibrating over 3–4 exposures | the rest day |
+
+### F then E
+
+**For.** The close grip is brand new and its ratio is being calibrated over the
+next three or four exposures. A ratio calibrated on a fatigued day is a wrong
+ratio, and that wrong number then sets the load for months. Bar velocity is the
+most fatigue-sensitive quality in training, so a tired speed session does not
+just read low — it reads *false*, and the diagnostic tells you the load is too
+heavy when it is not. E's volume is RPE-autoregulated, so tired triceps simply
+mean a lighter bar at the same proximity to failure; the stimulus survives even
+when the load does not. And E3's index set is on the incline Smith, an
+upper-chest machine, which close-grip triceps fatigue barely touches.
+
+**Against.** E is 20 competition reps at RPE 8 — the biggest block of specific
+volume in the plan, and about a fifth of your weekly competition-bench reps.
+Volume-load is not nothing: a lighter E is genuinely less work done, not just
+the same work at a different number.
+
+### E then F
+
+**For.** Run the hypertrophy engine fresh. E is the most expensive pressing
+session in the week and F is the cheapest — and I argued two sections ago that
+the speed work is so low in value that it should be cut from five sets to
+three. Ordering the whole week to protect the slot I just cut by 40% is
+inconsistent, and that is a fair objection.
+
+**Against.** It is not the speed work that needs protecting any more — it is
+the close grip. F stopped being a filler session the moment three heavy
+close-grip sets went into it. And the speed diagnostic, cheap as it is, is
+genuinely uninterpretable when tired, whereas everything else in the week
+degrades gracefully.
+
+### The call, and when it changes
+
+**Run F before E** — but for the close-grip calibration, not for the speed work.
+That is the honest reason.
+
+**Revisit it at the next block boundary.** Once the close-grip ratio has settled
+— three or four clean exposures, so roughly a month — the argument for F first
+mostly evaporates, and E first becomes the better week. Put a note on the
+rotation-11 review.
+
+### If you want neither compromise: the eight-day rotation
+
+**A, D, F, rest, E, rest, C, B** — two rest days, zero adjacent pressing pairs.
+Every single pressing session is preceded by a non-pressing day: A after B, F
+after D, E after a rest, C after a rest. It is strictly the best week in this
+document on stimulus and fatigue.
+
+A rotation in this plan is a training unit, not a calendar week — the app has
+never assumed seven days — so this is legal. The cost is practical rather than
+physiological: 33 rotations becomes 264 days instead of 231, about five weeks
+longer, and your training days rotate through the calendar, so the same session
+lands on a different weekday every cycle. If your gym access, work and
+basketball are fixed to weekdays, that is a real problem and the seven-day
+version is the right answer. If they are not, this is better training.
