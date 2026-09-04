@@ -465,11 +465,18 @@ export function view(ctx) {
     : `Picked manually · next up is ${escape(state.position.nextSessionId)}`;
 
   return `
-  <div class="picker">${state.plan.sessions
+  <div class="picker">${state.plan.meta.rotationOrder
     .map(
-      (s) =>
-        `<button class="pill ${s.id === state.trainSessionId ? 'on' : ''}" data-act="pick-session" data-id="${s.id}">${s.id}</button>`
+      (id) =>
+        `<button class="pill ${id === state.trainSessionId ? 'on' : ''}" data-act="pick-session" data-id="${id}">${id}</button>`
     )
+    /*
+     * Rotation order, not the order the sessions happen to sit in the file.
+     * They were the same until the rotation became A D E F C B, at which point
+     * the picker read A B C D E F while the Plan screen — which has always
+     * mapped `rotationOrder` — read the real thing. Tapping left to right has
+     * to be the order you actually train in.
+     */
     .join('')}<button class="pill custom ${isCustom ? 'on' : ''}" data-act="pick-session" data-id="${CUSTOM_SESSION_ID}">Custom</button></div>
 
   ${state.calibration && !isCustom ? calibrationCard() : ''}

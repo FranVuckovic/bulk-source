@@ -60,18 +60,27 @@ test('a rotation is complete only when every position has been trained', () => {
 });
 
 test('logging only the first and last session leaves the rotation unfinished', () => {
-  // The case that started this: log A, then F. v1 simply moved on and could
-  // never say the rotation was incomplete.
+  // The case that started this: log the first position, then the last. v1
+  // simply moved on and could never say the rotation was incomplete.
+  //
+  // Read off meta.rotationOrder rather than hard-coded: the rotation was
+  // reordered to A D E F C B and this test asserted alphabetical letters, so
+  // it failed for a reason that had nothing to do with what it guards.
+  const order = PLAN.meta.rotationOrder;
+  const first = order[0];
+  const last = order[order.length - 1];
+  const middle = order.slice(1, -1);
+
   const c = cycle(3);
-  const progress = cycleProgress(PLAN, c, [logFor(c, 'A', 'complete'), logFor(c, 'F', 'complete')]);
+  const progress = cycleProgress(PLAN, c, [logFor(c, first, 'complete'), logFor(c, last, 'complete')]);
 
   assert.equal(progress.complete, 2);
-  assert.equal(progress.pending, 4);
+  assert.equal(progress.pending, middle.length);
   assert.equal(progress.finished, false);
-  assert.equal(progress.nextPosition, 'B', 'the rotation still owes B, C, D and E');
+  assert.equal(progress.nextPosition, middle[0], `the rotation still owes ${middle.join(', ')}`);
   assert.deepEqual(
     progress.positions.filter((p) => p.status === 'pending').map((p) => p.position),
-    ['B', 'C', 'D', 'E']
+    middle
   );
 });
 
@@ -103,12 +112,16 @@ test('the cycle dose counts training done, not sessions opened', () => {
 });
 
 test('deleted sessions do not count towards a cycle', () => {
+  const [first, second] = PLAN.meta.rotationOrder;
   const c = cycle(3);
-  const sessions = [logFor(c, 'A', 'complete'), logFor(c, 'B', 'complete', { deletedAtISO: '2026-08-20T10:00:00.000Z' })];
+  const sessions = [
+    logFor(c, first, 'complete'),
+    logFor(c, second, 'complete', { deletedAtISO: '2026-08-20T10:00:00.000Z' }),
+  ];
   const progress = cycleProgress(PLAN, c, sessions);
 
   assert.equal(progress.complete, 1);
-  assert.equal(progress.nextPosition, 'B', 'the deleted session is owed again');
+  assert.equal(progress.nextPosition, second, 'the deleted session is owed again');
 });
 
 test('a custom workout never advances or inflates the A–F rotation', () => {
@@ -132,14 +145,16 @@ test('finishing a rotation offers the next one, never silently', () => {
   const c3 = cycle(3);
   const all = PLAN.meta.rotationOrder.map((p) => logFor(c3, p, 'complete'));
 
+  const [first, second] = PLAN.meta.rotationOrder;
+
   const mid = nextSession(PLAN, c3, all);
   assert.equal(mid.startsNewCycle, true);
   assert.equal(mid.cycleSequence, 4);
-  assert.equal(mid.position, 'A');
+  assert.equal(mid.position, first, 'a new rotation starts at the first position');
 
-  const partial = nextSession(PLAN, c3, [logFor(c3, 'A', 'complete')]);
+  const partial = nextSession(PLAN, c3, [logFor(c3, first, 'complete')]);
   assert.equal(partial.startsNewCycle, false);
-  assert.equal(partial.position, 'B');
+  assert.equal(partial.position, second);
 
   const c33 = cycle(33);
   const last = nextSession(PLAN, c33, PLAN.meta.rotationOrder.map((p) => logFor(c33, p, 'complete')));
