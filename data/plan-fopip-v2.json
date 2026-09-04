@@ -1573,7 +1573,7 @@
       "splitFrom": "benchVar",
       "maxFrom": {
         "exerciseId": "benchComp",
-        "ratio": 0.9
+        "ratio": 0.88
       }
     },
     "benchPause": {
@@ -1635,7 +1635,7 @@
       "splitFrom": "benchVar",
       "maxFrom": {
         "exerciseId": "benchComp",
-        "ratio": 0.88
+        "ratio": 0.85
       }
     },
     "benchWide": {
@@ -1698,6 +1698,38 @@
       "maxFrom": {
         "exerciseId": "benchComp",
         "ratio": 0.92
+      }
+    },
+    "benchDouble": {
+      "name": "Double-pause bench press",
+      "tracksMax": true,
+      "maxConf": "high",
+      "m": {
+        "chestMid": 0.6,
+        "triLat": 1,
+        "deltFront": 0.3
+      },
+      "how": [
+        "Competition grip and setup.",
+        "Pause one: on the chest, three seconds, motionless and tight.",
+        "Press to about 5 cm off the chest — upper arm just under horizontal — and pause two, one to two seconds, HOLDING that position.",
+        "Then press hard to lockout. Three to five reps, never more."
+      ],
+      "why": "Pause one kills the stretch reflex off the chest. Pause two sits at your sticking point — upper arm horizontal and just above — and holds you there under load, which is where the pec hands over to the triceps and where you fail. It is the competition lift with the bounce removed twice, and unlike a pin press it lets your own arm find the stall height instead of you guessing where to set the steel.",
+      "subs": [
+        "Long-pause bench, 3 s",
+        "Pin press just below the sticking point",
+        "Spoto press"
+      ],
+      "watch": "Pause two must be the SAME height every rep or the number means nothing — about 5 cm off the chest, elbows just under horizontal. Film a set now and then. RPE will read higher than the same load and reps in the competition lift; that is the exercise working, not you regressing.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 180,
+      "refPhotoId": null,
+      "bodyweightLoaded": false,
+      "maxFrom": {
+        "exerciseId": "benchComp",
+        "ratio": 0.82
       }
     }
   },
@@ -1889,7 +1921,7 @@
           "ex": "lateral",
           "role": "accessory",
           "label": null,
-          "sets": 4,
+          "sets": 3,
           "repsLow": 12,
           "repsHigh": 20,
           "rpe": 10,
@@ -2211,7 +2243,7 @@
         },
         {
           "id": "C2",
-          "ex": "benchClose",
+          "ex": "benchDouble",
           "role": "volume",
           "label": null,
           "sets": 3,
@@ -2299,7 +2331,7 @@
         },
         {
           "id": "C6",
-          "ex": "skull",
+          "ex": "triOH",
           "role": "accessory",
           "label": null,
           "sets": 3,
@@ -2316,7 +2348,7 @@
           "accessory": true,
           "optional": false,
           "restSec": 75,
-          "note": null,
+          "note": "Swapped from the EZ skullcrusher because your elbows felt it. Same head, gentler joint. The skullcrusher is still in the substitute list when you want to try it again.",
           "effort": "First two 1–2 RIR; final RPE 9 to protect elbows"
         },
         {
@@ -2346,7 +2378,7 @@
           "ex": "lateral",
           "role": "accessory",
           "label": null,
-          "sets": 4,
+          "sets": 3,
           "repsLow": 12,
           "repsHigh": 20,
           "rpe": 10,
@@ -2714,7 +2746,7 @@
           "ex": "benchComp",
           "role": "volume",
           "label": null,
-          "sets": 5,
+          "sets": 4,
           "repsLow": 5,
           "repsHigh": 5,
           "rpe": 8,
@@ -2846,7 +2878,7 @@
           "ex": "lateral",
           "role": "accessory",
           "label": null,
-          "sets": 4,
+          "sets": 3,
           "repsLow": 12,
           "repsHigh": 20,
           "rpe": 10,
@@ -2964,7 +2996,7 @@
           "ex": "benchSpeed",
           "role": "speed",
           "label": null,
-          "sets": 5,
+          "sets": 3,
           "repsLow": 3,
           "repsHigh": 3,
           "rpe": 6,
@@ -2980,6 +3012,28 @@
           "restSec": 105,
           "note": null,
           "effort": "RPE 6; maximal concentric intent; stop if speed drops"
+        },
+        {
+          "id": "F8",
+          "ex": "benchClose",
+          "role": "accessory",
+          "label": "Close-grip back-off",
+          "sets": 3,
+          "repsLow": 4,
+          "repsHigh": 4,
+          "rpe": 8,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 180,
+          "note": "Straight after the speed work, so the bar is already moving and the ramp is short.",
+          "effort": "2 RIR. This is strength work, not a grind — leave the last rep."
         },
         {
           "id": "F2",
@@ -3030,7 +3084,7 @@
           "ex": "lateral",
           "role": "accessory",
           "label": null,
-          "sets": 4,
+          "sets": 3,
           "repsLow": 12,
           "repsHigh": 20,
           "rpe": 10,
@@ -3112,6 +3166,28 @@
           "restSec": 60,
           "note": null,
           "effort": null
+        },
+        {
+          "id": "F9",
+          "ex": "triOH",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 10,
+          "repsHigh": 15,
+          "rpe": 10,
+          "failLast": 1,
+          "failLastHigh": 2,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": true,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": "Third overhead exposure of the week. F has no pressing that competes with it.",
+          "effort": null
         }
       ]
     }
@@ -3125,7 +3201,7 @@
       "type": "baseline",
       "effortWave": null,
       "accessoryMultiplier": 1.0,
-      "variation": "Close-grip bench press",
+      "variation": "Double-pause bench press",
       "theme": "Establish every baseline number under standardised conditions. Full volume; the testing fatigue is accepted and tagged.",
       "bench": {
         "A": {
@@ -3163,7 +3239,7 @@
         },
         "F": {
           "speed": {
-            "sets": 5,
+            "sets": 3,
             "reps": 3,
             "pct": 0.62,
             "rpe": 5.5
@@ -3177,7 +3253,7 @@
         "Rotation 2 runs the first standardised AMRAP",
         "Excluded from high-versus-standard failure comparisons"
       ],
-      "variationEx": "benchClose"
+      "variationEx": "benchDouble"
     },
     {
       "id": 1,
@@ -3187,7 +3263,7 @@
       "type": "accumulation",
       "effortWave": "counterbalanced",
       "accessoryMultiplier": 1.0,
-      "variation": "Close-grip bench press",
+      "variation": "Double-pause bench press",
       "theme": "The base the rest of the plan sits on. Two counterbalanced effort waves test high against standard failure.",
       "bench": {
         "A": {
@@ -3215,14 +3291,14 @@
             "rpe": 7
           },
           "volume": {
-            "sets": 5,
+            "sets": 4,
             "reps": 5,
             "rpe": 8
           }
         },
         "F": {
           "speed": {
-            "sets": 5,
+            "sets": 3,
             "reps": 3,
             "pct": 0.64,
             "rpe": 6
@@ -3234,7 +3310,7 @@
         "Effort waves: high, high, standard, standard — then reversed for the second four rotations",
         "First defensible high-versus-standard comparison is Rotation 10"
       ],
-      "variationEx": "benchClose"
+      "variationEx": "benchDouble"
     },
     {
       "id": 2,
@@ -3244,7 +3320,7 @@
       "type": "intensification",
       "effortWave": "standard",
       "accessoryMultiplier": 0.92,
-      "variation": "Pin press — bar set just below the sticking point",
+      "variation": "Double-pause bench press",
       "theme": "Heavier bench work at slightly reduced accessory volume so the added intensity is not confounded by accessory fatigue.",
       "bench": {
         "A": {
@@ -3279,7 +3355,7 @@
         },
         "F": {
           "speed": {
-            "sets": 5,
+            "sets": 3,
             "reps": 3,
             "pct": 0.68,
             "rpe": 6
@@ -3292,7 +3368,7 @@
         "Standard-failure mode throughout",
         "Accessory volume 92%"
       ],
-      "variationEx": "benchPin"
+      "variationEx": "benchDouble"
     },
     {
       "id": 3,
@@ -3396,7 +3472,7 @@
         },
         "F": {
           "speed": {
-            "sets": 5,
+            "sets": 3,
             "reps": 3,
             "pct": 0.64,
             "rpe": 6
@@ -3454,7 +3530,7 @@
         },
         "F": {
           "speed": {
-            "sets": 5,
+            "sets": 3,
             "reps": 3,
             "pct": 0.68,
             "rpe": 6
@@ -3511,7 +3587,7 @@
         },
         "F": {
           "speed": {
-            "sets": 5,
+            "sets": 3,
             "reps": 3,
             "pct": 0.68,
             "rpe": 6
@@ -3677,7 +3753,7 @@
         },
         "F": {
           "speed": {
-            "sets": 4,
+            "sets": 3,
             "reps": 3,
             "pct": 0.62,
             "rpe": 6
@@ -3743,7 +3819,7 @@
     {
       "s": "Start here",
       "t": "How long each session should take",
-      "c": "<p>These assume you actually take the prescribed rest periods. If you are finishing much faster, you are rushing; much slower, you are on your phone.</p>\n<ul>\n<li><strong>A · Heavy bench + back — 27 sets, 85–95 min.</strong> The longest, because heavy singles need 3–5 min between attempts.</li>\n<li><strong>B · Lower + arms — 28 sets, 75–85 min.</strong> Dense; most of it is 60–90 s rests.</li>\n<li><strong>C · Attempt + AMRAP + bench variation — 28 sets, 85–95 min.</strong> The heaviest day, and it earned about fifteen minutes when the weekly attempt went in front of the AMRAP: a single you are actually trying to make needs its own ramp and five minutes after it. Both measurements go first, before anything has tired you.</li>\n<li><strong>D · Lower + delts + jumps — 33 sets, 95–105 min.</strong> Four of those sets are jumps with full recovery.</li>\n<li><strong>E · Bench volume + incline Smith — 32 sets, 70–80 min.</strong> Two of those are the forearm rotation split into its two directions — the same work as before, counted as two exercises instead of one, so the minutes did not move.</li>\n<li><strong>F · Speed bench + overhead + back — 23 sets, 75–85 min.</strong> Most exercises, but six of those sets are cheap speed work.</li>\n</ul>\n<p>Add 8–10 minutes of warm-up to each. These grew when we added the core work and the extra arm and chest volume — you said length was not a problem, so I took you at your word. If a session is consistently overrunning, tell me and I will trim it rather than have you skip the last exercises, which are always the isolation work you actually want.</p>"
+      "c": "<p>These include the warm-up ramps — they are what the session clock on the Train screen counts down, not the working sets alone. They assume you actually take the prescribed rest periods. Finishing much faster means you are rushing; much slower means you are on your phone.</p>\n<ul>\n<li><strong>A · Heavy bench + back — 26 sets, ~100 min.</strong> Heavy singles and back-offs need 3–5 min between attempts, and that is most of the time.</li>\n<li><strong>D · Lower + delts + jumps — 33 sets, ~90 min.</strong> The most sets in the plan, but short rests. Three of them are jumps with full recovery.</li>\n<li><strong>E · Bench volume + incline Smith — 30 sets, ~110 min.</strong> The longest session. Four sets of five at RPE 8 with real rest is most of it.</li>\n<li><strong>F · Speed, close grip, overhead and back — 26 sets, ~90 min.</strong> Was the cheap day at 65 min; the three heavy close-grip sets and the third overhead-extension slot are what changed. Still the shortest pressing session.</li>\n<li><strong>C · Attempt + 100 kg AMRAP + variation — 27 sets, ~105 min.</strong> The heaviest day. The attempt is a single you are genuinely trying to make, so it gets its own ramp and five minutes after it.</li>\n<li><strong>B · Lower + arms — 28 sets, ~85 min.</strong> The densest session; most of it is 60–90 s rests.</li>\n</ul>\n<p>The spread used to be 65 to 115 minutes, with F carrying almost nothing and E carrying too much. It is now 85 to 110. If a session consistently overruns, tell me and I will trim it rather than have you skip the last exercises, which are always the isolation work you actually want.</p>"
     },
     {
       "s": "Start here",

@@ -42,7 +42,18 @@ test('reduced-fatigue rotations genuinely taper', () => {
   assert.ok(rotationSets(31) < normal * 0.7, 'fatigue reduction');
   assert.ok(rotationSets(32) < normal * 0.65, 'test rotation');
   assert.ok(rotationSets(28) < normal, 'specificity is trimmed');
-  assert.equal(rotationSets(3), rotationSets(16), 'both accumulation blocks are full volume');
+  // Both accumulation blocks run at full accessory volume. This was an exact
+  // equality until Accumulation I's bench volume went from 5 x 5 to 4 x 5 and
+  // Accumulation II's was already four sets, so they now differ by one set out
+  // of 170. The guard is "neither block is secretly trimmed", not "the two
+  // happen to land on the same number".
+  const accumulation = PLAN.blocks.filter((b) => b.type === 'accumulation');
+  assert.equal(accumulation.length, 2);
+  for (const block of accumulation) assert.equal(block.accessoryMultiplier, 1, `block ${block.id} is not trimmed`);
+  assert.ok(
+    Math.abs(rotationSets(3) - rotationSets(16)) <= 2,
+    `accumulation blocks differ: ${rotationSets(3)} vs ${rotationSets(16)}`
+  );
 });
 
 test('no failure work survives a recovery, taper or test rotation', () => {

@@ -1,5 +1,7 @@
 # Whole-programme review — v2
 
+> **Status, 4 September 2026:** implemented in v2.24.0 — the close-grip slot in F, the speed and E-volume trims, the skullcrusher swap, the third overhead slot and the lateral-raise trim. The rotation order shipped in v2.23.0. The calf change was withdrawn: no seated machine, both slots stay standing.
+
 3 September 2026. **Proposal. Nothing in `data/plan-fopip-v2.json` has been
 changed by it.** Ratios live in `docs/bench-variations.md`.
 

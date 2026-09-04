@@ -1,5 +1,7 @@
 # Bench variations: ratios as ranges, the weekly single, and three whole-plan options
 
+> **Status, 4 September 2026:** implemented in v2.24.0 — the double pause at 0.82, close grip 0.88, pin press 0.85, and the block schedule. The wide-grip and feet-up ratios are unchanged and unused so far.
+
 Written 2–3 September 2026. This is a **proposal**. Nothing in
 `data/plan-fopip-v2.json` has been changed by any of it.
 
