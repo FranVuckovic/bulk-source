@@ -91,10 +91,22 @@ close grip is affordable at all.
 **C7 pushdown stays.** You are right that it is the only isolation the lateral
 head gets, and it is the cheapest slot in the session.
 
-**D10 standing calf raise → seated.** Both calf slots are currently standing,
-so the soleus — most of the calf's cross-section, and only trainable with the
-knee bent — is untrained. Same sets, no cost, and `calfSeat` already exists in
-the plan unused.
+**D10 standing calf raise → seated — withdrawn as written.** You have no
+seated calf machine. The point stands: both slots are standing, so the soleus,
+which is most of the calf's cross-section and only trainable with the knee
+bent, is untrained. Three ways to get it without a machine:
+
+1. **Smith-machine seated calf raise** — sit on a flat bench inside the Smith,
+   bar across the thighs just above the knees with a pad, toes on a plate or
+   block. You already use the Smith for the incline press, so this costs
+   nothing but the setup.
+2. **Barbell or dumbbells across the knees**, seated on a flat bench, toes on a
+   plate. Same movement, more fiddling.
+3. **Leave it.** Two standing slots, gastrocnemius only. Calves are not a
+   priority for you and 6 sets a week is already below the band.
+
+I would take (1). If the Smith is usually occupied, take (3) — it is not worth
+queueing for.
 
 ---
 
@@ -172,7 +184,8 @@ You asked whether anything is in the plan by accident. What I found:
 
 - **Lateral raises in all six sessions.** Accidental accumulation — nobody
   decided on 20.9 sets a week. Fixed above.
-- **Both calf slots standing.** An oversight; the soleus was untrained. Fixed.
+- **Both calf slots standing.** An oversight; the soleus was untrained. Fixable
+  only with a Smith bar or a barbell across the knees — see above.
 - **The skullcrusher.** Not accidental, but it was the harshest way to train
   the head it trains. Swapped for the gentler equivalent.
 - **Forearms: 14.9 sets, frequency 6.** Five direct slots. Mid-band, so not a
@@ -216,3 +229,141 @@ boundaries.
    close grip 0.88, pin press 0.85, and the block schedule.
 
 1–7 are independent of each other and of 8.
+
+
+---
+
+## 6. Is the overhead extension as good as a skullcrusher?
+
+For the long head, **yes, and probably better** — with one condition.
+
+The mechanism is training length. The long head is the only one of the three
+that crosses the shoulder, so it is lengthened when the shoulder is flexed —
+that is, when your upper arm is beside your ear. That position, under load, is
+what the long head responds to.
+
+- **Pushdown**: shoulder at roughly 0°. Long head short throughout.
+- **Skullcrusher, lying, bar to the forehead**: upper arm roughly vertical,
+  shoulder ~90°. Partial stretch.
+- **Overhead cable extension**: shoulder ~180°. Full stretch, loaded.
+
+The direct evidence is Maeo et al. (2023), which trained one arm overhead and
+the other with pushdowns for twelve weeks: long-head growth was roughly one and
+a half to two times greater overhead, and total triceps growth roughly double.
+Be careful how much that carries — it compared overhead against **pushdowns**,
+not against skullcrushers, and the skullcrusher sits between the two. So
+"overhead beats skullcrushers" is an inference from the same mechanism, not a
+result. The honest summary is that overhead is at least as good and the gap in
+its favour is real but smaller than that trial suggests.
+
+**The condition**: the cable version only earns this if you actually reach the
+stretch — elbow fully closed, upper arm beside the ear, and the load still on
+you there. A short, choppy overhead extension is worse than a well-executed
+skullcrusher. Set the pulley low, face away, and let the elbow close fully
+behind your head each rep.
+
+**What the skullcrusher gives that the cable does not**: heavier absolute
+loading and free-weight strength carryover. For an accessory whose job is
+long-head size, that is not the priority — and it is bought with the most
+elbow stress of any movement in the plan, an EZ bar at full elbow flexion with
+the joint at its worst leverage exactly where the weight is heaviest.
+
+**Three ways to play it**, in order of how much your elbows are complaining:
+
+- Elbows fine → **keep the skullcrusher** and take the overhead sets in F as
+  the addition. You get both, at the cost of more elbow load.
+- Elbows grumbling → **swap it**, as proposed.
+- In between → **keep the skullcrusher but take the bar behind your head**
+  rather than to your forehead. That increases shoulder flexion, closes most of
+  the length gap, and is *easier* on the elbow than the forehead path because
+  the load comes off the joint at the bottom.
+
+---
+
+## 7. The week, with a rest day between B and C
+
+This is the part of the review with a real problem in it.
+
+### The current week
+
+| day | session | chest | tri lat | tri long | front delt | min |
+|---|---|---|---|---|---|---|
+| 1 | **A** press | 4.9 | 4.7 | 3.0 | 4.3 | 102 |
+| 2 | B legs | — | — | — | — | 87 |
+| 3 | rest | | | | | |
+| 4 | **C** press | 7.1 | 9.3 | 3.4 | 3.1 | 106 |
+| 5 | D legs | — | — | — | — | 91 |
+| 6 | **E** press | 8.0 | 5.2 | 3.0 | 4.8 | 109 |
+| 7 | **F** press | 1.8 | 6.0 | 3.0 | 3.9 | 90 |
+
+Day 7 wraps into day 1, so the pressing sequence is **E, F, A on three
+consecutive days**, and then a four-day stretch with only C in it.
+
+That is two adjacent pressing pairs (E→F and F→A) out of a possible one. Sixteen
+of the week's 25 lateral-head sets land inside 72 hours, and the day that
+absorbs the accumulated fatigue is **A — the session carrying your heavy
+competition back-offs**, three days deep into a pressing block, immediately
+after F's three heavy close-grip sets.
+
+Those back-offs are the plan's heavy competition reps under fatigue. They are
+the wrong thing to run on tired triceps, and this was true before the close-grip
+slot existed — the slot just made the day before A expensive instead of cheap.
+
+### It cannot be fixed by moving one session
+
+Four pressing days in a seven-day cycle means at least one adjacent pair, always
+— four things cannot be spread over seven slots without two of them touching
+once you close the loop. The question is only *which* pair touches, and what
+follows it.
+
+I enumerated all 720 orderings with the rest day pinned immediately before C.
+The current order scores two adjacent pressing pairs. **Every best-scoring
+order scores one.** The pair is always E–F, because they are the two cheapest
+pressing days.
+
+### Recommended order: A, D, F, E, rest, C, B
+
+| day | session | what it is | days since last press |
+|---|---|---|---|
+| 1 | **A** | heavy single, competition back-offs | 2 |
+| 2 | D | legs, jumps, delts | — |
+| 3 | **F** | speed bench, close grip, overhead | 2 |
+| 4 | **E** | competition volume 4 × 5 | 1 |
+| 5 | rest | | |
+| 6 | **C** | the attempt, the AMRAP, the double pause | 2 |
+| 7 | B | legs, arms, abs | — |
+
+What it fixes, in order of importance:
+
+1. **A gets two clear days before it** instead of following F directly. The
+   heavy competition back-offs are run fresh.
+2. **The only remaining adjacent pair is F → E**, and in that direction. Speed
+   work is the most fatigue-sensitive thing in the plan — the plan's own
+   guidance says speed work done tired is worthless — so it goes first, on legs
+   that have had a day off pressing. E's volume is RPE-autoregulated, so it
+   degrades gracefully: if it feels heavy, RPE 8 simply means less weight.
+   Running it the other way round wastes the diagnostic.
+3. **C still has its rest day**, and now also has two days since E. The
+   attempt is the best-rested session in the week, which is what a measurement
+   deserves.
+4. **D's box jumps move off the back of C.** Jumps after the heaviest session
+   of the week were worthless; now they follow A, which leaves the legs fresh.
+5. **B goes after C**, where a leg day absorbs the fallout from the attempt
+   without competing for anything.
+
+Cost: the sessions no longer run in alphabetical order, which will read oddly
+for a rotation or two. `meta.rotationOrder` is the single source of truth for
+sequencing in the app, so this is a one-line data change and every deviation,
+phase swap and log stays keyed to its slot id.
+
+### Two risks that remain, named
+
+**F is now a real session, not a filler.** 90 minutes, three heavy close-grip
+sets, three overhead sets, and it sits between two press days. It is the first
+slot to cut if the week starts feeling heavy — take the close grip to 2 sets
+before you touch anything else.
+
+**Rear delts at 10.2 against 21.8 of chest.** The thinnest thing in your upper
+body, and the imbalance a bench specialist actually gets hurt by. I have not
+spent sets on it because they are all spoken for, but if you ever free two,
+that is where they go — not the calves.
