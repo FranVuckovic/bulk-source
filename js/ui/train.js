@@ -242,7 +242,18 @@ const attemptsFor = (state, exerciseId) =>
 export const attemptTargetFor = (state, slot) =>
   slot?.role === 'attempt'
     ? nextAttemptLoad(attemptsFor(state, slot.ex), {
-        seed: workingMaxFor(state, slot.ex),
+        /*
+         * `attemptStart` is where the ladder begins before anything has been
+         * attempted — the weight he has decided to go after, which is not the
+         * same as the working max the rest of the plan is prescribed from.
+         * Seeding from the working max would have opened at 115 kg; seeding the
+         * working max at 120 instead would have made every other slot in the
+         * plan behave as though he had already lifted it.
+         *
+         * It is ignored the moment a real attempt exists, because from then on
+         * the ladder is made of things that actually happened.
+         */
+        seed: slot.attemptStart ?? workingMaxFor(state, slot.ex),
         step: state.settings.increment,
       })
     : null;
@@ -732,6 +743,51 @@ function attemptButtons(state, c) {
     <p class="hint" style="margin:-4px 2px 12px;color:var(--s2)">${outcome}</p>`;
 }
 
+/**
+ * What a bench variation is worth, next to the competition lift.
+ *
+ * The variations are not lighter versions of the same thing — each one has its
+ * own 1RM, and the plan states that as a fraction of the competition max. That
+ * fraction is the whole reason the loads differ, and without it on screen a
+ * 77.5 kg double pause next to a 100 kg back-off reads as a light day rather
+ * than as the same effort against a different lift.
+ *
+ * He ran variations at close to his competition weight for months because the
+ * relationship was written in a document and not in the app.
+ */
+function variationNote(state, exerciseId) {
+  const exercise = state.plan.exercises[exerciseId];
+  const from = exercise?.maxFrom;
+  if (!from) return '';
+
+  const parent = state.plan.exercises[from.exerciseId];
+  const parentMax =
+    state.maxes.get(from.exerciseId)?.workingMax ?? state.plan.meta.seedWorkingMaxes[from.exerciseId];
+  const unit = state.settings.unit;
+  const asPct = (ratio) => `${(ratio * 100).toFixed(0)}%`;
+  const own = workingMaxFor(state, exerciseId);
+  const confirmed = state.maxes.get(exerciseId)?.workingMax != null;
+
+  const band = from.range
+    ? `Yours should settle between <b>${asPct(from.range[0])}</b> and <b>${asPct(from.range[1])}</b>.`
+    : '';
+
+  const kilos =
+    parentMax == null || own == null
+      ? ''
+      : ` From a ${escape(fmtLoad(parentMax, unit))} ${escape(unit)} ${escape(
+          (parent?.name || 'competition').toLowerCase()
+        )} max that is <b>${escape(fmtLoad(own, unit))} ${escape(unit)}</b> for this lift, and the working weight comes off the RPE table from there.`;
+
+  const calibrating = confirmed
+    ? ' You have confirmed a max for this lift, so that is what it uses — the percentage is only the starting point.'
+    : ' If the RPE comes out a point high or low across three or four sessions, the percentage is wrong rather than you.';
+
+  return `<div class="cue" style="border-left-color:var(--s3)"><b>${escape(
+    asPct(from.ratio)
+  )} of your ${escape((parent?.name || 'competition bench').toLowerCase())}.</b> ${band}${kilos}${calibrating}</div>`;
+}
+
 function overshootNote(state, c) {
   // On the weekly attempt, choosing the weight is the slot's entire purpose.
   // Warning that a chosen attempt is heavier than the suggested one is noise.
@@ -1091,6 +1147,7 @@ function exerciseBlock(state, slot, slotIndex) {
              minutes — tick the MYO flag when you log it.</div>`
           : ''
       }
+      ${variationNote(state, slot.ex)}
       <div class="cue">${escape(exercise.how[0])}</div>
       ${
         exerciseNote(state, slotIndex)
@@ -1239,6 +1296,7 @@ function drawStepSheet(ctx) {
 
     <div class="eff" id="stepEff">${stepReadout(state, c, workingMax)}</div>
     <div id="stepOver">${overshootNote(state, c)}</div>
+    ${variationNote(state, c.slot.ex)}
 
     ${attemptButtons(state, c)}
 

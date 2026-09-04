@@ -341,7 +341,7 @@
       "bodyweightLoaded": false
     },
     "cableFly": {
-      "name": "Cable fly / pec deck (flat)",
+      "name": "Cable fly (flat)",
       "tracksMax": true,
       "maxConf": "ind",
       "m": {
@@ -356,10 +356,10 @@
       "why": "Added so that no session in the rotation contributes zero hypertrophy. A machine or cable fly is close to free systemically, which means it can sit on the speed day without compromising what that day is for.",
       "subs": [
         "Pec deck",
-        "Dumbbell fly",
-        "Low-to-high crossover"
+        "Low-to-high cable fly",
+        "Dumbbell fly on a flat bench"
       ],
-      "watch": "Every set to failure. This is exactly the sort of exercise failure exists for.",
+      "watch": "Cables keep tension at the top where a dumbbell fly has none. Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
       "grips": null,
       "unit": "kg",
       "defaultRestSec": 75,
@@ -477,7 +477,7 @@
       "bodyweightLoaded": false
     },
     "rowCSR": {
-      "name": "Chest-supported / cable row",
+      "name": "Chest-supported row",
       "tracksMax": true,
       "maxConf": "high",
       "m": {
@@ -493,12 +493,11 @@
       ],
       "why": "Heavy upper-back work is the strongest cross-coach consensus point for a big bench — it builds the pressing platform, recovers fast, and protects the shoulder under high pressing frequency. Effectively free volume.",
       "subs": [
-        "T-bar row",
-        "Machine row",
         "Seated cable row",
-        "Chest-supported dumbbell row"
+        "Machine row",
+        "Dumbbell chest-supported row"
       ],
-      "watch": "Vary the ANGLE between sessions — one higher toward the upper chest, one lower toward the ribs — rather than swapping machines.",
+      "watch": "The chest pad is the point: it removes the lower back so the row is the only thing working. Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
       "grips": null,
       "unit": "kg",
       "defaultRestSec": 120,
@@ -609,7 +608,7 @@
       "bodyweightLoaded": false
     },
     "triOH": {
-      "name": "Overhead cable/rope extension",
+      "name": "Overhead rope extension",
       "tracksMax": true,
       "maxConf": "ind",
       "m": {
@@ -623,11 +622,12 @@
       ],
       "why": "Bench pressing barely loads the triceps LONG head, because it is biarticular and shoulder position during pressing creates conflicting length demands. This is one of only two movements in the plan that actually trains it.",
       "subs": [
+        "Overhead cable extension with a bar",
         "EZ skullcrusher",
         "Overhead dumbbell extension",
-        "Cable overhead extension, single arm"
+        "Single-arm cable overhead extension"
       ],
-      "watch": "The long head is the biggest of the three triceps heads and the main driver of arm size from the back. It was under-served in the first draft — this is the fix.",
+      "watch": "The long head is the biggest of the three heads and the main driver of arm size from the back. Rope or bar is the same exercise — what matters is that the elbow closes fully behind your head under load.",
       "grips": null,
       "unit": "kg",
       "defaultRestSec": 75,
@@ -736,7 +736,7 @@
       "bodyweightLoaded": false
     },
     "curlEZ": {
-      "name": "EZ-bar or preacher curl",
+      "name": "EZ-bar curl",
       "tracksMax": true,
       "maxConf": "ind",
       "m": {
@@ -750,11 +750,11 @@
       ],
       "why": "Short head — the inner head, which adds width to the arm when viewed from the front.",
       "subs": [
-        "Cable curl",
-        "Machine preacher curl",
-        "Concentration curl"
+        "Preacher curl",
+        "Straight-bar curl",
+        "Dumbbell curl"
       ],
-      "watch": null,
+      "watch": "Elbows stay at your sides — drifting forward turns it into a front raise. Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
       "grips": null,
       "unit": "kg",
       "defaultRestSec": 75,
@@ -762,7 +762,7 @@
       "bodyweightLoaded": false
     },
     "curlHammer": {
-      "name": "Hammer or reverse curl",
+      "name": "Hammer curl",
       "tracksMax": true,
       "maxConf": "ind",
       "m": {
@@ -775,9 +775,9 @@
       ],
       "why": "Brachialis and forearm. Brachialis sits under the biceps and pushes it up — growing it makes the arm look bigger from every angle.",
       "subs": [
-        "Reverse EZ curl",
-        "Cable rope hammer curl",
-        "Zottman curl"
+        "Reverse curl",
+        "Rope hammer curl",
+        "Cross-body hammer curl"
       ],
       "watch": null,
       "grips": null,
@@ -932,6 +932,7 @@
       ],
       "why": "Your main quad driver without any spinal loading. Session B's version: heavier, moderate depth, feet low.",
       "subs": [
+        "Leg press — feet high and wide, deep",
         "Hack squat",
         "Pendulum squat",
         "Machine squat"
@@ -944,7 +945,7 @@
       "bodyweightLoaded": false
     },
     "hackBulg": {
-      "name": "Hack squat or Bulgarian split squat",
+      "name": "Hack squat",
       "tracksMax": true,
       "maxConf": "high",
       "m": {
@@ -957,12 +958,11 @@
       ],
       "why": "A second quad pattern, chosen by whichever your back tolerates on the day.",
       "subs": [
+        "Bulgarian split squat",
         "Leg press — feet low and narrow",
-        "Pendulum squat",
-        "Walking lunge",
-        "Step-up"
+        "Pendulum squat"
       ],
-      "watch": "Bulgarians are back-friendlier than most loaded squat patterns because the load is lighter and the spine stays more vertical.",
+      "watch": "Feet lower on the platform for more quad. Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
       "grips": null,
       "unit": "kg",
       "defaultRestSec": 150,
@@ -994,7 +994,7 @@
       "bodyweightLoaded": false
     },
     "legcurlLie": {
-      "name": "Lying leg curl or Nordic",
+      "name": "Lying leg curl",
       "tracksMax": true,
       "maxConf": "ind",
       "m": {
@@ -1006,11 +1006,11 @@
       ],
       "why": "Second hamstring exposure. Different hip angle to the seated version.",
       "subs": [
-        "Seated leg curl",
         "Nordic curl",
-        "Glute-ham raise"
+        "Seated leg curl",
+        "Standing single-leg curl"
       ],
-      "watch": null,
+      "watch": "Hips stay down on the pad. Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
       "grips": null,
       "unit": "kg",
       "defaultRestSec": 75,
@@ -1111,7 +1111,7 @@
       "bodyweightLoaded": false
     },
     "jumps": {
-      "name": "Box jumps / broad jumps",
+      "name": "Box jumps",
       "tracksMax": false,
       "maxConf": null,
       "m": {
@@ -1125,11 +1125,11 @@
       ],
       "why": "Vertical jump comes from rate of force development and reactive ability, which heavy machine work does not train. Plyometrics are the direct transfer.",
       "subs": [
-        "Broad jump",
+        "Broad jumps",
         "Vertical jump for height",
-        "Skipping (lower intensity)"
+        "Trap-bar jump"
       ],
-      "watch": "Low volume, high quality. Twelve good jumps beat thirty mediocre ones. Stop the moment reps get less crisp. If your back objects at all, these come out and we revisit. Introduced week 7, not before.",
+      "watch": "Step down, never jump down — the landing is where knees and ankles get hurt. Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
       "grips": null,
       "unit": "kg",
       "defaultRestSec": 150,
@@ -1160,7 +1160,7 @@
       "bodyweightLoaded": false
     },
     "hipThrust": {
-      "name": "Hip thrust (barbell or machine)",
+      "name": "Barbell hip thrust",
       "tracksMax": false,
       "maxConf": null,
       "m": {
@@ -1175,11 +1175,11 @@
       ],
       "why": "The largest muscular omission in v1. Direct hip extension with almost no spinal load, placed in B where it cannot interfere with a bench day.",
       "subs": [
-        "Machine hip thrust",
+        "Hip thrust machine",
         "Glute bridge",
-        "Cable pull-through"
+        "Single-leg hip thrust"
       ],
-      "watch": "Your back history means the finish position matters more than the load. Stop the rep at neutral.",
+      "watch": "Chin tucked, ribs down, and stop at the top when the hips are level — arching the lower back is not more range. Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
       "grips": null,
       "unit": "kg",
       "defaultRestSec": 150,
@@ -1214,7 +1214,7 @@
       "bodyweightLoaded": false
     },
     "rowMachine": {
-      "name": "Stable machine / chest-supported row",
+      "name": "Machine row",
       "tracksMax": false,
       "maxConf": null,
       "m": {
@@ -1229,11 +1229,11 @@
       ],
       "why": "The cheapest possible pulling exposure, in F, where anything fatiguing would compromise the heavy bench the next day.",
       "subs": [
-        "Chest-supported T-bar row",
+        "Chest-supported row",
         "Seated cable row",
-        "Machine row"
+        "Dumbbell chest-supported row"
       ],
-      "watch": null,
+      "watch": "Chosen for F because nothing has to be stabilised on the day after a volume bench session.",
       "grips": null,
       "unit": "kg",
       "defaultRestSec": 120,
@@ -1292,7 +1292,7 @@
       "bodyweightLoaded": false
     },
     "curlHighCable": {
-      "name": "High-cable / stable machine curl",
+      "name": "High-cable curl",
       "tracksMax": false,
       "maxConf": null,
       "m": {
@@ -1307,11 +1307,11 @@
       ],
       "why": "A short-head-biased curl pattern. Biceps work across the rotation deliberately covers lengthened, preacher, Bayesian, hammer and high-cable positions rather than repeating one curl.",
       "subs": [
-        "Preacher curl",
         "Machine curl",
-        "Spider curl"
+        "Bayesian cable curl",
+        "Incline dumbbell curl"
       ],
-      "watch": null,
+      "watch": "Arms high and behind the torso — that is what puts the long head on stretch. Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
       "grips": null,
       "unit": "kg",
       "defaultRestSec": 75,
@@ -1319,7 +1319,7 @@
       "bodyweightLoaded": false
     },
     "curlReverse": {
-      "name": "Reverse cable / EZ curl",
+      "name": "Reverse curl",
       "tracksMax": false,
       "maxConf": null,
       "m": {
@@ -1334,10 +1334,10 @@
       "why": "Brachioradialis and wrist extensors — the part of the forearm ordinary curling and gripping does not train.",
       "subs": [
         "Hammer curl",
-        "Reverse EZ curl",
-        "Zottman curl"
+        "Reverse curl on a cable",
+        "Reverse curl with an EZ bar"
       ],
-      "watch": null,
+      "watch": "Knuckles up, wrists straight. Go far lighter than a normal curl — the brachioradialis is the limit, not the biceps.",
       "grips": null,
       "unit": "kg",
       "defaultRestSec": 60,
@@ -1345,7 +1345,7 @@
       "bodyweightLoaded": false
     },
     "wristRoller": {
-      "name": "Wrist roller / flexion-extension superset",
+      "name": "Wrist roller",
       "tracksMax": false,
       "maxConf": null,
       "m": {
@@ -1358,10 +1358,11 @@
       ],
       "why": "Broadened forearm coverage: flexion, extension, brachioradialis and rotation now appear across all six sessions rather than repeating generic wrist curls.",
       "subs": [
-        "Supported wrist flexion + extension superset",
-        "Farmer hold"
+        "Wrist flexion",
+        "Wrist extension",
+        "Plate pinch hold"
       ],
-      "watch": null,
+      "watch": "Roll up and down under control both ways. If there is no roller, the wrist flexion and extension exercises do the same job as a superset.",
       "grips": null,
       "unit": "kg",
       "defaultRestSec": 60,
@@ -1508,8 +1509,9 @@
       ],
       "why": "The long-length, slow, glute-and-adductor half of your leg pressing. Same machine as session B, a different exercise: high and wide shortens knee travel and lengthens hip travel, so the glutes and adductors do the work the quads do in B.",
       "subs": [
-        "Leg press, feet high, at whatever depth is clean",
-        "Hip thrust for more sets"
+        "Leg press — feet low and narrow",
+        "Barbell hip thrust",
+        "Bulgarian split squat"
       ],
       "watch": "That pelvic tuck at the bottom is loaded lumbar flexion — the exact thing that irritates your back. A slightly shorter range with a neutral spine beats a deep rep that costs you a week.",
       "grips": null,
@@ -1573,7 +1575,11 @@
       "splitFrom": "benchVar",
       "maxFrom": {
         "exerciseId": "benchComp",
-        "ratio": 0.88
+        "ratio": 0.88,
+        "range": [
+          0.86,
+          0.9
+        ]
       }
     },
     "benchPause": {
@@ -1604,7 +1610,11 @@
       "splitFrom": "benchVar",
       "maxFrom": {
         "exerciseId": "benchComp",
-        "ratio": 0.88
+        "ratio": 0.88,
+        "range": [
+          0.84,
+          0.88
+        ]
       }
     },
     "benchPin": {
@@ -1635,7 +1645,11 @@
       "splitFrom": "benchVar",
       "maxFrom": {
         "exerciseId": "benchComp",
-        "ratio": 0.85
+        "ratio": 0.85,
+        "range": [
+          0.82,
+          0.88
+        ]
       }
     },
     "benchWide": {
@@ -1666,7 +1680,11 @@
       "splitFrom": "benchVar",
       "maxFrom": {
         "exerciseId": "benchComp",
-        "ratio": 0.97
+        "ratio": 0.97,
+        "range": [
+          0.95,
+          0.98
+        ]
       }
     },
     "benchFeetUp": {
@@ -1697,7 +1715,11 @@
       "splitFrom": "benchVar",
       "maxFrom": {
         "exerciseId": "benchComp",
-        "ratio": 0.92
+        "ratio": 0.92,
+        "range": [
+          0.9,
+          0.94
+        ]
       }
     },
     "benchDouble": {
@@ -1729,8 +1751,227 @@
       "bodyweightLoaded": false,
       "maxFrom": {
         "exerciseId": "benchComp",
-        "ratio": 0.82
+        "ratio": 0.82,
+        "range": [
+          0.78,
+          0.85
+        ]
       }
+    },
+    "pecDeck": {
+      "name": "Pec deck",
+      "tracksMax": true,
+      "maxConf": "ind",
+      "m": {
+        "chestMid": 1,
+        "chestUpper": 0.3
+      },
+      "how": [
+        "Pads at mid-chest height, elbows slightly soft and fixed.",
+        "Squeeze to touch, hold a beat, and control all the way back to a stretch.",
+        "Back stays on the pad — no shoulder rolling forward at the finish."
+      ],
+      "why": "The stable version. Easier to take genuinely close to failure than a cable fly, because nothing has to be balanced.",
+      "subs": [
+        "Cable fly (flat)",
+        "Dumbbell fly on a flat bench"
+      ],
+      "watch": "Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false,
+      "splitFrom": "cableFly"
+    },
+    "rowCable": {
+      "name": "Seated cable row",
+      "tracksMax": true,
+      "maxConf": "high",
+      "m": {
+        "upperBack": 1,
+        "lats": 0.5,
+        "deltRear": 0.4,
+        "bicShort": 0.3
+      },
+      "how": [
+        "Chest up, slight forward lean at the stretch, then row to the navel.",
+        "Elbows past the ribs. Let the shoulder blades travel.",
+        "No swinging the torso to start the rep."
+      ],
+      "why": "A row with a long stretch at the front and no pad to lean on — different resistance curve from the chest-supported version, so it is a different exercise and a different number.",
+      "subs": [
+        "Chest-supported row",
+        "Machine row"
+      ],
+      "watch": "Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 120,
+      "refPhotoId": null,
+      "bodyweightLoaded": false,
+      "splitFrom": "rowCSR"
+    },
+    "curlPreacher": {
+      "name": "Preacher curl",
+      "tracksMax": true,
+      "maxConf": "ind",
+      "m": {
+        "bicShort": 1,
+        "bicLong": 0.3
+      },
+      "how": [
+        "Armpits into the top of the pad, upper arms flat against it.",
+        "Full stretch at the bottom — that is what the pad is for.",
+        "Do not bounce out of the stretched position; the biceps tendon takes it."
+      ],
+      "why": "Loads the biceps hardest in the stretched position, which the standing curl barely reaches. The short head does most of it.",
+      "subs": [
+        "EZ-bar curl",
+        "Incline dumbbell curl",
+        "Bayesian cable curl"
+      ],
+      "watch": "Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false,
+      "splitFrom": "curlEZ"
+    },
+    "bulgarian": {
+      "name": "Bulgarian split squat",
+      "tracksMax": true,
+      "maxConf": "high",
+      "m": {
+        "quads": 1,
+        "glutes": 0.4,
+        "hams": 0.3
+      },
+      "how": [
+        "Rear foot on a bench, front foot far enough forward that the front shin stays near vertical.",
+        "Down until the back knee is just off the floor.",
+        "Torso upright for quads, leaning forward for glutes. Pick one and keep it."
+      ],
+      "why": "One leg at a time, with a long stretch on the front leg. Useful when a machine is taken, brutal on balance and time.",
+      "subs": [
+        "Hack squat",
+        "Walking lunge",
+        "Leg press — feet low and narrow"
+      ],
+      "watch": "Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 150,
+      "refPhotoId": null,
+      "bodyweightLoaded": false,
+      "splitFrom": "hackBulg"
+    },
+    "nordic": {
+      "name": "Nordic curl",
+      "tracksMax": true,
+      "maxConf": "ind",
+      "m": {
+        "hams": 1
+      },
+      "how": [
+        "Ankles anchored, knees on a pad, body straight from knee to shoulder.",
+        "Lower as slowly as you can control. Catch yourself with your hands.",
+        "Push back up with your hands as much as you need — the eccentric is the exercise."
+      ],
+      "why": "The strongest hamstring eccentric available without a machine, and the one with the best evidence behind it for hamstring injury risk.",
+      "subs": [
+        "Lying leg curl",
+        "Seated leg curl",
+        "Slider leg curl"
+      ],
+      "watch": "Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false,
+      "splitFrom": "legcurlLie"
+    },
+    "broadJumps": {
+      "name": "Broad jumps",
+      "tracksMax": false,
+      "maxConf": null,
+      "m": {
+        "quads": 0.3
+      },
+      "how": [
+        "Jump forward for distance from a standing start.",
+        "Land soft, absorb through the hips, reset fully between reps.",
+        "Mark the distance — that is the number worth tracking."
+      ],
+      "why": "Horizontal power rather than vertical, and it loads the hamstrings and glutes harder than a box jump. Landing forces are much higher, so keep the reps low.",
+      "subs": [
+        "Box jumps",
+        "Bounding"
+      ],
+      "watch": "Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 150,
+      "refPhotoId": null,
+      "bodyweightLoaded": false,
+      "splitFrom": "jumps"
+    },
+    "hipThrustMachine": {
+      "name": "Hip thrust machine",
+      "tracksMax": false,
+      "maxConf": null,
+      "m": {
+        "glutes": 1.0,
+        "hams": 0.5,
+        "quads": 0.3
+      },
+      "how": [
+        "Set the pad across the hips, not the stomach.",
+        "Same positions as the barbell version: chin tucked, ribs down, stop level.",
+        "Pause a beat at the top."
+      ],
+      "why": "The same movement with the bar loading solved. Easier to take close to failure and much easier to set up, so it usually ends up heavier than the barbell version — which is why it needs its own number.",
+      "subs": [
+        "Barbell hip thrust",
+        "Glute bridge"
+      ],
+      "watch": "Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 150,
+      "refPhotoId": null,
+      "bodyweightLoaded": false,
+      "splitFrom": "hipThrust"
+    },
+    "curlMachine": {
+      "name": "Machine curl",
+      "tracksMax": false,
+      "maxConf": null,
+      "m": {
+        "bicShort": 1.0,
+        "bicLong": 0.5,
+        "forearm": 0.3
+      },
+      "how": [
+        "Upper arms flat on the pad, shoulders down.",
+        "Full range both ways; the machine only helps if you use all of it.",
+        "Nothing to balance, so this one can go to genuine failure."
+      ],
+      "why": "The stable version, for the last curl of a session when your grip and your patience are gone.",
+      "subs": [
+        "High-cable curl",
+        "Preacher curl",
+        "EZ-bar curl"
+      ],
+      "watch": "Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false,
+      "splitFrom": "curlHighCable"
     }
   },
   "sessions": [
@@ -2216,7 +2457,8 @@
           "optional": false,
           "restSec": 300,
           "note": null,
-          "effort": null
+          "effort": null,
+          "attemptStart": 120
         },
         {
           "id": "C1",

@@ -171,3 +171,23 @@ test('both calf slots stay standing — no seated machine', () => {
   assert.ok(calf.length, 'there are calf slots');
   assert.deepEqual([...new Set(calf)], ['calfStand'], 'he has no seated calf machine');
 });
+
+test('every variation carries the band its ratio may recalibrate inside', () => {
+  for (const [id, ratio] of Object.entries(RATIOS)) {
+    const range = PLAN.exercises[id].maxFrom.range;
+    assert.ok(Array.isArray(range) && range.length === 2, `${id} has a range`);
+    const [lo, hi] = range;
+    assert.ok(lo < hi, `${id} range is ordered`);
+    assert.ok(lo <= ratio && ratio <= hi, `${id} ratio ${ratio} is outside its own band ${lo}–${hi}`);
+    assert.ok(hi - lo <= 0.12, `${id} band ${lo}–${hi} is too wide to mean anything`);
+  }
+});
+
+test('the weekly attempt opens at the weight he decided to go after', () => {
+  // Not the working max. Seeding the ladder from the working max opened at 115;
+  // seeding the working max at 120 instead would have made every other slot in
+  // the plan prescribe as though he had already lifted it.
+  const raw = PLAN.sessions.find((s) => s.id === 'C').slots.find((s) => s.id === 'C11');
+  assert.equal(raw.attemptStart, 120);
+  assert.equal(PLAN.meta.seedWorkingMaxes.benchComp, 115, 'and the rest of the plan is unmoved');
+});
