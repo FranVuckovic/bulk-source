@@ -449,3 +449,87 @@ longer, and your training days rotate through the calendar, so the same session
 lands on a different weekday every cycle. If your gym access, work and
 basketball are fixed to weekdays, that is a real problem and the seven-day
 version is the right answer. If they are not, this is better training.
+
+
+---
+
+## 9. Reversed: run E before F
+
+Looking only at the bench sets, §8 called it for F first. Looking at the whole
+session — the flies, the rows, the curls, the rear delts — it goes the other
+way, and clearly enough that I am changing the recommendation.
+
+**A, D, E, F, rest, C, B.**
+
+Both orders still score one adjacent pressing pair and both still give A its two
+clear days. What separates them is everything that is not the bench.
+
+### The accessories, day by day
+
+| muscle | F then E | E then F | better |
+|---|---|---|---|
+| Chest, two heaviest days | 2 days apart | **3 days apart** | E then F |
+| Biceps short head | 3.5 + 3.9 back to back | **2 days apart** | E then F |
+| Rear delts | 3.0 + 3.0 back to back | **2 days apart** | E then F |
+| Upper back, two rowing days | 2 days apart | **3 days apart** | E then F |
+| Abs | 2–3–2 | 1–4–2 | F then E |
+| Lats, side delts, forearms, biceps long | — | — | identical |
+
+The short-head biceps case is the sharpest: under F-then-E, D's curls (3.5) and
+F's curls (3.9) land on consecutive days, 7.4 sets in 48 hours out of 13.4 for
+the week, followed by a three-day hole. Moving F one day later spreads them.
+Rear delts do the same thing, and rear delts are already the thinnest muscle in
+your upper body.
+
+### The reason that actually decides it
+
+**What C arrives on.** C is the attempt — the one session in the week whose
+whole purpose is a maximal measured single, and the one thing worth building the
+week around.
+
+| | two days before C | chest sets | triceps sets |
+|---|---|---|---|
+| F then E | **E** | 8.0 | 5.2 |
+| E then F | **F** | **1.8** | 6.0 |
+
+Running E before F means the last real chest work before the attempt is two
+sessions away rather than one. You walk into C having done 1.8 chest sets in the
+previous 48 hours instead of 8.0. The triceps cost is 0.8 sets, which is noise
+next to that.
+
+### What I got wrong in §8, and why it does not hold
+
+§8 argued for F first to protect the close-grip ratio calibration and the speed
+diagnostic from fatigue. That argument is weaker than it looked, for one reason:
+
+**Consistency matters more than freshness for a calibration.** If F is *always*
+the day after E, the fatigue is a constant, not a confound. The close-grip ratio
+will settle one or two hundredths lower than a fresh-day ratio would — and that
+is the correct number, because it is the ratio for the conditions you actually
+lift in. A ratio calibrated on an artificially fresh day would prescribe loads
+you cannot hit on the day the slot is really run.
+
+The same dissolves the speed argument. *Is the bar faster than my volume sets?*
+becomes a comparison against yesterday's volume sets under constant conditions.
+It stops being an absolute reading and stays a perfectly good trend.
+
+What genuinely gets worse: F's close-grip load will be a little lower than it
+would be fresh, so those three sets are slightly less absolute work. Against
+that, E's 20 competition reps at RPE 8 run at full load, and E is the more
+expensive session. That trade is the right way round, which is what you said.
+
+### The final week
+
+| day | session | why here |
+|---|---|---|
+| 1 | **A** — heavy single, competition back-offs | two clear days behind it |
+| 2 | D — legs, jumps, delts | jumps on fresh legs, upper body rests |
+| 3 | **E** — competition volume 4 × 5, incline, flies | the hypertrophy engine, run fresh |
+| 4 | **F** — speed, close grip, overhead, rows, curls | the cheap day takes the tired slot |
+| 5 | rest | |
+| 6 | **C** — attempt, AMRAP, double pause | rest behind it, and only 1.8 chest sets in 48 h |
+| 7 | B — legs, arms, abs | absorbs the attempt's fallout |
+
+The eight-day option from §8 (**A, D, F, rest, E, rest, C, B**) still beats both
+on paper with zero adjacent pressing pairs. Everything above is about which
+seven-day week to run if you keep training on a calendar.
