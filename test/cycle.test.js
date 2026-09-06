@@ -41,15 +41,17 @@ test('a cycle knows its block, type and effort mode from the plan', () => {
 test('a rotation is complete only when every position has been trained', () => {
   const c = cycle(3);
   const log = (position, status, extra) => logFor(c, position, status, extra);
+  const [first] = PLAN.meta.rotationOrder;
 
   const empty = cycleProgress(PLAN, c, []);
   assert.equal(empty.complete, 0);
-  assert.equal(empty.nextPosition, 'A');
+  assert.equal(empty.nextPosition, first);
   assert.equal(empty.finished, false);
 
-  const halfway = cycleProgress(PLAN, c, [log('A', 'complete'), log('B', 'complete'), log('C', 'complete')]);
+  const [a, b, cc, d] = PLAN.meta.rotationOrder;
+  const halfway = cycleProgress(PLAN, c, [log(a, 'complete'), log(b, 'complete'), log(cc, 'complete')]);
   assert.equal(halfway.complete, 3);
-  assert.equal(halfway.nextPosition, 'D', 'the next untrained position, in plan order');
+  assert.equal(halfway.nextPosition, d, 'the next untrained position, in plan order');
   assert.equal(halfway.finished, false);
 
   const all = PLAN.meta.rotationOrder.map((p) => log(p, 'complete'));
@@ -138,7 +140,7 @@ test('a custom workout never advances or inflates the A–F rotation', () => {
   const progress = cycleProgress(PLAN, cycle, [custom]);
   assert.equal(progress.complete, 0);
   assert.equal(progress.dose, 0);
-  assert.equal(progress.nextPosition, 'A');
+  assert.equal(progress.nextPosition, PLAN.meta.rotationOrder[0]);
 });
 
 test('finishing a rotation offers the next one, never silently', () => {

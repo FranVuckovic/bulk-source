@@ -135,7 +135,18 @@ test('the same exercise elsewhere in a rotation is found, and the slot you are o
   assert.ok(!others.some((entry) => entry.slot.id === 'C1'), 'not the one you are standing on');
   assert.ok(others.every((entry) => entry.slot.ex === 'benchComp'));
   assert.ok(others.some((entry) => entry.slot.role === 'top_single'));
-  assert.ok(others.some((entry) => entry.slot.role === 'volume'));
+
+  // This asserted a 'volume' role until E2 — the last competition-grip volume
+  // slot — became the long-pause bench. All the paused work lives in its own
+  // exercise now, so the competition lift is singles, back-offs and the two
+  // measurements. That is the plan, not a gap.
+  assert.ok(others.some((entry) => entry.slot.role === 'backoff'));
+  assert.ok(others.some((entry) => entry.slot.role === 'attempt'));
+  assert.equal(
+    others.some((entry) => entry.slot.role === 'volume'),
+    false,
+    'competition-grip volume is now the long-pause lift'
+  );
 });
 
 test('elsewhere reflects the rotation asked for, not a fixed answer', () => {

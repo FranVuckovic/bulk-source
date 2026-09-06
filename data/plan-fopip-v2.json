@@ -7,12 +7,12 @@
     "sub": "33 rotations · bench strength and hypertrophy",
     "rotations": 33,
     "rotationOrder": [
-      "A",
       "D",
       "E",
       "F",
       "C",
-      "B"
+      "B",
+      "A"
     ],
     "startDateISO": null,
     "referenceBodyweightKg": 90,
@@ -1575,33 +1575,33 @@
       "splitFrom": "benchVar",
       "maxFrom": {
         "exerciseId": "benchComp",
-        "ratio": 0.88,
+        "ratio": 0.93,
         "range": [
-          0.86,
-          0.9
+          0.9,
+          0.96
         ]
       }
     },
     "benchPause": {
-      "name": "Long-pause bench press — 3 s",
+      "name": "Long-pause bench press — 2–3 s",
       "tracksMax": true,
       "maxConf": "high",
       "m": {
-        "chestMid": 0.6,
-        "triLat": 1,
-        "deltFront": 0.3
+        "chestMid": 1,
+        "triLat": 0.5,
+        "deltFront": 0.5
       },
       "how": [
-        "Competition grip and setup.",
-        "Touch, then hold motionless for a full three seconds.",
+        "Competition grip and setup. Identical to your touch-and-go bench in every way except the pause.",
+        "Touch, then hold motionless for a full two to three seconds. Same count every rep.",
         "Stay tight through the pause — it is not a rest. Then press hard."
       ],
-      "why": "Removes the stretch reflex entirely, so the press starts from a dead position. Builds force off the chest and kills a bounce habit.",
+      "why": "All of your paused competition-grip work lives here, so it keeps its own number. Your logs show almost no gap between paused and touch-and-go — a 115 kg paused single on 19 August and a 115 kg touch-and-go single on the 20th — so this is not fixing a bounce. It is strict competition-groove volume: position, tightness, and control off the chest.",
       "subs": [
         "Spoto press",
         "Paused bench, 1 s, heavier"
       ],
-      "watch": "A pause is not a rest. If you go loose under the bar the shoulder takes it.",
+      "watch": "Count the same way every rep or the load stops being comparable to itself. If the pause drifts under two seconds it becomes your touch-and-go bench with extra steps.",
       "grips": null,
       "unit": "kg",
       "defaultRestSec": 180,
@@ -1610,10 +1610,10 @@
       "splitFrom": "benchVar",
       "maxFrom": {
         "exerciseId": "benchComp",
-        "ratio": 0.88,
+        "ratio": 0.94,
         "range": [
-          0.84,
-          0.88
+          0.9,
+          0.97
         ]
       }
     },
@@ -1622,9 +1622,9 @@
       "tracksMax": true,
       "maxConf": "high",
       "m": {
-        "chestMid": 0.6,
-        "triLat": 1,
-        "deltFront": 0.3
+        "chestMid": 0.7,
+        "triLat": 0.9,
+        "deltFront": 0.4
       },
       "how": [
         "Set the pins so the bar starts with your upper arm JUST BELOW horizontal — about 2 cm under where you stall.",
@@ -1636,7 +1636,7 @@
         "Long-pause bench",
         "Close-grip bench"
       ],
-      "watch": "Set too high and it becomes a board press and trains the lockout instead, which is not your weak point. Set it BELOW the stall.",
+      "watch": "Record the pin hole in the set note EVERY session. This lift has the widest ratio band in the plan because pin height decides everything — without the hole number the load is not comparable to itself. On the first session ignore the prescription: work up in 10 kg jumps to a hard triple and confirm that as the max.",
       "grips": null,
       "unit": "kg",
       "defaultRestSec": 180,
@@ -1645,10 +1645,10 @@
       "splitFrom": "benchVar",
       "maxFrom": {
         "exerciseId": "benchComp",
-        "ratio": 0.85,
+        "ratio": 0.9,
         "range": [
-          0.82,
-          0.88
+          0.85,
+          0.97
         ]
       }
     },
@@ -1657,9 +1657,9 @@
       "tracksMax": true,
       "maxConf": "high",
       "m": {
-        "chestMid": 0.6,
-        "triLat": 1,
-        "deltFront": 0.3
+        "chestMid": 1.1,
+        "triLat": 0.4,
+        "deltFront": 0.5
       },
       "how": [
         "A thumb-length wider than competition, no more.",
@@ -1680,10 +1680,10 @@
       "splitFrom": "benchVar",
       "maxFrom": {
         "exerciseId": "benchComp",
-        "ratio": 0.97,
+        "ratio": 0.93,
         "range": [
-          0.95,
-          0.98
+          0.9,
+          0.97
         ]
       }
     },
@@ -1692,9 +1692,9 @@
       "tracksMax": true,
       "maxConf": "high",
       "m": {
-        "chestMid": 0.6,
-        "triLat": 1,
-        "deltFront": 0.3
+        "chestMid": 1,
+        "triLat": 0.5,
+        "deltFront": 0.5
       },
       "how": [
         "Feet on the bench or in the air. No leg drive at all.",
@@ -1723,7 +1723,7 @@
       }
     },
     "benchDouble": {
-      "name": "Double-pause bench press",
+      "name": "Double-pause bench press (retired — too fiddly to run consistently)",
       "tracksMax": true,
       "maxConf": "high",
       "m": {
@@ -2485,7 +2485,7 @@
         },
         {
           "id": "C2",
-          "ex": "benchDouble",
+          "ex": "benchPin",
           "role": "volume",
           "label": null,
           "sets": 3,
@@ -2985,7 +2985,7 @@
         },
         {
           "id": "E2",
-          "ex": "benchComp",
+          "ex": "benchPause",
           "role": "volume",
           "label": null,
           "sets": 4,
@@ -3443,7 +3443,7 @@
       "type": "baseline",
       "effortWave": null,
       "accessoryMultiplier": 1.0,
-      "variation": "Double-pause bench press",
+      "variation": "Three fixed variations — long pause (E), close grip (F), pin press (C)",
       "theme": "Establish every baseline number under standardised conditions. Full volume; the testing fatigue is accepted and tagged.",
       "bench": {
         "A": {
@@ -3465,7 +3465,7 @@
           },
           "variation": {
             "sets": 3,
-            "reps": 6,
+            "reps": 5,
             "rpe": 7.5
           }
         },
@@ -3495,7 +3495,7 @@
         "Rotation 2 runs the first standardised AMRAP",
         "Excluded from high-versus-standard failure comparisons"
       ],
-      "variationEx": "benchDouble"
+      "variationEx": null
     },
     {
       "id": 1,
@@ -3505,7 +3505,7 @@
       "type": "accumulation",
       "effortWave": "counterbalanced",
       "accessoryMultiplier": 1.0,
-      "variation": "Double-pause bench press",
+      "variation": "Three fixed variations — long pause (E), close grip (F), pin press (C)",
       "theme": "The base the rest of the plan sits on. Two counterbalanced effort waves test high against standard failure.",
       "bench": {
         "A": {
@@ -3524,7 +3524,7 @@
           "amrap": true,
           "variation": {
             "sets": 3,
-            "reps": 6,
+            "reps": 5,
             "rpe": 8
           }
         },
@@ -3552,7 +3552,7 @@
         "Effort waves: high, high, standard, standard — then reversed for the second four rotations",
         "First defensible high-versus-standard comparison is Rotation 10"
       ],
-      "variationEx": "benchDouble"
+      "variationEx": null
     },
     {
       "id": 2,
@@ -3562,7 +3562,7 @@
       "type": "intensification",
       "effortWave": "standard",
       "accessoryMultiplier": 0.92,
-      "variation": "Double-pause bench press",
+      "variation": "Three fixed variations — long pause (E), close grip (F), pin press (C)",
       "theme": "Heavier bench work at slightly reduced accessory volume so the added intensity is not confounded by accessory fatigue.",
       "bench": {
         "A": {
@@ -3610,7 +3610,7 @@
         "Standard-failure mode throughout",
         "Accessory volume 92%"
       ],
-      "variationEx": "benchDouble"
+      "variationEx": null
     },
     {
       "id": 3,
@@ -3620,7 +3620,7 @@
       "type": "recovery",
       "effortWave": "none",
       "accessoryMultiplier": 0.6,
-      "variation": "Close-grip bench press",
+      "variation": "Three fixed variations — long pause (E), close grip (F), pin press (C)",
       "theme": "One rotation to make existing fitness visible again. Reducing fatigue is not losing fitness.",
       "bench": {
         "A": {
@@ -3669,7 +3669,7 @@
         "Accessory volume 60%",
         "Formal plan review after this rotation"
       ],
-      "variationEx": "benchClose"
+      "variationEx": null
     },
     {
       "id": 4,
@@ -3679,7 +3679,7 @@
       "type": "accumulation",
       "effortWave": "counterbalanced",
       "accessoryMultiplier": 1.0,
-      "variation": "Pin press — bar set just below the sticking point",
+      "variation": "Three fixed variations — long pause (E), close grip (F), pin press (C)",
       "theme": "Volume again, at loads that were near-maximal in Accumulation I.",
       "bench": {
         "A": {
@@ -3726,7 +3726,7 @@
         "Second pair of counterbalanced effort waves",
         "Bench variation becomes the pin press"
       ],
-      "variationEx": "benchPin"
+      "variationEx": null
     },
     {
       "id": 5,
@@ -3736,7 +3736,7 @@
       "type": "intensification",
       "effortWave": "standard",
       "accessoryMultiplier": 0.92,
-      "variation": "Long-pause bench press — 3 s",
+      "variation": "Three fixed variations — long pause (E), close grip (F), pin press (C)",
       "theme": "The heaviest sustained block. Two singles in A, the second heavier than the first.",
       "bench": {
         "A": {
@@ -3784,7 +3784,7 @@
         "A works up to 1@8 then 1@8.5",
         "Watch the elbows: highest cumulative joint load of the plan"
       ],
-      "variationEx": "benchPause"
+      "variationEx": null
     },
     {
       "id": 6,
@@ -3794,7 +3794,7 @@
       "type": "specificity",
       "effortWave": "standard",
       "accessoryMultiplier": 0.85,
-      "variation": "Long-pause bench press — 3 s",
+      "variation": "Three fixed variations — long pause (E), close grip (F), pin press (C)",
       "theme": "Express what has been built. Accessories trimmed, priority chest, triceps and delts kept closest to full.",
       "bench": {
         "A": {
@@ -3841,7 +3841,7 @@
         "AMRAP only in Rotations 28 and 30; otherwise a 1×3 @8",
         "Accessory volume 85%"
       ],
-      "variationEx": "benchPause"
+      "variationEx": null
     },
     {
       "id": 7,
@@ -3851,7 +3851,7 @@
       "type": "taper",
       "effortWave": "none",
       "accessoryMultiplier": 0.6,
-      "variation": "Close-grip bench press",
+      "variation": "Three fixed variations — long pause (E), close grip (F), pin press (C)",
       "theme": "Remove fatigue without removing fitness. One rotation.",
       "bench": {
         "A": {
@@ -3899,7 +3899,7 @@
         "No AMRAP, no failure work, no holds",
         "Accessory volume 60%"
       ],
-      "variationEx": "benchClose"
+      "variationEx": null
     },
     {
       "id": 8,
@@ -3909,7 +3909,7 @@
       "type": "test",
       "effortWave": "none",
       "accessoryMultiplier": 0.55,
-      "variation": "—",
+      "variation": "Three fixed variations — long pause (E), close grip (F), pin press (C)",
       "theme": "After two to four bench-free days, A becomes the optional 1RM test. Everything else is half volume.",
       "bench": {
         "A": {
@@ -3960,7 +3960,7 @@
       "type": "bridge",
       "effortWave": "none",
       "accessoryMultiplier": 0.75,
-      "variation": "Close-grip bench press",
+      "variation": "Three fixed variations — long pause (E), close grip (F), pin press (C)",
       "theme": "Reintroduce ordinary training and decide what comes next.",
       "bench": {
         "A": {
@@ -4008,7 +4008,7 @@
         "No mandatory AMRAP",
         "Failure work reintroduced gradually"
       ],
-      "variationEx": "benchClose"
+      "variationEx": null
     }
   ],
   "fallbacks": {
@@ -4106,7 +4106,7 @@
     {
       "s": "Execution",
       "t": "Where to put rest days",
-      "c": "<p>The rotation runs <strong>A · D · E · F · rest · C · B</strong>. The rest day sits immediately before C, and that is a decision rather than a default — worth knowing the reasoning so you can rebuild it when life moves a day.</p>\n<p>Resting <em>after</em> a hard session removes fatigue that is actually present — it peaks 24–48 hours after heavy or failure work. Resting <em>before</em> means you perform better on that specific day. Which you want depends on what the session is for:</p>\n<ul>\n<li><strong>Before C</strong> — C is the weekly attempt and the 100 kg AMRAP. Both are <em>measurements</em>, and a tired reading is a corrupted reading — worse than a bad workout, because it travels into every prescription that follows. This is where the rest day goes.</li>\n<li><strong>Before D</strong> — jumps are worthless when fatigued. D follows A, so your legs are fresh even when your chest is not.</li>\n<li><strong>Before F</strong> — speed work is worthless when fatigued too, and F does not get a rest day. That is deliberate: F is the cheap session and E, which is expensive, has to run fresh.</li>\n<li><strong>A and E</strong> — both autoregulated by RPE, so going in slightly tired costs you load rather than stimulus.</li>\n</ul>\n<p><strong>Never rest between E and F.</strong> The speed work is deliberately cheap and partly exists to flush the volume day; separating them wastes both.</p>\n<p><strong>If you only get one rest day, it goes before C.</strong> If you get a second, put it after A.</p>"
+      "c": "<p>The rotation runs <strong>D · E · F · rest · C · B · A</strong>. The rest day sits immediately before C, and that is a decision rather than a default — worth knowing the reasoning so you can rebuild it when life moves a day.</p>\n<p>Resting <em>after</em> a hard session removes fatigue that is actually present — it peaks 24–48 hours after heavy or failure work. Resting <em>before</em> means you perform better on that specific day. Which you want depends on what the session is for:</p>\n<ul>\n<li><strong>Before C</strong> — C is the weekly attempt and the 100 kg AMRAP. Both are <em>measurements</em>, and a tired reading is a corrupted reading — worse than a bad workout, because it travels into every prescription that follows. This is where the rest day goes.</li>\n<li><strong>Before D</strong> — jumps are worthless when fatigued. D opens the rotation, straight after A, so your legs are fresh even when your chest is not.</li>\n<li><strong>Before F</strong> — speed work is worthless when fatigued too, and F does not get a rest day. That is deliberate: F is the cheap session and E, which is expensive, has to run fresh.</li>\n<li><strong>A and E</strong> — both autoregulated by RPE, so going in slightly tired costs you load rather than stimulus.</li>\n</ul>\n<p><strong>Never rest between E and F.</strong> The speed work is deliberately cheap and partly exists to flush the volume day; separating them wastes both.</p>\n<p><strong>If you only get one rest day, it goes before C.</strong> If you get a second, put it after A.</p>"
     },
     {
       "s": "Execution",

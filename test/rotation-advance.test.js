@@ -38,7 +38,7 @@ test('a finished rotation reports itself finished and points at the next one', (
 
   assert.equal(progress.finished, true);
   assert.equal(progress.pending, 0);
-  assert.equal(next.position, 'A', 'the next rotation starts at A');
+  assert.equal(next.position, PLAN.meta.rotationOrder[0], 'the next rotation starts at the first position');
   assert.equal(next.startsNewCycle, true, 'and it is a new rotation, not this one');
 });
 
@@ -48,14 +48,15 @@ test('the reproduction: training A again without advancing files it to the old r
 
   // "Not yet" on the advance prompt. The rotation pointer never moved, so the
   // next session logged still carries this cycle's id.
-  logs.push(complete(cycle, 'A', 7));
+  const first = PLAN.meta.rotationOrder[0];
+  logs.push(complete(cycle, first, 7));
 
   const progress = cycleProgress(PLAN, cycle, logs);
   const next = nextSession(PLAN, cycle, logs);
 
   assert.deepEqual(progress.positions[0].logs, [1, 7], 'A now holds two sessions in one rotation');
   assert.equal(progress.finished, true, 'and the rotation is still finished');
-  assert.equal(next.position, 'A', 'so it offers A again — the loop the owner hit');
+  assert.equal(next.position, first, 'so it offers the first position again — the loop the owner hit');
   assert.equal(next.startsNewCycle, true);
 });
 
@@ -67,11 +68,12 @@ test('a position already trained this rotation is detectable before it is traine
   const progress = cycleProgress(PLAN, cycle, logs);
 
   const statusOf = (position) => progress.positions.find((p) => p.position === position)?.status;
-  assert.equal(statusOf('A'), 'complete');
-  assert.equal(statusOf('F'), 'complete');
+  const order = PLAN.meta.rotationOrder;
+  assert.equal(statusOf(order[0]), 'complete');
+  assert.equal(statusOf(order[order.length - 1]), 'complete');
 
   const half = cycleProgress(PLAN, cycle, logs.slice(0, 2));
-  assert.equal(half.positions.find((p) => p.position === 'A').status, 'complete');
+  assert.equal(half.positions.find((p) => p.position === PLAN.meta.rotationOrder[0]).status, 'complete');
   assert.equal(half.positions.find((p) => p.position === 'C').status, 'pending');
   assert.equal(half.finished, false);
 });
@@ -88,6 +90,6 @@ test('advancing the rotation clears the finished state', () => {
   const progress = cycleProgress(PLAN, second, logs);
   assert.equal(progress.finished, false);
   assert.equal(progress.pending, 6);
-  assert.equal(progress.nextPosition, 'A');
+  assert.equal(progress.nextPosition, PLAN.meta.rotationOrder[0]);
   assert.equal(nextSession(PLAN, second, logs).startsNewCycle, false, 'A now belongs to rotation 2');
 });

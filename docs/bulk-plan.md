@@ -1,5 +1,7 @@
 # The Bench Bulk — Master Plan
 
+> **Superseded — kept for the reasoning, not the numbers.** This document was written for v1, where C was bench volume, D was speed work and E was the variation and AMRAP. All three moved in v2 and the rotation is no longer alphabetical, so the session-by-session parts of this file are wrong and following them would send you to the wrong session. The live plan is **[`docs/training-plan.md`](training-plan.md)**, generated from the plan data. Part 1 — the three rules, and why the plan is shaped the way it is — still holds.
+
 **Fran · 190 cm · 86 kg → 95–100 kg · August 2026 → April 2027 · 33 weeks**
 
 Working max used throughout: **bench 115 kg.** Every load below is given as a percentage first and kilos second, so the moment you send real baseline numbers I swap one line and everything recalculates.

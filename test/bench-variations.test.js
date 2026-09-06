@@ -22,14 +22,21 @@ import { prescribedLoad, roundToIncrement, pct } from '../js/calc.js';
 
 const PLAN = JSON.parse(readFileSync(new URL('../data/plan-fopip-v2.json', import.meta.url), 'utf8'));
 
-/** The ratios, as agreed. A change here is a training decision, not a refactor. */
+/**
+ * The ratios, as agreed. A change here is a training decision, not a refactor.
+ *
+ * These were population averages until his own logs were read back: on 19 and
+ * 20 August he pressed 115 kg for a single at RPE 10 PAUSED and 115 kg at RPE
+ * 10 touch-and-go, one day apart, and on 21 August a narrow grip and a normal
+ * grip at 90 x 6 both read RPE 7. His gaps are far smaller than the population's
+ * — and his WIDE grip was his hardest, not his easiest.
+ */
 const RATIOS = {
-  benchDouble: 0.82,
-  benchPin: 0.85,
-  benchClose: 0.88,
-  benchPause: 0.88,
+  benchPin: 0.90,
   benchFeetUp: 0.92,
-  benchWide: 0.97,
+  benchClose: 0.93,
+  benchWide: 0.93,
+  benchPause: 0.94,
 };
 
 test('every variation derives its max from the competition bench, at its ratio', () => {
@@ -41,36 +48,46 @@ test('every variation derives its max from the competition bench, at its ratio',
   }
 });
 
-test('the ratios are ordered the way the lifts are hard', () => {
-  // Double pause lowest — a second pause at the sticking point costs more than
-  // a long one on the chest. Wide grip highest — a shorter range.
+test('the ratios are ordered the way the lifts are hard FOR HIM', () => {
   const order = Object.entries(RATIOS).sort((a, b) => a[1] - b[1]).map(([id]) => id);
-  assert.equal(order[0], 'benchDouble', 'the double pause is the hardest per kilo');
-  assert.equal(order[order.length - 1], 'benchWide');
+  assert.equal(order[0], 'benchPin', 'a dead stop at the weakest joint angle is the hardest per kilo');
+  assert.equal(order[order.length - 1], 'benchPause', 'and a pause costs him almost nothing');
+  assert.ok(
+    RATIOS.benchPause > RATIOS.benchClose,
+    'his pause is barely a change; his close grip is a real one'
+  );
   for (const ratio of Object.values(RATIOS)) {
     assert.ok(ratio > 0.7 && ratio < 1.05, `${ratio} is not a plausible ratio`);
   }
 });
 
-test('every block names a variation that exists, and labels it correctly', () => {
+test('no block swaps the variation any more — three fixed lifts', () => {
+  // The rotating variation slot was the thing he found confusing: the lift in
+  // C2 changed underneath him at a block boundary. Three fixed lifts instead,
+  // one per session, and the block still decides sets, reps and RPE.
   for (const block of PLAN.blocks) {
-    const id = block.variationEx;
-    if (id == null) {
-      assert.equal(block.variation, '—', `block ${block.id} has no variation and says so`);
-      continue;
-    }
-    assert.ok(PLAN.exercises[id], `block ${block.id} points at ${id}`);
-    assert.equal(block.variation, PLAN.exercises[id].name, `block ${block.id}'s label matches its exercise`);
+    assert.equal(block.variationEx, null, `block ${block.id} still names a variation exercise`);
   }
 });
 
-test('the double pause runs through the first three blocks', () => {
-  const at = (rotation) => resolveSession(PLAN, { rotation, sessionId: 'C' }).slots.find((s) => s.id === 'C2');
-  for (const rotation of [1, 3, 10, 11, 14]) {
-    assert.equal(at(rotation).ex, 'benchDouble', `rotation ${rotation}`);
+test('the three variations sit one per session, in every rotation', () => {
+  const WHERE = { E: ['E2', 'benchPause'], F: ['F8', 'benchClose'], C: ['C2', 'benchPin'] };
+  for (const rotation of [1, 3, 10, 11, 16, 24, 28, 33]) {
+    for (const [sessionId, [slotId, ex]] of Object.entries(WHERE)) {
+      const slot = resolveSession(PLAN, { rotation, sessionId }).slots.find((s) => s.id === slotId);
+      if (!slot) continue; // a reduced rotation may drop it entirely
+      assert.equal(slot.ex, ex, `rotation ${rotation} ${sessionId} ${slotId}`);
+    }
   }
-  assert.equal(at(16).ex, 'benchPin', 'the pin press waits for data on where he stalls');
-  assert.equal(at(24).ex, 'benchPause');
+});
+
+test('the double pause is retired, kept, and prescribed nowhere', () => {
+  assert.match(PLAN.exercises.benchDouble.name, /retired/i);
+  for (const session of PLAN.sessions) {
+    for (const slot of session.slots) {
+      assert.notEqual(slot.ex, 'benchDouble', `${session.id} ${slot.id} still prescribes it`);
+    }
+  }
 });
 
 test('a variation is loaded off its own max, not the competition one', () => {
@@ -81,17 +98,22 @@ test('a variation is loaded off its own max, not the competition one', () => {
   // the resolver speaks in repsLow/repsHigh. A raw resolved slot has no `reps`,
   // and pct(undefined, 8) silently falls through to the single-rep row — which
   // would have prescribed 90 kg here instead of 77.5.
-  const slot = toDisplaySession(resolveSession(PLAN, { rotation: 3, sessionId: 'C' })).slots.find(
-    (s) => s.id === 'C2'
+  const slot = toDisplaySession(resolveSession(PLAN, { rotation: 3, sessionId: 'E' })).slots.find(
+    (s) => s.id === 'E2'
   );
-  assert.equal(slot.ex, 'benchDouble');
-  assert.equal(slot.reps, 6, 'the display shape carries a rep target');
+  assert.equal(slot.ex, 'benchPause');
+  assert.equal(slot.reps, 5, 'the display shape carries a rep target');
 
-  const own = 120 * RATIOS.benchDouble;
+  const own = 120 * RATIOS.benchPause;
   const expected = roundToIncrement((own * pct(slot.reps, slot.rpe)) / 100, 2.5);
   assert.equal(prescribedLoad(slot, own, 2.5), expected);
-  assert.equal(expected, 77.5, 'the number he will actually see');
-  assert.ok(expected < 120 * 0.7, `${expected} kg — a variation must not land near the competition load`);
+  assert.equal(expected, 92.5, 'the number he will actually see');
+
+  // The check he applied himself, and the one that caught the old numbers: the
+  // working weight, not the derived max, is what says whether a ratio is sane.
+  const competition = roundToIncrement((120 * pct(5, 8)) / 100, 2.5);
+  assert.equal(competition, 97.5);
+  assert.ok(competition - expected <= 7.5, 'a pause should cost him a plate, not a plate and a half');
 });
 
 test('the close-grip slot in F loads off the close-grip max', () => {
@@ -99,7 +121,18 @@ test('the close-grip slot in F loads off the close-grip max', () => {
     (s) => s.id === 'F8'
   );
   const own = 120 * RATIOS.benchClose;
-  assert.equal(prescribedLoad(slot, own, 2.5), 87.5, '3 x 4 @ RPE 8 off a 105 kg close-grip max');
+  assert.equal(prescribedLoad(slot, own, 2.5), 92.5, '3 x 4 @ RPE 8 off a 112.5 kg close-grip max');
+});
+
+test('a paused competition-grip bench counts as the competition lift, not as a triceps variation', () => {
+  // It inherited benchVar's { chest 0.6, triceps 1.0 } when it was split out —
+  // a close-grip profile on a lift with the competition grip. Four sets moving
+  // to it would have read as +2 triceps and -1.6 chest a week, which never
+  // happened: same grip, same joint angles, same muscles.
+  assert.deepEqual(PLAN.exercises.benchPause.m, PLAN.exercises.benchComp.m);
+  assert.deepEqual(PLAN.exercises.benchFeetUp.m, PLAN.exercises.benchComp.m);
+  assert.ok(PLAN.exercises.benchClose.m.triLat > PLAN.exercises.benchComp.m.triLat, 'close grip is triceps-biased');
+  assert.ok(PLAN.exercises.benchWide.m.chestMid > PLAN.exercises.benchComp.m.chestMid, 'wide grip is chest-biased');
 });
 
 /* ── the slots that changed ─────────────────────────────────────────── */
