@@ -35,6 +35,7 @@ import {
 import {
   resolveSession,
   toDisplaySession,
+  toDisplaySlot,
   exerciseAcrossPlan,
   sameExerciseElsewhere,
   slotById,
@@ -60,6 +61,24 @@ import {
 const setKey = (slotIndex, setIndex) => `${slotIndex}:${setIndex}`;
 export const CUSTOM_SESSION_ID = 'custom';
 
+/**
+ * A saved custom workout, by id, or null.
+ *
+ * These live in `plan.customWorkouts` and are fully prescribed — sets, reps,
+ * RPE, rest — so they load off your working maxes exactly like a plan session.
+ * What makes them custom is that they carry no rotation position: they never
+ * advance, satisfy or replace a letter in A–F.
+ *
+ * `CUSTOM_SESSION_ID` stays what it was, the blank ad-hoc session you fill in
+ * on the spot.
+ */
+export const customWorkoutById = (state, id) =>
+  (state?.plan?.customWorkouts || []).find((w) => w.id === id) || null;
+
+/** True for the blank ad-hoc session and for any saved custom workout. */
+export const isOutsideRotation = (state, id = state.trainSessionId) =>
+  id === CUSTOM_SESSION_ID || customWorkoutById(state, id) != null;
+
 /*
  * A touch-and-go rep is worth about 4% more than a one-second pause, so mixing
  * the two silently corrupts the e1RM trend. Any barbell press records which it
@@ -76,6 +95,29 @@ const tracksPause = (exerciseId) => exerciseId.startsWith('bench');
  * checked for safety before it is applied.
  */
 export function slotsFor(state, readinessOverride) {
+  /*
+   * A saved custom workout has no block, no readiness adjustment and no
+   * accessory multiplier — it is exactly what it says. Through the same display
+   * transform as a plan session so the card reads identically, and with the
+   * day's additions appended, so "add exercise" works here too.
+   */
+  const saved = customWorkoutById(state, state.trainSessionId);
+  if (saved) {
+    const planned = (saved.slots || []).map((raw, i) => {
+      const slot = toDisplaySlot({ ...raw, failSets: raw.failLast ?? 0 }, i);
+      const loggedHere = highestLoggedIndex(state, i);
+      const sets = Math.max(slot.sets, loggedHere + 1);
+      return { ...slot, sets, prescribedSets: slot.sets, beyondPlan: sets > slot.sets };
+    });
+    const extras = (state.deviations.extras || []).map((raw, j) => {
+      const i = planned.length + j;
+      const loggedHere = highestLoggedIndex(state, i);
+      const sets = Math.max(raw.sets, loggedHere + 1);
+      return { ...raw, sets, prescribedSets: raw.sets, beyondPlan: sets > raw.sets, added: true, slotIndex: i };
+    });
+    return [...planned, ...extras];
+  }
+
   if (state.trainSessionId === CUSTOM_SESSION_ID) {
     return (state.deviations.extras || []).map((slot, i) => {
       const prescribed = slot.sets;
@@ -182,7 +224,7 @@ function highestLoggedIndex(state, slotIndex) {
  * survivable (see above); reindexing is not, so it is refused instead.
  */
 export function readinessWouldReindex(state, nextReadiness) {
-  if (state.trainSessionId === CUSTOM_SESSION_ID) return false;
+  if (isOutsideRotation(state)) return false;
   const current = slotsFor(state);
   const next = slotsFor(state, nextReadiness);
   if (current.length !== next.length) return true;
@@ -421,10 +463,13 @@ export function rowValues(state, slot, slotIndex, setIndex) {
 
 export function view(ctx) {
   const { state } = ctx;
-  const isCustom = state.trainSessionId === CUSTOM_SESSION_ID;
-  const session = isCustom
-    ? { id: 'Custom', name: 'Custom workout', purpose: 'An ad-hoc session that does not advance or change the A–F rotation.' }
-    : state.plan.sessions.find((s) => s.id === state.trainSessionId);
+  const saved = customWorkoutById(state, state.trainSessionId);
+  const isCustom = isOutsideRotation(state);
+  const session = saved
+    ? { id: saved.id, name: saved.name, purpose: saved.purpose }
+    : isCustom
+      ? { id: 'Custom', name: 'Custom workout', purpose: 'An ad-hoc session that does not advance or change the A–F rotation.' }
+      : state.plan.sessions.find((s) => s.id === state.trainSessionId);
   const slots = slotsFor(state);
   const resolved = isCustom
     ? { effortMode: 'none', accessoryMultiplier: 1, blockType: 'custom' }
@@ -488,7 +533,16 @@ export function view(ctx) {
      * mapped `rotationOrder` — read the real thing. Tapping left to right has
      * to be the order you actually train in.
      */
-    .join('')}<button class="pill custom ${isCustom ? 'on' : ''}" data-act="pick-session" data-id="${CUSTOM_SESSION_ID}">Custom</button></div>
+    .join('')}${(state.plan.customWorkouts || [])
+      .map(
+        (w) =>
+          `<button class="pill custom ${w.id === state.trainSessionId ? 'on' : ''}" data-act="pick-session" data-id="${escape(
+            w.id
+          )}" title="${escape(w.name)}">${escape(w.id)}</button>`
+      )
+      .join('')}<button class="pill custom ${
+    state.trainSessionId === CUSTOM_SESSION_ID ? 'on' : ''
+  }" data-act="pick-session" data-id="${CUSTOM_SESSION_ID}">Custom</button></div>
 
   ${state.calibration && !isCustom ? calibrationCard() : ''}
 
@@ -517,7 +571,13 @@ export function view(ctx) {
           : ''
     }
     ${
-      isCustom
+      saved
+        ? `<p class="hint" style="margin-top:8px"><b>${escape(
+            saved.name
+          )}</b> — outside the rotation. It is logged and counted in History and analytics, but never advances or replaces A–F.${
+            saved.key ? ` ${escape(saved.key)}` : ''
+          }</p>`
+        : isCustom
         ? '<p class="hint" style="margin-top:8px">Add any exercises below. Custom work still appears in History and analytics, but never replaces A–F.</p>'
         : `<div class="mini" style="margin-top:10px"><button data-act="open-cycle-control">Rotation ${state.cycle.sequence} · correct</button></div>`
     }
@@ -1493,7 +1553,7 @@ export const actions = {
       ctx.state.deviations.extras[slotIndex - planned.length].sets += 1;
     }
     ctx.state.exOpen.add(String(slotIndex));
-    if (ctx.state.activeLog || ctx.state.trainSessionId !== CUSTOM_SESSION_ID) await ctx.saveDeviations();
+    if (ctx.state.activeLog || !isOutsideRotation(ctx.state)) await ctx.saveDeviations();
     ctx.render();
   },
 
@@ -1764,7 +1824,7 @@ export const actions = {
     state.exOpen.add(String(slotsFor(state).length - 1));
     // Building a custom workout is not starting it. The in-memory draft is
     // persisted with the session when Start or the first set is logged.
-    if (state.activeLog || state.trainSessionId !== CUSTOM_SESSION_ID) await ctx.saveDeviations();
+    if (state.activeLog || !isOutsideRotation(state)) await ctx.saveDeviations();
     closeSheet();
     ctx.render();
   },
@@ -1866,7 +1926,7 @@ export const actions = {
       ...state.deviations,
       phaseSwaps: { ...(state.deviations.phaseSwaps || {}), [slotIndex]: rotation },
     };
-    if (state.activeLog || state.trainSessionId !== CUSTOM_SESSION_ID) await ctx.saveDeviations();
+    if (state.activeLog || !isOutsideRotation(state)) await ctx.saveDeviations();
     closeSheet();
     ctx.render();
   },
@@ -1876,7 +1936,7 @@ export const actions = {
     const swaps = { ...(state.deviations.phaseSwaps || {}) };
     delete swaps[String(Number(data.si))];
     state.deviations = { ...state.deviations, phaseSwaps: swaps };
-    if (state.activeLog || state.trainSessionId !== CUSTOM_SESSION_ID) await ctx.saveDeviations();
+    if (state.activeLog || !isOutsideRotation(state)) await ctx.saveDeviations();
     closeSheet();
     ctx.render();
   },
@@ -2017,10 +2077,11 @@ export const actions = {
    */
   async 'start-session'(ctx) {
     const { state } = ctx;
-    const status =
-      state.trainSessionId === CUSTOM_SESSION_ID
-        ? null
-        : state.cycleProgress.positions.find((p) => p.position === state.trainSessionId)?.status;
+    // A custom workout has no rotation position, so it can never be "already
+    // done this rotation" — it is always allowed to start.
+    const status = isOutsideRotation(state)
+      ? null
+      : state.cycleProgress.positions.find((p) => p.position === state.trainSessionId)?.status;
 
     if (status === 'complete' || status === 'partial') {
       const last = state.cycle.sequence >= state.plan.meta.rotations;

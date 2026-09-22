@@ -164,6 +164,29 @@ Every variation has its own 1RM, stated as a fraction of the competition max. Th
 
 **169 sets a rotation.**
 
+## Saved custom workouts
+
+Outside the rotation: fully prescribed and loaded off your working maxes, but they never advance, satisfy or replace a letter of A–F. Pick them from the Train screen next to the A–F pills.
+
+### X1 — Custom workout 1
+
+*A and F folded into one: the heavy single and its back-offs, close grip, then the pressing, rowing and delt work both sessions share. Outside the rotation — it never advances or replaces A–F.*
+
+| | exercise | sets × reps @ RPE | load | rest |
+|---|---|---|---|---|
+| X1a | Competition bench press | 1 × 1 @ RPE 8 | 110.0 kg | 5 min |
+| X1b | Competition bench press | 2 × 4 @ RPE 8 | from the day's single | 4 min |
+| X1c | Close-grip bench press | 2 × 4 @ RPE 8 | 92.5 kg | 3 min |
+| X1d | Seated dumbbell shoulder press | 2 × 8–12 @ RPE 8 | *by RPE* | 2 min |
+| X1e | Incline dumbbell press (30°) | 2 × 6–10 @ RPE 8 | 82.5 kg | 2 min |
+| X1f | Chest-supported row | 3 × 8–12 @ RPE 9 | *by RPE* | 2 min |
+| X1g | Incline cable fly | 3 × 10–15 @ RPE 10 | *by RPE* | 75 s |
+| X1h | Cable lateral raise | 3 × 12–20 @ RPE 10 | *by RPE* | 75 s |
+| X1i | Cable rear-delt fly | 3 × 12–20 @ RPE 10 | *by RPE* | 75 s |
+| X1j | High-cable curl | 3 × 10–15 @ RPE 10 | *by RPE* | 75 s |
+
+**24 sets.** Everything before the row is the session. If time runs out, the accessories are what goes.
+
 ## The blocks
 
 Blocks change sets, reps, RPE and how much accessory volume runs. They no longer change *which* variation you do — that is fixed now, one per session.

@@ -225,7 +225,14 @@ test('custom workouts are explicitly outside plan rotation progress', () => {
   assert.ok(train.includes("export const CUSTOM_SESSION_ID = 'custom'"));
   assert.ok(train.includes('does not advance or change the A–F rotation'));
   assert.ok(app.includes('plannedFinished = finished.filter'));
-  assert.ok(app.includes('rotationPosition: state.trainSessionId === train.CUSTOM_SESSION_ID ? null'));
+
+  // Saved custom workouts joined the blank ad-hoc one, so the test that used to
+  // pin the literal `=== CUSTOM_SESSION_ID` comparison now pins the predicate
+  // that covers both. A saved workout with a rotation position would satisfy a
+  // letter of A–F it is not, which is the whole defect this guards.
+  assert.ok(train.includes('export const isOutsideRotation'));
+  assert.ok(app.includes('rotationPosition: train.isOutsideRotation(state) ? null'));
+  assert.ok(app.includes('rotationIndex: train.isOutsideRotation(state)'));
 });
 
 test('every icon the manifest names is precached and present', () => {

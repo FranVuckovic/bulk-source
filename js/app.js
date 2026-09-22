@@ -406,7 +406,10 @@ async function ensureActiveLog() {
         startedAt: nowISO(),
         endedAt: null,
         sessionId: state.trainSessionId,
-        rotationPosition: state.trainSessionId === train.CUSTOM_SESSION_ID ? null : state.trainSessionId,
+        // Null for the blank custom session AND for a saved custom workout:
+        // neither carries a rotation position, so neither can satisfy, advance
+        // or inflate A–F. `cycleProgress` filters on exactly this.
+        rotationPosition: train.isOutsideRotation(state) ? null : state.trainSessionId,
         cycleId: state.cycle.id,
         cycleSequence: state.cycle.sequence,
         blockId: state.block.idx,
@@ -415,10 +418,9 @@ async function ensureActiveLog() {
         // Real until said otherwise: a session logged as it happens is the
         // normal case, and the switch beside Finish is for the times it is not.
         timingReliable: true,
-        rotationIndex:
-          state.trainSessionId === train.CUSTOM_SESSION_ID
-            ? null
-            : state.plan.meta.rotationOrder.indexOf(state.trainSessionId),
+        rotationIndex: train.isOutsideRotation(state)
+          ? null
+          : state.plan.meta.rotationOrder.indexOf(state.trainSessionId),
         bodyweight: null,
         sessionRpe: null,
         note: null,
@@ -631,10 +633,13 @@ async function persistDraft() {
 
 async function finishSession() {
   await persistDraft();
-  const isCustom = state.trainSessionId === train.CUSTOM_SESSION_ID;
-  const session = isCustom
-    ? { id: 'Custom', name: 'Custom workout' }
-    : state.plan.sessions.find((s) => s.id === state.trainSessionId);
+  const saved = train.customWorkoutById(state, state.trainSessionId);
+  const isCustom = train.isOutsideRotation(state);
+  const session = saved
+    ? { id: saved.id, name: saved.name }
+    : isCustom
+      ? { id: 'Custom', name: 'Custom workout' }
+      : state.plan.sessions.find((s) => s.id === state.trainSessionId);
   const prescribed = prescribedSetCount({ slots: train.slotsFor(state) });
   const logged = state.loggedSets.size;
   const ratio = completionRatio(logged, prescribed);

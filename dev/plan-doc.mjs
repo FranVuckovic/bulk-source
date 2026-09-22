@@ -15,7 +15,7 @@
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import { resolveSession, toDisplaySession } from '../js/plan.js';
+import { resolveSession, toDisplaySession, toDisplaySlot } from '../js/plan.js';
 import { prescribedLoad, roundToIncrement, pct, AMRAP_FRACTION } from '../js/calc.js';
 import { weeklyVolume } from '../js/volume.js';
 
@@ -133,6 +133,25 @@ for (const id of order) {
   w('', `**${sets} sets.** ${session.key}`, '');
 }
 w(`**${total} sets a rotation.**`, '');
+
+/* ── saved custom workouts ──────────────────────────────────────────────── */
+if ((PLAN.customWorkouts || []).length) {
+  w('## Saved custom workouts', '');
+  w('Outside the rotation: fully prescribed and loaded off your working maxes, but they never advance, satisfy or replace a letter of A–F. Pick them from the Train screen next to the A–F pills.', '');
+  for (const cw of PLAN.customWorkouts) {
+    const rows = (cw.slots || []).map((raw) => {
+      const s = toDisplaySlot({ ...raw, failSets: raw.failLast ?? 0 }, 0);
+      const name = ex(s.ex)?.name ?? s.ex;
+      return `| ${s.id} | ${name} | ${s.sets} × ${reps(s)} @ RPE ${s.rpe} | ${loadFor(s)} | ${rest(s)} |`;
+    });
+    const sets = (cw.slots || []).reduce((t, s) => t + s.sets, 0);
+    w(`### ${cw.id} — ${cw.name}`, '');
+    w(`*${cw.purpose}*`, '');
+    w('| | exercise | sets × reps @ RPE | load | rest |', '|---|---|---|---|---|');
+    w(...rows);
+    w('', `**${sets} sets.**${cw.key ? ` ${cw.key}` : ''}`, '');
+  }
+}
 
 /* ── blocks ─────────────────────────────────────────────────────────────── */
 w('## The blocks', '');
