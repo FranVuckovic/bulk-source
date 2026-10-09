@@ -52,6 +52,8 @@ export function effortModeFor(plan, rotation) {
  * three rotations. Returns null when no hold is offered.
  */
 export function staticHoldFor(plan, rotation) {
+  // A plan with no hold slot offers no hold, whatever its blocks are called.
+  if (!planHasHolds(plan)) return null;
   const block = blockFor(plan, rotation);
   if (!block || rotation < 11) return null;
   if (['recovery', 'taper', 'test', 'bridge'].includes(block.type)) return null;
@@ -63,6 +65,52 @@ export function staticHoldFor(plan, rotation) {
   return ordinal % 2 === 0
     ? { variant: 'primer', pct: 1.08, seconds: '5–8', placement: 'before the top bench work', restAfterSec: 360 }
     : { variant: 'training', pct: 1.12, seconds: '10–15', placement: 'after all competition-bench work', restAfterSec: 240 };
+}
+
+/** True when any session of the plan has a static-hold slot. */
+const planHasHolds = (plan) => (plan.sessions || []).some((session) => (session.slots || []).some((slot) => slot.role === 'hold'));
+
+/**
+ * Is this rotation one of the plan's AMRAP rotations?
+ *
+ * A plan that lists `meta.amrapRotations` runs its AMRAP only in those
+ * rotations — every second week rather than every week, and never in the week
+ * of a test, where the test is the measurement. A plan that does not list them
+ * leaves the AMRAP to its blocks, as the original plan always has.
+ */
+export function isAmrapRotation(plan, rotation) {
+  const listed = plan.meta?.amrapRotations;
+  return Array.isArray(listed) ? listed.includes(rotation) : null;
+}
+
+/**
+ * What a block says about one slot, applied to it.
+ *
+ * Blocks in the newer plan describe their bench work slot by slot, by slot id:
+ * `null` removes the slot for the block, an object replaces the fields it
+ * names. That replaces the hard-coded "session A's single, session C's
+ * variation" logic of the original plan, which still uses `block.bench` and is
+ * resolved exactly as before.
+ *
+ * `whenAmrap` / `whenNoAmrap` on a slot apply in AMRAP and non-AMRAP rotations.
+ * `{ "drop": true }` in either removes the slot — the AMRAP itself, in a week
+ * without one.
+ */
+function applySlotRules(plan, block, slot, rotation) {
+  let out = slot;
+  const amrapWeek = isAmrapRotation(plan, rotation);
+  if (amrapWeek != null) {
+    const rule = amrapWeek ? slot.whenAmrap : slot.whenNoAmrap;
+    if (rule?.drop) return null;
+    if (rule) out = { ...out, ...rule };
+  }
+  const overrides = block.slots;
+  if (overrides && Object.prototype.hasOwnProperty.call(overrides, slot.id)) {
+    const rule = overrides[slot.id];
+    if (rule === null || rule?.drop) return null;
+    out = { ...out, ...rule };
+  }
+  return out;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -131,7 +179,9 @@ const stripFailure = (slot) => ({ ...slot, failLast: 0, failLastHigh: 0, myoOpti
 
 /** Resolve the bench slots for a block. Bench work is entirely block-specific. */
 function resolveBench(plan, session, slot, { rotation, block, mode }) {
-  const spec = block.bench[session.id];
+  // Only the original plan describes its bench work this way. A block without
+  // `bench` has nothing to say here and the slot rules (above) are its voice.
+  const spec = block.bench?.[session.id];
   if (!spec) return clone(slot);
 
   const isFirstRotation = rotation === block.from;
@@ -329,12 +379,20 @@ export function resolveSession(plan, { rotation, sessionId, readiness = 'normal'
       ? resolveBench(plan, session, raw, { rotation, block, mode })
       : clone(raw);
     if (!slot) continue;
+    slot = applySlotRules(plan, block, slot, rotation);
+    if (!slot) continue;
 
     // Failure permission depends on the effort mode, and disappears entirely in
     // reduced-fatigue phases.
     const allowed = mode === 'high' ? slot.failLastHigh : mode === 'none' ? 0 : slot.failLast;
     slot = { ...slot, failSets: reduced || mode === 'none' ? 0 : allowed };
     if (reduced) slot = stripFailure(slot);
+
+    // A block can cap effort outright — a taper with nothing to failure should
+    // not still say RPE 10 on the accessories. The measurement sets keep theirs.
+    if (block.rpeCap != null && slot.rpe > block.rpeCap && !['attempt', 'test', 'amrap'].includes(slot.role)) {
+      slot = { ...slot, rpe: block.rpeCap, rpeCappedFrom: slot.rpe };
+    }
 
     slots.push(slot);
   }
@@ -459,14 +517,34 @@ export function validatePlan(plan) {
     }
   }
 
-  // The plan's own promises about its shape.
-  const r1 = resolveSession(plan, { rotation: 1, sessionId: 'C' });
-  if (r1.slots.some((s) => s.amrap)) problems.push('rotation 1 must not contain a bench AMRAP');
-  for (const rotation of [15, 31, 32, 33]) {
-    if (staticHoldFor(plan, rotation)) problems.push(`rotation ${rotation} must not offer a static hold`);
+  // Every option a slot offers has to be an exercise the app knows.
+  for (const session of plan.sessions || []) {
+    for (const slot of session.slots || []) {
+      for (const option of slot.options || []) {
+        if (!plan.exercises[option]) problems.push(`session ${session.id} ${slot.id}: unknown option ${option}`);
+      }
+      if (slot.options && !slot.options.includes(slot.ex)) {
+        problems.push(`session ${session.id} ${slot.id}: options must include the slot's own exercise`);
+      }
+    }
   }
-  for (let rotation = 1; rotation <= 10; rotation++) {
-    if (staticHoldFor(plan, rotation)) problems.push(`static holds must not start before rotation 11 (found at ${rotation})`);
+
+  // An AMRAP rotation list may only name rotations the plan has.
+  for (const rotation of plan.meta.amrapRotations || []) {
+    if (!(rotation >= 1 && rotation <= total)) problems.push(`AMRAP rotation ${rotation} is outside 1–${total}`);
+  }
+
+  // The original plan's own promises about its shape. They are about its
+  // session C and its static holds, so they apply to plans built that way.
+  if (planHasHolds(plan)) {
+    const r1 = resolveSession(plan, { rotation: 1, sessionId: 'C' });
+    if (r1.slots.some((s) => s.amrap)) problems.push('rotation 1 must not contain a bench AMRAP');
+    for (const rotation of [15, 31, 32, 33]) {
+      if (staticHoldFor(plan, rotation)) problems.push(`rotation ${rotation} must not offer a static hold`);
+    }
+    for (let rotation = 1; rotation <= 10; rotation++) {
+      if (staticHoldFor(plan, rotation)) problems.push(`static holds must not start before rotation 11 (found at ${rotation})`);
+    }
   }
 
   return { ok: problems.length === 0, problems };

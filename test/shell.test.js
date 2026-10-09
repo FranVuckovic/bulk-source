@@ -83,11 +83,15 @@ test('the shell lists nothing that does not exist', () => {
   assert.deepEqual(missing, [], `listed but absent: ${missing.join(', ')}`);
 });
 
-test('the shell holds the plan the app actually loads, and not the one it does not', () => {
+test('the shell holds every plan the app loads, and not the one it does not', () => {
+  // Every plan is fetched at startup — History names sessions from all of them
+  // and switching plans has to work in a gym with no signal — so every one of
+  // them has to be precached, not only the active one.
   const shell = new Set(shellPaths());
-  const planUrl = read('js/app.js').match(/PLAN_URL\s*=\s*'\.\/([^']+)'/)?.[1];
-  assert.ok(planUrl, 'app.js still names a plan file');
-  assert.ok(shell.has(planUrl), `${planUrl} is loaded at startup but not precached`);
+  const planUrls = [...read('js/plans.js').matchAll(/url:\s*'\.\/([^']+)'/g)].map((match) => match[1]);
+  assert.ok(planUrls.length >= 2, 'plans.js still names its plan files');
+  for (const url of planUrls) assert.ok(shell.has(url), `${url} is loaded at startup but not precached`);
+  assert.ok(!shell.has('data/plan-bulk-v1.json'), 'the retired v1 plan must not be shipped');
 });
 
 test('every js file in the project is reachable from the entry point', () => {
@@ -223,7 +227,8 @@ test('custom workouts are explicitly outside plan rotation progress', () => {
   const train = read('js/ui/train.js');
 
   assert.ok(train.includes("export const CUSTOM_SESSION_ID = 'custom'"));
-  assert.ok(train.includes('does not advance or change the A–F rotation'));
+  // Named from the plan's own letters now — A–F or A–E — rather than a literal.
+  assert.ok(train.includes('does not advance or change the ${rotationSpan(state)} rotation'));
   assert.ok(app.includes('plannedFinished = finished.filter'));
 
   // Saved custom workouts joined the blank ad-hoc one, so the test that used to

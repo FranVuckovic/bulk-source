@@ -108,7 +108,9 @@ function overview(state) {
       }</td></tr>
       <tr><td>Rotation</td><td>${rotation} of ${totalRotations}</td></tr>
       <tr><td>Calendar week</td><td>${week}${
-        state.projection?.weeksTotal ? ` · on this pace the 33 rotations take about ${state.projection.weeksTotal} weeks` : ''
+        state.projection?.weeksTotal
+          ? ` · on this pace the ${state.plan.meta.rotations} rotations take about ${state.projection.weeksTotal} weeks`
+          : ''
       }</td></tr>
       <tr><td>Actual pace</td><td>${pace == null ? '—' : `${pace.toFixed(1)} sessions / week`}</td></tr>
     </tbody></table>
@@ -116,7 +118,9 @@ function overview(state) {
     <p class="hint">Nothing advances silently. When you reach ${target} sessions the app opens a block review: your best lifts, the proposed working-max updates, and what changes next block. You confirm it.</p>
   </div></details>
 
-  <h3>Stimulus this rotation · all six sessions</h3>
+  ${restDaysCard(state)}
+
+  <h3>Stimulus this rotation · all ${state.plan.meta.rotationOrder.length} sessions</h3>
   <div class="lg"><span><i style="background:var(--s3)"></i>in range</span><span><i style="background:var(--warn)"></i>below</span><span><i style="background:var(--s1)"></i>slightly above</span><span><i style="background:var(--s2)"></i>materially above</span><span><i style="background:var(--axis)"></i>at maintenance</span><span><i style="background:var(--ink2)"></i>per head — not judged</span></div>
   <p class="hint stimulus-intro">The coloured bars are <b>whole-muscle</b> totals — largest head per set, the units the
   familiar <b>~20 sets/week</b> figure uses — judged against the 10–20 weekly sets the research states. The grey bars
@@ -128,8 +132,46 @@ function overview(state) {
   ${volumeBars(state, volume, frequency, wholeMuscle)}
   <p class="hint" style="margin:0 2px 14px">Fractional sets — a set where the muscle is the main mover counts 1.0, a meaningful supporting role counts 0.5, and anything under 0.3 is not counted at all. Speed bench counts <b>zero</b>: at RPE 5–6 it is motor-pattern practice, not a growth stimulus.</p>
 
-  <details class="card overview-fold"><summary>If six sessions is not possible</summary><div class="c">
-    <p style="margin:0 0 8px"><strong>Four days</strong> — you lose the speed day and session F. Bench drops to three exposures, volume by about 20%. Sustainable indefinitely.</p>
+  ${state.plan.fallbacks ? fallbackCard(state) : ''}`;
+}
+
+/**
+ * The week, and the rest-day options, for a plan that states them.
+ *
+ * The order of the workouts is fixed and the days are not, so this shows each
+ * option as a week rather than leaving "rest Monday or Tuesday" to be worked
+ * out in your head.
+ */
+function restDaysCard(state) {
+  const rest = state.plan.meta.restDays;
+  if (!rest?.options?.length) return '';
+  return `<details class="card overview-fold" open><summary>Your week <span>rest ${escape(rest.fixed)} + one more</span></summary><div class="c">
+    ${state.plan.sessions
+      .map(
+        (session) => `<div class="big-row" style="cursor:default"><div class="ic">${escape(session.id)}</div><div class="m"><b>${escape(
+          session.name
+        )}</b><span>${escape(session.day || '')}${session.trains ? ` \u00b7 ${escape(session.trains)}` : ''}</span></div></div>`
+      )
+      .join('')}
+    <table style="margin-top:12px"><tbody>${rest.options
+      .map(
+        (option) => `<tr><td><b>${escape(option.label)}</b>${option.best ? ' <span class="badge idx">BEST</span>' : ''}</td><td>${escape(
+          option.week.join(' \u00b7 ')
+        )}</td></tr>`
+      )
+      .join('')}</tbody></table>
+    <p class="hint">The order never changes; the days can. Bench days are never back to back in any of these, and
+    Friday — the heaviest bench — always follows the ${escape(rest.fixed)} rest. Miss a day and do the next workout in
+    the order.</p>
+  </div></details>`;
+}
+
+function fallbackCard(state) {
+  const count = state.plan.meta.rotationOrder.length;
+  return `<details class="card overview-fold"><summary>If ${count} sessions a week is not possible</summary><div class="c">
+    <p style="margin:0 0 8px"><strong>Four days</strong> — ${
+      count > 5 ? 'you lose the speed day and session F. Bench drops to three exposures, volume by about 20%.' : 'one session goes and the others stay whole.'
+    } Sustainable indefinitely.</p>
     ${state.plan.fallbacks.fourDay
       .map((d) => `<div class="big-row" style="cursor:default"><div class="ic">${d.n}</div><div class="m"><b>${escape(d.contents)}</b></div></div>`)
       .join('')}
@@ -461,7 +503,9 @@ function workoutsView(state) {
   return `<h3 style="margin-top:0">Workouts</h3>
   <p style="margin:0 2px 12px">Run in order: <b>${state.plan.meta.rotationOrder.join(
     ' \u2192 '
-  )} \u2192 repeat</b>. Train when you can and always just do the next one \u2014 missing a day is not a decision, the rotation simply slides.</p>
+  )} \u2192 repeat</b>. Train when you can and always just do the next one \u2014 missing a day is not a decision, the rotation simply slides.${
+    state.plan.meta.restDays ? ` Rest ${escape(state.plan.meta.restDays.fixed)} and one of Monday, Tuesday or Wednesday \u2014 Overview shows each week.` : ''
+  }</p>
   ${state.plan.sessions
     .map((session) => {
       // Numbers come from the plan engine for the rotation you are actually on,
@@ -485,7 +529,7 @@ function sessionCard(state, session, resolved, isOpen, isNext) {
   const head = `<div class="wo-head" data-act="plan-session" data-id="${escape(session.id)}">
     <span class="wo-id">${escape(session.id)}</span>
     <div class="wo-nm"><b>${escape(session.name)}</b>
-      <span>${total} sets \u00b7 ~${escape(estimateMinutes(state, slots))} min${
+      <span>${session.day ? `${escape(session.day)} \u00b7 ` : ''}${total} sets \u00b7 ~${escape(estimateMinutes(state, slots))} min${
         isNext ? ' \u00b7 next up' : ''
       }</span></div>
     <div class="car">\u203a</div></div>`;
@@ -498,6 +542,7 @@ function sessionCard(state, session, resolved, isOpen, isNext) {
     .slice(0, 6);
 
   return `<div class="card wo open${isNext ? ' next' : ''}">${head}
+    ${session.trains ? `<p style="font-size:12.5px;margin-top:11px"><b>Trains:</b> ${escape(session.trains)}</p>` : ''}
     <p style="font-size:13px;margin-top:11px">${escape(session.purpose)}</p>
     <p style="font-size:12.5px;padding:9px 11px;background:var(--sunk);border-radius:9px;border-left:3px solid var(--s1);color:var(--ink2);margin-bottom:12px">${escape(
       session.key
@@ -530,7 +575,13 @@ function sessionCard(state, session, resolved, isOpen, isNext) {
         }</b>
         <div style="font-size:11.5px;color:var(--muted);margin-top:1px">${
           movers.join(' \u00b7 ') || 'skill / speed work'
-        }</div></div>
+        }</div>${
+          (slot.options || []).length > 1
+            ? `<div style="font-size:11.5px;color:var(--s1);margin-top:2px">${slot.options
+                .map((id, n) => `${String.fromCharCode(65 + n)}: ${escape(state.plan.exercises[id]?.name || id)}`)
+                .join(' \u00b7 ')}</div>`
+            : ''
+        }</div>
         <div style="font-size:12px;color:var(--ink2);white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:600">${
           slot.sets
         }\u00d7${slot.amrap ? 'max' : slot.reps} @${slot.rpe}</div></div>`;

@@ -15,6 +15,7 @@
  */
 
 import { blockFor, effortModeFor } from './plan.js';
+import { DEFAULT_PLAN_ID } from './plans.js';
 
 export const CYCLE_STATUS = Object.freeze(['planned', 'active', 'complete', 'partial', 'abandoned', 'reopened']);
 export const POSITION_STATUS = Object.freeze(['pending', 'active', 'complete', 'partial', 'skipped', 'moved']);
@@ -25,9 +26,15 @@ export const COMPLETE_SESSION_RATIO = 0.5;
 /** Build the cycle record for a rotation number. */
 export function newCycle(plan, { sequence, startedAtISO, localStartDate, id }) {
   const block = blockFor(plan, sequence);
+  // The original plan keeps the id shape it always had, so cycles already in a
+  // database still match. Any other plan prefixes its own id: two plans both
+  // have a rotation 1, and two cycles called cycle-1-1 would share sessions.
+  const planId = plan.meta.id ?? null;
+  const prefix = planId && planId !== DEFAULT_PLAN_ID ? `cycle-${planId}` : 'cycle';
   return {
-    id: id ?? `cycle-${sequence}-${startedAtISO ?? localStartDate ?? sequence}`,
+    id: id ?? `${prefix}-${sequence}-${startedAtISO ?? localStartDate ?? sequence}`,
     sequence,
+    planId: planId ?? DEFAULT_PLAN_ID,
     planVersion: plan.meta.planVersion,
     blockId: block ? block.id : null,
     type: block ? block.type : 'normal',

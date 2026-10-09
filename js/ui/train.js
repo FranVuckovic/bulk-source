@@ -43,7 +43,7 @@ import {
   BORROWABLE_FIELDS,
   substitutesFor,
 } from '../plan.js';
-import { exerciseNoteHistory } from '../analytics.js';
+import { exerciseNoteHistory, recentEvidenceMax } from '../analytics.js';
 import { daysBetween } from '../dates.js';
 import {
   escape,
@@ -100,32 +100,20 @@ export function slotsFor(state, readinessOverride) {
    * accessory multiplier — it is exactly what it says. Through the same display
    * transform as a plan session so the card reads identically, and with the
    * day's additions appended, so "add exercise" works here too.
+   *
+   * Swaps, options and added or removed sets apply here exactly as they do in a
+   * plan session. They used to be read only on the plan path, so a swap in a
+   * saved workout changed nothing on screen and "+ Set" crashed outright.
    */
   const saved = customWorkoutById(state, state.trainSessionId);
   if (saved) {
-    const planned = (saved.slots || []).map((raw, i) => {
-      const slot = toDisplaySlot({ ...raw, failSets: raw.failLast ?? 0 }, i);
-      const loggedHere = highestLoggedIndex(state, i);
-      const sets = Math.max(slot.sets, loggedHere + 1);
-      return { ...slot, sets, prescribedSets: slot.sets, beyondPlan: sets > slot.sets };
-    });
-    const extras = (state.deviations.extras || []).map((raw, j) => {
-      const i = planned.length + j;
-      const loggedHere = highestLoggedIndex(state, i);
-      const sets = Math.max(raw.sets, loggedHere + 1);
-      return { ...raw, sets, prescribedSets: raw.sets, beyondPlan: sets > raw.sets, added: true, slotIndex: i };
-    });
-    return [...planned, ...extras];
+    const planned = (saved.slots || []).map((raw, i) =>
+      withDeviations(state, toDisplaySlot({ ...raw, failSets: raw.failLast ?? 0 }, i), i)
+    );
+    return [...planned, ...extraSlots(state, planned.length)];
   }
 
-  if (state.trainSessionId === CUSTOM_SESSION_ID) {
-    return (state.deviations.extras || []).map((slot, i) => {
-      const prescribed = slot.sets;
-      const loggedHere = highestLoggedIndex(state, i);
-      const sets = Math.max(prescribed, loggedHere + 1);
-      return { ...slot, sets, prescribedSets: prescribed, beyondPlan: sets > prescribed, added: true };
-    });
-  }
+  if (state.trainSessionId === CUSTOM_SESSION_ID) return extraSlots(state, 0);
   // Everything block-specific comes from the plan engine: the bench work for
   // this block, the failure permission for this rotation's effort mode, the
   // accessory multiplier, the static hold if one is offered, and any readiness
@@ -138,9 +126,6 @@ export function slotsFor(state, readinessOverride) {
     })
   );
   const planned = (resolved.slots || []).map((raw, i) => {
-    const swappedTo = state.deviations.swaps[i];
-    const extraSets = state.deviations.addedSets[i] || 0;
-
     /*
      * A prescription borrowed from another rotation.
      *
@@ -175,31 +160,86 @@ export function slotsFor(state, readinessOverride) {
       }
     }
 
-    /*
-     * A slot never shows fewer rows than have already been logged against it.
-     *
-     * Anything that reshapes a session mid-way — switching to yellow, which
-     * removes the last work set — otherwise leaves a logged set with nowhere to
-     * render. It stays in the database and in every export, but the Train
-     * screen stops drawing it, stops counting it, and gives you no way to
-     * un-tick it. Three sets logged, "2 / 20 sets" on the header, and the third
-     * one still real. A set that exists is always shown; whether the plan still
-     * asks for it is a different question, answered by `beyondPlan`.
-     */
-    const prescribed = slot.sets + extraSets;
+    return withDeviations(state, slot, i);
+  });
+  return [...planned, ...extraSlots(state, planned.length)];
+}
+
+/**
+ * One planned slot, with today's swap and today's added or removed sets.
+ *
+ * A slot never shows fewer rows than have already been logged against it.
+ *
+ * Anything that reshapes a session mid-way — switching to yellow, which removes
+ * the last work set, or taking a set away — otherwise leaves a logged set with
+ * nowhere to render. It stays in the database and in every export, but the
+ * Train screen stops drawing it, stops counting it, and gives you no way to
+ * un-tick it. A set that exists is always shown; whether the plan still asks
+ * for it is a different question, answered by `beyondPlan`.
+ *
+ * `addedSets` may be negative — "− Set" takes a set away — but never below one.
+ */
+function withDeviations(state, slot, i) {
+  const swappedTo = state.deviations.swaps?.[i];
+  const extraSets = state.deviations.addedSets?.[i] || 0;
+  const prescribed = Math.max(1, slot.sets + extraSets);
+  const loggedHere = highestLoggedIndex(state, i);
+  const sets = Math.max(prescribed, loggedHere + 1);
+
+  /*
+   * A label and a cue written for the planned exercise do not belong to its
+   * replacement — "single leg, holding a dumbbell" under a shrug. Labels that
+   * say what the slot is for (back-offs, AMRAP, index set) stay; exercise
+   * labels go. A cue stays when the replacement is one of the slot's own
+   * options, because those cues are written about both.
+   */
+  const swapped = !!swappedTo && swappedTo !== slot.ex;
+  const keepsLabel = ['top_single', 'backoff', 'amrap', 'volume', 'attempt', 'test'].includes(slot.role);
+  const isOption = swapped && (slot.options || []).includes(swappedTo);
+
+  return {
+    ...slot,
+    ex: swappedTo || slot.ex,
+    label: swapped && !keepsLabel ? null : slot.label,
+    note: swapped && !isOption ? null : slot.note,
+    sets,
+    prescribedSets: prescribed,
+    beyondPlan: sets > prescribed,
+    swappedFrom: swapped ? slot.ex : null,
+    // The exercise the plan wrote here, before any swap or option was taken —
+    // what "option A" means, and what a swap reverts to.
+    plannedEx: slot.ex,
+    slotIndex: i,
+  };
+}
+
+/**
+ * The exercises added today, after the planned ones.
+ *
+ * Each carries `extraIndex`, its position in `deviations.extras`. Every action
+ * that edits an added exercise used to work that position out as "slot index
+ * minus the length of the session as written in the plan file" — but the
+ * screen shows the session as *resolved*, and a block that removes a slot (the
+ * AMRAP in an off week, the static hold in most rotations) made the two
+ * lengths differ. "+ Set" then edited the wrong exercise or none at all.
+ */
+function extraSlots(state, offset) {
+  return (state.deviations.extras || []).map((raw, j) => {
+    const i = offset + j;
+    const prescribed = Math.max(1, raw.sets);
     const loggedHere = highestLoggedIndex(state, i);
     const sets = Math.max(prescribed, loggedHere + 1);
-
     return {
-      ...slot,
-      ex: swappedTo || slot.ex,
+      ...raw,
       sets,
       prescribedSets: prescribed,
       beyondPlan: sets > prescribed,
-      swappedFrom: swappedTo ? slot.ex : null,
+      added: true,
+      extraIndex: j,
+      slotIndex: i,
+      plannedEx: raw.ex,
     };
   });
-  return [...planned, ...state.deviations.extras];
 }
 
 /** The highest setIndex already logged against a slot, or -1 for none. */
@@ -244,15 +284,88 @@ export function readinessWouldReindex(state, nextReadiness) {
  * moment you confirm a max for the variation itself, that wins — a derived
  * number is a starting point, not a claim about you.
  */
-const workingMaxFor = (state, exerciseId) => {
-  const own = state.maxes.get(exerciseId)?.workingMax ?? state.plan.meta.seedWorkingMaxes[exerciseId];
-  if (own != null) return own;
+export function workingMaxInfo(state, exerciseId, depth = 0) {
+  const confirmed = state.maxes?.get(exerciseId);
+  if (confirmed?.workingMax != null) {
+    return { value: confirmed.workingMax, source: 'confirmed', setAtISO: confirmed.setAtISO ?? null };
+  }
 
-  const from = state.plan.exercises[exerciseId]?.maxFrom;
-  if (!from) return null;
-  const parent = state.maxes.get(from.exerciseId)?.workingMax ?? state.plan.meta.seedWorkingMaxes[from.exerciseId];
-  return parent == null ? null : parent * from.ratio;
-};
+  const exercise = state.plan.exercises[exerciseId];
+  const from = exercise?.maxFrom;
+  if (from && depth < 3) {
+    const parent = workingMaxInfo(state, from.exerciseId, depth + 1);
+    if (parent?.value != null) {
+      return { value: parent.value * from.ratio, source: 'ratio', ratio: from.ratio, parentId: from.exerciseId, parent };
+    }
+  }
+
+  /*
+   * No max of your own: what your recent sets show, before the plan's seed.
+   * Only on lifts whose estimate is trustworthy — a compound, inside the
+   * table's rep range, with an effort rating.
+   */
+  if (exercise?.tracksMax && exercise.maxConf === 'high') {
+    const evidence = evidenceFor(state, exerciseId);
+    if (evidence) return { value: evidence.value, source: 'evidence', evidence };
+  }
+
+  const seed = state.plan.meta?.seedWorkingMaxes?.[exerciseId];
+  if (seed != null) return { value: seed, source: 'seed' };
+  return null;
+}
+
+const workingMaxFor = (state, exerciseId) => workingMaxInfo(state, exerciseId)?.value ?? null;
+
+/*
+ * The evidence is recomputed only when the sets, the open session or the day
+ * change — it is read for every row of every card on every render.
+ */
+let evidenceMemo = { sets: null, active: null, today: null, byExercise: new Map() };
+function evidenceFor(state, exerciseId) {
+  const active = state.activeLog?.id ?? null;
+  if (evidenceMemo.sets !== state.sets || evidenceMemo.active !== active || evidenceMemo.today !== state.todayISO) {
+    evidenceMemo = { sets: state.sets, active, today: state.todayISO, byExercise: new Map() };
+  }
+  if (!evidenceMemo.byExercise.has(exerciseId)) {
+    evidenceMemo.byExercise.set(
+      exerciseId,
+      recentEvidenceMax(state.sets || [], state.logs || [], exerciseId, {
+        todayISO: state.todayISO ?? null,
+        excludeLogId: active,
+      })
+    );
+  }
+  return evidenceMemo.byExercise.get(exerciseId);
+}
+
+/**
+ * Today's top single, as a max, when it has been logged.
+ *
+ * Back-offs are meant to come from the single you actually pressed today — the
+ * plan said so and the screen did not do it: they were taken from the stored
+ * working max, so a strong day and a weak day got the same back-offs. A single
+ * logged earlier in this session, on the same lift, at one rep with an effort
+ * rating, is now what they are worked out from.
+ */
+function todaysSingle(state, slot) {
+  let best = null;
+  for (const set of state.loggedSets?.values?.() || []) {
+    if (set.exerciseId !== slot.ex || set.reps !== 1 || set.rpe == null || set.load == null || set.formBreakdown) continue;
+    if (slot.slotIndex != null && set.slotIndex >= slot.slotIndex) continue;
+    const value = e1rm(systemLoad(set.load, set.bodyweightUsed || 0), 1, Math.min(10, set.rpe));
+    if (value != null && (!best || value > best.value)) best = { value, set };
+  }
+  return best;
+}
+
+/** The max a slot's load is worked out from: today's single for back-offs, else the working max. */
+function prescriptionMax(state, slot) {
+  if (slot.pctBasis === 'topSingleRpe') {
+    const single = todaysSingle(state, slot);
+    if (single) return { value: single.value, single };
+  }
+  return { value: workingMaxFor(state, slot.ex), single: null };
+}
 
 /**
  * Bodyweight counts as part of the load on pull-ups, chin-ups and dips, so the
@@ -301,12 +414,20 @@ export const attemptTargetFor = (state, slot) =>
     : null;
 
 const prescriptionFor = (state, slot) =>
-  prescribedLoad(slot, workingMaxFor(state, slot.ex), state.settings.increment, {
+  prescribedLoad(slot, prescriptionMax(state, slot).value, state.settings.increment, {
     ...loadOptions(state, slot.ex),
     fixedLoad: attemptTargetFor(state, slot),
   });
 
 const isFailureSet = (slot, i) => !!slot.failLast && i >= slot.sets - slot.failLast;
+
+/*
+ * Only the first set in an AMRAP slot is the AMRAP. Extra sets added there are
+ * training, not measurements — they used to be stored as AMRAPs too, which put
+ * five "AMRAP readings" of 7, 5, 4, 4, 4 into one day and dragged the trend
+ * down with sets that were never meant to measure anything.
+ */
+const isAmrapSet = (slot, i) => !!slot.amrap && i === 0;
 
 /** What the row is displaying, so a one-tap set stores it rather than null. */
 const defaultGrip = (state, slot, slotIndex) => {
@@ -360,6 +481,19 @@ function lastTime(state, exerciseId) {
  * "session B, three days ago" tells you whether to expect to beat it and
  * "2026-08-19" does not.
  */
+/**
+ * " · FOPIP" when last time was trained under a different plan.
+ *
+ * Both plans letter their sessions from A, so "session B" alone would point at
+ * the wrong workout the moment you switch.
+ */
+function otherPlanName(state, previous) {
+  const own = previous?.planId;
+  const active = state.plan?.meta?.id;
+  if (!own || !active || own === active) return '';
+  return ` \u00b7 ${escape(state.plans?.[own]?.meta?.name || own)}`;
+}
+
 export function lastTimePanel(state, previous, slot) {
   if (!previous) return '<div class="lastbox none">No previous data — today sets the baseline.</div>';
 
@@ -370,7 +504,7 @@ export function lastTimePanel(state, previous, slot) {
   );
 
   return `<div class="lastbox">
-    <div class="lb-h">Last time${previous.sessionId ? ` · session ${escape(previous.sessionId)}` : ''}${
+    <div class="lb-h">Last time${previous.sessionId ? ` · session ${escape(previous.sessionId)}${otherPlanName(state, previous)}` : ''}${
       previous.ago ? ` · ${escape(previous.ago)}` : ''
     }</div>
     <div class="lb-v">${escape(previous.summary)}</div>
@@ -468,7 +602,7 @@ export function view(ctx) {
   const session = saved
     ? { id: saved.id, name: saved.name, purpose: saved.purpose }
     : isCustom
-      ? { id: 'Custom', name: 'Custom workout', purpose: 'An ad-hoc session that does not advance or change the A–F rotation.' }
+      ? { id: 'Custom', name: 'Custom workout', purpose: `An ad-hoc session that does not advance or change the ${rotationSpan(state)} rotation.` }
       : state.plan.sessions.find((s) => s.id === state.trainSessionId);
   const slots = slotsFor(state);
   const resolved = isCustom
@@ -551,6 +685,9 @@ export function view(ctx) {
   <div class="shead">
     <div class="lbl">${label}</div>
     <div class="nm">${escape(session.id)} · ${escape(session.name)}</div>
+    ${session.day ? `<p class="why" style="margin-bottom:4px"><b>${escape(session.day)}</b>${
+      session.trains ? ` \u00b7 ${escape(session.trains)}` : ''
+    }</p>` : ''}
     <p class="why">${escape(session.purpose)}</p>
     <div class="bar"><i style="width:${prescribedSets ? (doneSets / prescribedSets) * 100 : 0}%"></i></div>
     <div class="meta">
@@ -574,11 +711,11 @@ export function view(ctx) {
       saved
         ? `<p class="hint" style="margin-top:8px"><b>${escape(
             saved.name
-          )}</b> — outside the rotation. It is logged and counted in History and analytics, but never advances or replaces A–F.${
+          )}</b> — outside the rotation. It is logged and counted in History and analytics, but never advances or replaces ${rotationSpan(state)}.${
             saved.key ? ` ${escape(saved.key)}` : ''
           }</p>`
         : isCustom
-        ? '<p class="hint" style="margin-top:8px">Add any exercises below. Custom work still appears in History and analytics, but never replaces A–F.</p>'
+        ? `<p class="hint" style="margin-top:8px">Add any exercises below. Custom work still appears in History and analytics, but never replaces ${rotationSpan(state)}.</p>`
         : `<div class="mini" style="margin-top:10px"><button data-act="open-cycle-control">Rotation ${state.cycle.sequence} · correct</button></div>`
     }
   </div>
@@ -741,11 +878,21 @@ export function estimateMinutes(state, slots) {
  * looking like an ordinary session is how a session ends up filed against a
  * rotation that finished a week ago.
  */
+/** "A–F", or "A–E": the letters of this plan's rotation, for the sentences that name them. */
+const rotationSpan = (state) => {
+  const order = state.plan?.meta?.rotationOrder || [];
+  const sorted = [...order].sort();
+  return sorted.length ? `${sorted[0]}–${sorted[sorted.length - 1]}` : 'the';
+};
+
+const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'];
+
 function rotationDoneCard(state) {
   const last = state.cycle.sequence >= state.plan.meta.rotations;
+  const count = state.plan.meta.rotationOrder.length;
   return `<div class="rotdone">
     <div class="rd-h">Rotation ${state.cycle.sequence} of ${state.plan.meta.rotations} is complete</div>
-    <p>All six sessions are done. ${
+    <p>All ${NUMBER_WORDS[count] || count} sessions are done. ${
       last
         ? 'That is the last rotation of the plan.'
         : `Anything you train now is still recorded against <b>rotation ${state.cycle.sequence}</b> until you move the plan on.`
@@ -821,8 +968,7 @@ function variationNote(state, exerciseId) {
   if (!from) return '';
 
   const parent = state.plan.exercises[from.exerciseId];
-  const parentMax =
-    state.maxes.get(from.exerciseId)?.workingMax ?? state.plan.meta.seedWorkingMaxes[from.exerciseId];
+  const parentMax = workingMaxFor(state, from.exerciseId);
   const unit = state.settings.unit;
   const asPct = (ratio) => `${(ratio * 100).toFixed(0)}%`;
   const own = workingMaxFor(state, exerciseId);
@@ -1019,22 +1165,31 @@ function phaseTable(state, slotId, here, { slotIndex, borrowed, main }) {
 function swapSheet(state, slotIndex, slot, exercise) {
   const { listed, similar, unlisted } = substitutesFor(state.plan, slot.ex);
 
-  const row = (entry, badge) => {
-    const other = entry.exercise;
-    const share = Object.entries(other.m || {})
-      .filter(([, weight]) => weight >= 0.5)
-      .map(([id]) => state.plan.muscles[id]?.label || id)
-      .slice(0, 3)
-      .join(', ');
-    return `<button data-act="do-swap" data-si="${slotIndex}" data-id="${escape(entry.id)}">
-      ${escape(other.name)}${badge ? `<i class="tag">${escape(badge)}</i>` : ''}
-      <span>${escape(share || 'no counted stimulus')}${
-        other.custom ? ' · added by you' : ''
-      }</span></button>`;
-  };
+  const row = (entry, badge) => exerciseButton(state, entry.id, entry.exercise, {
+    act: 'do-swap',
+    slotIndex,
+    badge,
+  });
+
+  // Back to the plan's own exercise, when today's is a swap of it.
+  const revert =
+    slot.swappedFrom && state.plan.exercises[slot.plannedEx]
+      ? `<button class="big ghost mt" data-act="do-swap" data-si="${slotIndex}" data-id="${escape(
+          slot.plannedEx
+        )}">Back to ${escape(state.plan.exercises[slot.plannedEx].name)}</button>`
+      : '';
+
+  const everything = Object.entries(state.plan.exercises)
+    .filter(([id, other]) => id !== slot.ex && !other.retired && !/\(retired/i.test(other.name))
+    .sort((a, b) => a[1].name.localeCompare(b[1].name));
 
   return `<div class="ttl">Swap ${escape(exercise.name)}</div>
 
+    <input class="mt" type="search" placeholder="Search every exercise by name…" autocomplete="off"
+      data-act-input="exercise-filter" aria-label="Search exercises">
+    ${revert}
+
+    <div data-filter-group="suggested">
     <button class="big mt" data-act="open-custom-exercise" data-si="${slotIndex}">
       + An exercise the plan does not have</button>
     <p class="hint" style="margin:6px 2px 14px">Kept for next time, counted in your volume, and it travels in your
@@ -1064,8 +1219,39 @@ function swapSheet(state, slotIndex, slot, exercise) {
            )} — add one above and it becomes trackable like any other.</p>`
         : ''
     }
+    </div>
+
+    <div data-filter-group="all" hidden>
+      <h4>Every exercise</h4>
+      <div class="picklist" style="max-height:46vh;overflow:auto">${everything
+        .map(([id, other]) => exerciseButton(state, id, other, { act: 'do-swap', slotIndex }))
+        .join('')}</div>
+      <p class="hint" data-filter-empty hidden style="margin:10px 2px">Nothing by that name. Add it as your own
+      exercise with the button below.</p>
+      <button class="big ghost mt" data-act="open-custom-exercise" data-si="${slotIndex}">+ An exercise the plan does not have</button>
+    </div>
 
     <button class="big ghost mt" data-act="sheet-close">Cancel</button>`;
+}
+
+/**
+ * One exercise in a pick list: its name, and the muscles it mainly trains.
+ *
+ * `data-name` is what the search box matches against. The search filters rows
+ * that are already on the page rather than re-rendering the sheet, so the box
+ * keeps its focus and the keyboard stays up while you type.
+ */
+function exerciseButton(state, id, exercise, { act, slotIndex = null, badge = null }) {
+  const share = Object.entries(exercise.m || {})
+    .filter(([, weight]) => weight >= 0.5)
+    .map(([muscle]) => state.plan.muscles[muscle]?.label?.split(' \u2014')[0] || muscle)
+    .slice(0, 3)
+    .join(', ');
+  return `<button data-act="${act}"${slotIndex == null ? '' : ` data-si="${slotIndex}"`} data-id="${escape(
+    id
+  )}" data-name="${escape(exercise.name.toLowerCase())}">
+      ${escape(exercise.name)}${badge ? `<i class="tag">${escape(badge)}</i>` : ''}
+      <span>${escape(share || 'no counted stimulus')}${exercise.custom ? ' · added by you' : ''}</span></button>`;
 }
 
 /**
@@ -1106,9 +1292,10 @@ function exerciseBlock(state, slot, slotIndex) {
   const prescribed = prescriptionFor(state, slot);
   const previous = lastTime(state, slot.ex);
   const name = escape(exercise.name) + (slot.label ? ` — ${escape(slot.label)}` : '');
-  const workingMax = workingMaxFor(state, slot.ex);
+  const basis = prescriptionMax(state, slot);
+  const workingMax = basis.value;
 
-  const rows = Array.from({ length: slot.sets }, (_, i) => setRow(state, slot, slotIndex, i)).join('');
+  const rows = optionPicker(state, slot, slotIndex) + Array.from({ length: slot.sets }, (_, i) => setRow(state, slot, slotIndex, i)).join('');
   const valueActions = `${
     previous ? `<button data-act="same-as-last" data-si="${slotIndex}">Same as last time</button>` : ''
   }${
@@ -1131,11 +1318,9 @@ function exerciseBlock(state, slot, slotIndex) {
       : ''
   }`;
   const exerciseActions = `<button data-act="add-set" data-si="${slotIndex}">+ Set</button>
-    ${
-      slot.added
-        ? `<button class="warn" data-act="remove-added" data-si="${slotIndex}">Remove</button>`
-        : `<button data-act="open-swap" data-si="${slotIndex}">Swap</button>`
-    }
+    <button data-act="remove-set" data-si="${slotIndex}">\u2212 Set</button>
+    <button data-act="open-swap" data-si="${slotIndex}">Swap</button>
+    ${slot.added ? `<button class="warn" data-act="remove-added" data-si="${slotIndex}">Remove</button>` : ''}
     <button data-act="about" data-id="${slot.ex}">About</button>
     ${
       slot.id && !slot.swappedFrom && !slot.added
@@ -1178,7 +1363,7 @@ function exerciseBlock(state, slot, slotIndex) {
       ${lastTimePanel(state, previous, slot)}
       ${
         prescribed != null
-          ? prescriptionHint(state, slot, prescribed, workingMax)
+          ? prescriptionHint(state, slot, prescribed, workingMax, basis.single)
           : `<p class="hint"><b>${slot.idx ? 'Find your baseline.' : 'No stored max for this one.'}</b> Pick a weight you think lands at the target RPE, log what actually happened, and the app carries it forward from here.</p>`
       }
 
@@ -1224,6 +1409,26 @@ function exerciseBlock(state, slot, slotIndex) {
 }
 
 /**
+ * Option A or B, where the plan offers a choice.
+ *
+ * Shown on the card rather than behind Swap, because these are not departures
+ * from the plan: both are in it, and which one suits today is the question.
+ */
+function optionPicker(state, slot, slotIndex) {
+  const options = slot.options || [];
+  if (options.length < 2) return '';
+  return `<div class="optpick"><span>Option</span><div class="picker">${options
+    .map((id, n) => {
+      const exercise = state.plan.exercises[id];
+      if (!exercise) return '';
+      return `<button class="pill ${slot.ex === id ? 'on' : ''}" data-act="pick-option" data-si="${slotIndex}" data-id="${escape(
+        id
+      )}">${String.fromCharCode(65 + n)} \u00b7 ${escape(exercise.name)}</button>`;
+    })
+    .join('')}</div></div>`;
+}
+
+/**
  * What the prescribed load actually is, in the terms that make it judgeable.
  *
  * RPE is always relative to your one-rep max, never to today's top single — so
@@ -1232,7 +1437,7 @@ function exerciseBlock(state, slot, slotIndex) {
  * Below the bottom of the table it says "under 6" rather than printing a 6.00
  * that pretends to a precision the scale does not have.
  */
-function prescriptionHint(state, slot, prescribed, workingMax) {
+function prescriptionHint(state, slot, prescribed, workingMax, single = null) {
   const unit = state.settings.unit;
   const bodyweight = bodyweightFor(state, slot.ex);
   const detail = effectiveRpeDetail(prescribed, workingMax, slot.reps, { bodyweight });
@@ -1258,7 +1463,14 @@ function prescriptionHint(state, slot, prescribed, workingMax) {
     );
     parts.push(`${Math.round(slot.pctTop * 100)}% of today's ${fmtLoad(topSingle, unit)} ${unit} top single`);
   }
-  parts.push(`${detail.percent.toFixed(1)}% of your ${fmtLoad(workingMax, unit)} ${unit} max`);
+  parts.push(
+    single
+      ? `${detail.percent.toFixed(1)}% of the ${fmtLoad(workingMax, unit)} ${unit} max today's ${fmtLoad(
+          single.set.load,
+          unit
+        )} ${unit} single @${fmtNum(single.set.rpe, 1)} shows`
+      : `${detail.percent.toFixed(1)}% of your ${fmtLoad(workingMax, unit)} ${unit} max${maxSourceNote(state, slot.ex)}`
+  );
   parts.push(
     detail.clamped === 'below'
       ? 'effective RPE <b>under 6</b>'
@@ -1266,6 +1478,15 @@ function prescriptionHint(state, slot, prescribed, workingMax) {
   );
 
   return `<p class="hint">${parts.join(' · ')}</p>`;
+}
+
+/** Where the working max came from, when it is not one you set yourself. */
+function maxSourceNote(state, exerciseId) {
+  const info = workingMaxInfo(state, exerciseId);
+  if (!info) return '';
+  if (info.source === 'evidence') return ` (from your sets since ${info.evidence.fromISO.slice(5)})`;
+  if (info.source === 'seed') return ' (the plan\u2019s starting estimate \u2014 set your own in Settings)';
+  return '';
 }
 
 function setRow(state, slot, slotIndex, i) {
@@ -1288,7 +1509,7 @@ function setRow(state, slot, slotIndex, i) {
       <div class="fld ${cls} ${load == null ? 'empty' : ''}" data-act="open-step" data-si="${slotIndex}" data-i="${i}" data-field="load">
         <div class="v">${fmtLoad(load, unit)}</div><div class="k">${bodyweight ? `+${unit}` : unit}</div></div>
       <div class="fld ${cls} ${reps == null ? 'empty' : ''}" data-act="open-step" data-si="${slotIndex}" data-i="${i}" data-field="reps">
-        <div class="v">${reps == null ? '—' : slot.amrap && !logged ? 'AM' : reps}</div><div class="k">reps</div></div>
+        <div class="v">${reps == null ? '—' : isAmrapSet(slot, i) && !logged ? 'AM' : reps}</div><div class="k">reps</div></div>
       <div class="fld ${cls}" data-act="open-step" data-si="${slotIndex}" data-i="${i}" data-field="rpe">
         <div class="v">${rpe}</div><div class="k">${toFailure ? 'fail' : 'rpe'}</div></div>
       <button class="setok ${logged ? 'done' : ''}" data-act="tick" data-si="${slotIndex}" data-i="${i}" aria-label="Log set ${i + 1}">✓</button>
@@ -1334,7 +1555,7 @@ function drawStepSheet(ctx) {
   const c = state.sheetCtx;
   const exercise = state.plan.exercises[c.slot.ex];
   const unit = state.settings.unit;
-  const workingMax = workingMaxFor(state, c.slot.ex);
+  const workingMax = prescriptionMax(state, c.slot).value;
   const bodyweight = bodyweightFor(state, c.slot.ex);
 
   const field = (key, label, value, step) => `<div class="fcol">
@@ -1440,7 +1661,7 @@ const repaintReadout = (ctx) => {
     el.innerHTML = stepReadout(
       ctx.state,
       ctx.state.sheetCtx,
-      workingMaxFor(ctx.state, ctx.state.sheetCtx.slot.ex)
+      prescriptionMax(ctx.state, ctx.state.sheetCtx.slot).value
     );
   }
   // The overshoot warning has to repaint with the load, not be decided once
@@ -1486,7 +1707,7 @@ export const actions = {
      * measurement. v1 showed the slot's nominal six and one tap logged it,
      * fabricating the single most important data point in the plan.
      */
-    if (slot.amrap || slot.isTest || slot.role === 'attempt') {
+    if (isAmrapSet(slot, i) || slot.isTest || slot.role === 'attempt') {
       actions['open-step'](ctx, { si: String(slotIndex), i: String(i), field: 'reps' });
       return;
     }
@@ -1497,7 +1718,7 @@ export const actions = {
       reps,
       rpe,
       toFailure,
-      isAmrap: !!slot.amrap,
+      isAmrap: isAmrapSet(slot, i),
       formBreakdown: false,
       // The screen shows a default grip and pause; v1 saved null for both on a
       // one-tap set, so analytics silently mixed incomparable techniques.
@@ -1544,22 +1765,25 @@ export const actions = {
     await setExerciseNote(ctx, Number(data.si), '');
   },
 
+  /*
+   * "+ Set" and "− Set" work on every exercise on the screen: the plan's, the
+   * ones you added today, and the ones in a saved custom workout. Which list a
+   * set belongs to is read off the slot itself (`added`, `extraIndex`) rather
+   * than worked out from lengths — see `extraSlots`.
+   */
   async 'add-set'(ctx, data) {
-    const slotIndex = Number(data.si);
-    const planned = ctx.state.plan.sessions.find((s) => s.id === ctx.state.trainSessionId)?.slots || [];
-    if (slotIndex < planned.length) {
-      ctx.state.deviations.addedSets[slotIndex] = (ctx.state.deviations.addedSets[slotIndex] || 0) + 1;
-    } else {
-      ctx.state.deviations.extras[slotIndex - planned.length].sets += 1;
-    }
-    ctx.state.exOpen.add(String(slotIndex));
-    if (ctx.state.activeLog || !isOutsideRotation(ctx.state)) await ctx.saveDeviations();
-    ctx.render();
+    await changeSetCount(ctx, Number(data.si), +1);
+  },
+
+  async 'remove-set'(ctx, data) {
+    await changeSetCount(ctx, Number(data.si), -1);
   },
 
   async 'remove-added'(ctx, data) {
     const { state } = ctx;
     const slotIndex = Number(data.si);
+    const slot = slotsFor(state)[slotIndex];
+    if (!slot?.added) return;
     const wouldReindexLogged = [...state.loggedSets.keys()].some((key) => Number(key.split(':')[0]) >= slotIndex);
     if (wouldReindexLogged) {
       openSheet(`<div class="ttl">Exercise has logged sets</div>
@@ -1567,8 +1791,7 @@ export const actions = {
         <button class="big mt" data-act="sheet-close">Go back</button>`);
       return;
     }
-    const plannedLength = state.plan.sessions.find((s) => s.id === state.trainSessionId)?.slots.length || 0;
-    state.deviations.extras.splice(slotIndex - plannedLength, 1);
+    state.deviations.extras.splice(slot.extraIndex, 1);
     state.exOpen = new Set(['0']);
     if (state.activeLog) await ctx.saveDeviations();
     ctx.render();
@@ -1603,7 +1826,7 @@ export const actions = {
       reps: values.reps ?? slot.reps,
       rpe: values.rpe,
       toFailure: values.logged ? !!values.logged.toFailure : values.toFailure,
-      isAmrap: values.logged ? !!values.logged.isAmrap : !!slot.amrap,
+      isAmrap: values.logged ? !!values.logged.isAmrap : isAmrapSet(slot, i),
       formBreakdown: !!values.logged?.formBreakdown,
       attemptResult: values.logged?.attemptResult ?? null,
       isMyoRep: values.logged ? !!values.logged.isMyoRep : !!slot.myoReps && i === slot.sets - 1,
@@ -1705,7 +1928,7 @@ export const actions = {
         reps: source.reps,
         rpe: source.rpe ?? slot.rpe,
         toFailure: isFailureSet(slot, i),
-        isAmrap: !!slot.amrap,
+        isAmrap: isAmrapSet(slot, i),
         isMyoRep: !!slot.myoReps && i === slot.sets - 1,
         wasPrescribed: false,
         prescribedLoad: prescriptionFor(state, slot),
@@ -1791,18 +2014,19 @@ export const actions = {
 
   'open-add'(ctx) {
     const { state } = ctx;
-    openSheet(`<div class="ttl">Add an exercise</div><div class="picklist mt" style="max-height:60vh;overflow:auto">${Object.entries(
-      state.plan.exercises
-    )
-      .map(
-        ([id, x]) =>
-          `<button data-act="do-add" data-id="${id}">${escape(x.name)}<span>${
-            Object.keys(x.m)
-              .map((m) => escape(state.plan.muscles[m].label.split(' —')[0]))
-              .join(' · ') || 'no counted stimulus'
-          }</span></button>`
-      )
-      .join('')}</div><button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
+    const entries = Object.entries(state.plan.exercises)
+      .filter(([, x]) => !x.retired && !/\(retired/i.test(x.name))
+      .sort((a, b) => a[1].name.localeCompare(b[1].name));
+    openSheet(`<div class="ttl">Add an exercise</div>
+      <input class="mt" type="search" placeholder="Search by name…" autocomplete="off"
+        data-act-input="exercise-filter" aria-label="Search exercises">
+      <div data-filter-group="all">
+        <div class="picklist mt" style="max-height:56vh;overflow:auto">${entries
+          .map(([id, x]) => exerciseButton(state, id, x, { act: 'do-add' }))
+          .join('')}</div>
+        <p class="hint" data-filter-empty hidden style="margin:10px 2px">Nothing by that name.</p>
+      </div>
+      <button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
   },
 
   async 'do-add'(ctx, data) {
@@ -2018,11 +2242,58 @@ export const actions = {
   },
 
   async 'do-swap'(ctx, data) {
-    ctx.state.deviations.swaps[Number(data.si)] = data.id;
-    ctx.state.exOpen.add(String(data.si));
-    await ctx.saveDeviations();
+    const { state } = ctx;
+    const slotIndex = Number(data.si);
+    const slot = slotsFor(state)[slotIndex];
+    if (!slot || !state.plan.exercises[data.id]) return;
+
+    if (slot.added) {
+      // An exercise you added is yours to change outright; there is no plan
+      // exercise underneath it to swap back to.
+      const extra = state.deviations.extras[slot.extraIndex];
+      if (extra) extra.ex = data.id;
+    } else if (data.id === slot.plannedEx) {
+      // Choosing the plan's own exercise again is not a swap — it is undoing one.
+      delete state.deviations.swaps[slotIndex];
+    } else {
+      state.deviations.swaps[slotIndex] = data.id;
+    }
+    state.exOpen.add(String(slotIndex));
+    if (state.activeLog || !isOutsideRotation(state)) await ctx.saveDeviations();
     closeSheet();
     ctx.render();
+  },
+
+  /**
+   * Option A or B, chosen on the card.
+   *
+   * An option is a swap the plan has already approved, so it goes through the
+   * same path — the same record in `deviations`, the same `variantUsed` on every
+   * set, the same warning when sets are already logged on the slot.
+   */
+  'pick-option'(ctx, data) {
+    const { state } = ctx;
+    const slotIndex = Number(data.si);
+    const slot = slotsFor(state)[slotIndex];
+    if (!slot || slot.ex === data.id) return;
+    const logged = [...state.loggedSets.keys()].filter((key) => Number(key.split(':')[0]) === slotIndex).length;
+    if (logged && !state.swapConfirmed?.has(slotIndex)) {
+      const exercise = state.plan.exercises[slot.ex];
+      openSheet(`<div class="ttl">${escape(exercise.name)} has ${logged} logged set${logged === 1 ? '' : 's'}</div>
+        <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">Those sets were done on
+        <b>${escape(exercise.name)}</b> and stay in your history as that. Any set number the other option reaches
+        moves the old set of that number to <b>Log → Bin</b>, where you can put it back.</p>
+        <button class="big mt" data-act="confirm-option" data-si="${slotIndex}" data-id="${escape(data.id)}">Switch anyway</button>
+        <button class="big ghost mt" data-act="sheet-close">Keep ${escape(exercise.name)}</button>`);
+      return;
+    }
+    return actions['do-swap'](ctx, { si: String(slotIndex), id: data.id });
+  },
+
+  'confirm-option'(ctx, data) {
+    const { state } = ctx;
+    state.swapConfirmed = new Set([...(state.swapConfirmed || []), Number(data.si)]);
+    return actions['do-swap'](ctx, data);
   },
 
   about(ctx, data) {
@@ -2166,7 +2437,82 @@ async function setExerciseNote(ctx, slotIndex, value) {
   ctx.render();
 }
 
+/**
+ * One more set, or one fewer, on one exercise.
+ *
+ * Never below one set, and never below a set that is already logged: taking
+ * away a row that has a logged set on it would hide real work. That set has to
+ * be removed first, on purpose, in the set editor.
+ */
+async function changeSetCount(ctx, slotIndex, delta) {
+  const { state } = ctx;
+  const slot = slotsFor(state)[slotIndex];
+  if (!slot) return;
+
+  if (delta < 0) {
+    const lastRow = slot.sets - 1;
+    if (slot.sets <= 1) {
+      openSheet(`<div class="ttl">One set is the minimum</div>
+        <p style="text-align:center;margin:14px 0;font-size:13px">${
+          slot.added
+            ? 'To drop this exercise altogether, use <b>Remove</b>.'
+            : 'To skip this exercise today, leave it unlogged — or swap it for something else.'
+        }</p>
+        <button class="big mt" data-act="sheet-close">OK</button>`);
+      return;
+    }
+    if (state.loggedSets.has(setKey(slotIndex, lastRow))) {
+      openSheet(`<div class="ttl">Set ${lastRow + 1} is logged</div>
+        <p style="text-align:center;margin:14px 0;font-size:13px">Remove that set first — tap it and choose
+        <b>Remove this set</b>. A set you logged is never hidden by taking its row away.</p>
+        <button class="big mt" data-act="sheet-close">OK</button>`);
+      return;
+    }
+  }
+
+  if (slot.added) {
+    const extra = state.deviations.extras[slot.extraIndex];
+    if (!extra) return;
+    extra.sets = Math.max(1, (extra.sets || 1) + delta);
+  } else {
+    const current = state.deviations.addedSets[slotIndex] || 0;
+    const planned = slot.prescribedSets - current;
+    // Bounded so the prescription never drops under one set.
+    state.deviations.addedSets[slotIndex] = Math.max(1 - planned, current + delta);
+  }
+
+  state.exOpen.add(String(slotIndex));
+  if (state.activeLog || !isOutsideRotation(state)) await ctx.saveDeviations();
+  ctx.render();
+}
+
 export const inputs = {
+  /**
+   * Filter the exercise list in the open sheet by name.
+   *
+   * Works on the rows already on the page — no re-render, so the box keeps its
+   * focus. In the swap sheet an empty box shows the suggestions and a typed
+   * one shows every matching exercise in the app.
+   */
+  'exercise-filter'(_ctx, value) {
+    const query = String(value || '').trim().toLowerCase();
+    const sheet = document.querySelector('.sheet') || document;
+    const suggested = sheet.querySelector('[data-filter-group="suggested"]');
+    const all = sheet.querySelector('[data-filter-group="all"]');
+    if (suggested) {
+      suggested.hidden = !!query;
+      if (all) all.hidden = !query;
+    }
+    let shown = 0;
+    for (const button of all?.querySelectorAll('[data-name]') || []) {
+      const match = !query || button.dataset.name.includes(query);
+      button.hidden = !match;
+      if (match) shown += 1;
+    }
+    const empty = all?.querySelector('[data-filter-empty]');
+    if (empty) empty.hidden = shown > 0;
+  },
+
   'field-load'(ctx, value) {
     const parsed = parseNumber(value);
     // An empty box is mid-edit, not a zero. Leave the last good value alone

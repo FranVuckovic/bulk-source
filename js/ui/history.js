@@ -17,6 +17,25 @@ import { sessionTiming, sessionAnalysis } from '../analytics.js';
 import { escape, fmtLoad, fmtNum, fmtLength, lengthLabel, subnav, flag, openSheet, closeSheet } from './components.js';
 import { measurementTimeLabel, scaleLabel, MEASUREMENT_SITES } from './body.js';
 import { rowBars, barChart } from './charts.js';
+import { planIdOf, sessionForLog } from '../plans.js';
+
+/**
+ * "A · Heavy bench" for a session log, named by the plan it was trained under.
+ *
+ * Both plans letter their sessions from A, so a log looked up in whichever plan
+ * is active now would be shown under the wrong name — an old heavy-bench A
+ * reading as the new plan's lower-body A. A session from a plan other than the
+ * active one also says which plan, because the letter alone no longer does.
+ */
+export function sessionTitle(state, log) {
+  if (!log) return 'Session';
+  if (log.sessionId === 'custom') return 'Custom · Custom workout';
+  const plans = state.plans && Object.keys(state.plans).length ? state.plans : { [state.plan.meta.id]: state.plan };
+  const session = sessionForLog(plans, log);
+  const own = planIdOf(log);
+  const other = own !== state.plan.meta.id ? plans[own]?.meta?.name || own : null;
+  return `${log.sessionId ?? '\u2014'} \u00b7 ${session ? session.name : 'Session'}${other ? ` \u00b7 ${other}` : ''}`;
+}
 
 const KINDS = [
   ['all', 'All'],
@@ -57,16 +76,13 @@ export function entries(state, { deleted = false } = {}) {
   const rows = [
     ...state.logs.map((log) => {
       const sets = setsByLog.get(log.id) || [];
-      const session = state.plan.sessions.find((s) => s.id === log.sessionId);
       const minutes = minutesBetween(log.startedAt, log.endedAt);
       return {
         kind: 'session',
         key: `session:${log.id}`,
         id: log.id,
         dateISO: dayOf(log.dateISO),
-        title: `${log.sessionId === 'custom' ? 'Custom' : log.sessionId} · ${
-          session ? session.name : log.sessionId === 'custom' ? 'Custom workout' : 'Session'
-        }`,
+        title: sessionTitle(state, log),
         summary: [
           `${sets.length} sets`,
           minutes ? `${minutes} min` : null,
@@ -171,14 +187,11 @@ function deletedEntries(state) {
     .map((entry) => {
       const row = entry.row || {};
       const kind = KIND_OF[entry.store] || entry.store;
-      const session = kind === 'session' ? state.plan.sessions.find((s) => s.id === row.sessionId) : null;
       const exercise = kind === 'set' ? state.plan.exercises[row.exerciseId] : null;
 
       const title =
         kind === 'session'
-          ? `${row.sessionId === 'custom' ? 'Custom' : row.sessionId ?? '—'} · ${
-              session ? session.name : row.sessionId === 'custom' ? 'Custom workout' : 'Session'
-            }`
+          ? sessionTitle(state, row)
           : kind === 'set'
             ? `Set · ${exercise?.name || row.exerciseId || '—'}`
             : kind === 'measurement'
@@ -673,7 +686,6 @@ function sessionScreen(ctx) {
 
   const unit = state.settings.unit;
   const sets = state.sets.filter((set) => set.sessionLogId === log.id);
-  const session = state.plan.sessions.find((s) => s.id === log.sessionId);
   const a = sessionAnalysis(log, sets, {
     exercises: state.plan.exercises,
     logs: state.logs,
@@ -696,9 +708,7 @@ function sessionScreen(ctx) {
     <div class="lbl">${escape(longDate(log.dateISO))}${
       log.readiness && log.readiness !== 'normal' ? ` \u00b7 ${escape(log.readiness)} day` : ''
     }</div>
-    <div class="nm">${escape(log.sessionId === 'custom' ? 'Custom' : log.sessionId)} \u00b7 ${escape(
-      session ? session.name : log.sessionId === 'custom' ? 'Custom workout' : 'Session'
-    )}</div>
+    <div class="nm">${escape(sessionTitle(state, log))}</div>
     <div class="meta">
       <span>rotation ${log.cycleSequence ?? '\u2014'}</span>
       ${minutes ? `<span>${minutes} min${t.startLooksWrong ? ' of work' : ''}</span>` : ''}

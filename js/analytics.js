@@ -15,6 +15,7 @@
  * Pure: records in, metrics out.
  */
 
+import { planIdOf } from './plans.js';
 import { estimateForSet, isHighConfidence, systemLoad, e1rm, setDifficulty, noEstimateReason } from './calc.js';
 import { daysBetween, weekStart } from './dates.js';
 
@@ -467,6 +468,8 @@ function previousSameSession(log, { logs, allSets, exercises }) {
         !row.deletedAtISO &&
         row.id !== log.id &&
         row.sessionId === log.sessionId &&
+        // The same letter under a different plan is a different session.
+        planIdOf(row) === planIdOf(log) &&
         (row.dateISO || '') < (log.dateISO || '')
     )
     .sort((a, b) => (b.dateISO || '').localeCompare(a.dateISO || ''));
@@ -901,4 +904,55 @@ export function exerciseNoteHistory(logs, sets, exerciseId, { limit = 6 } = {}) 
   return out
     .sort((a, b) => b.dateISO.localeCompare(a.dateISO) || (a.setIndex ?? -1) - (b.setIndex ?? -1))
     .slice(0, limit);
+}
+
+/**
+ * What your recent sets say a lift's max is, when you have not set one.
+ *
+ * A lift with no working max of your own used to prescribe from the number the
+ * plan was seeded with in August — incline Smith asked for 37.5 kg while you
+ * pressed 70 for eight. A starting guess should not outrank months of real
+ * sets, so this is the evidence the app falls back to instead.
+ *
+ * The median of the best high-confidence estimate from each session in the
+ * window, not the single best set: one excellent day is noise, and a working
+ * max built on it would have every following session run hot. Sets marked as a
+ * form breakdown do not count, and nor does the session in progress — today's
+ * own sets must not move today's prescriptions under you.
+ *
+ * Returns null when there is nothing in the window to go on.
+ */
+export function recentEvidenceMax(
+  sets,
+  logs,
+  exerciseId,
+  { todayISO = null, days = 42, excludeLogId = null } = {}
+) {
+  const byLog = new Map((logs || []).map((log) => [log.id, log]));
+  const bestBySession = new Map();
+
+  for (const set of sets || []) {
+    if (set.exerciseId !== exerciseId || set.deletedAtISO || set.formBreakdown) continue;
+    if (excludeLogId != null && set.sessionLogId === excludeLogId) continue;
+    const log = byLog.get(set.sessionLogId);
+    if (!log || log.deletedAtISO) continue;
+    const dateISO = (log.localDate || log.dateISO || '').slice(0, 10);
+    if (todayISO) {
+      const age = daysBetween(dateISO, todayISO);
+      if (age == null || age < 0 || age > days) continue;
+    }
+    const estimate = estimateForSet(set);
+    if (!isHighConfidence(estimate)) continue;
+    const previous = bestBySession.get(set.sessionLogId);
+    if (!previous || estimate.value > previous.value) {
+      bestBySession.set(set.sessionLogId, { value: estimate.value, dateISO, set });
+    }
+  }
+
+  const rows = [...bestBySession.values()].sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+  if (!rows.length) return null;
+  const values = rows.map((row) => row.value).sort((a, b) => a - b);
+  const mid = Math.floor(values.length / 2);
+  const value = values.length % 2 ? values[mid] : (values[mid - 1] + values[mid]) / 2;
+  return { value, sessions: rows.length, fromISO: rows[0].dateISO, toISO: rows[rows.length - 1].dateISO, rows };
 }

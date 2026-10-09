@@ -25,9 +25,20 @@ test('a custom workout is built only from its added exercises', () => {
 
 test('a failed workout change reaches the central action error handler', async () => {
   const failure = new Error('database write failed');
+  // Swapping reads the slot first now — an added exercise is changed in place,
+  // a planned one through `swaps` — so the fixture has a session with one.
   const ctx = {
     state: {
-      deviations: { swaps: {}, addedSets: {}, exerciseNotes: {}, extras: [] },
+      trainSessionId: CUSTOM_SESSION_ID,
+      activeLog: { id: 1 },
+      plan: { exercises: { benchComp: { name: 'Competition bench press' }, inclineDB: { name: 'Incline dumbbell press' } } },
+      deviations: {
+        swaps: {},
+        addedSets: {},
+        exerciseNotes: {},
+        extras: [{ ex: 'benchComp', sets: 3, reps: 8, rpe: 8, added: true }],
+      },
+      loggedSets: new Map(),
       exOpen: new Set(),
     },
     saveDeviations: async () => {
@@ -35,7 +46,7 @@ test('a failed workout change reaches the central action error handler', async (
     },
   };
 
-  await assert.rejects(actions['do-swap'](ctx, { si: '0', id: 'benchComp' }), failure);
+  await assert.rejects(actions['do-swap'](ctx, { si: '0', id: 'inclineDB' }), failure);
 });
 
 /* ═══════════════════════════════════════════════════════════════════════

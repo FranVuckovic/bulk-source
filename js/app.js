@@ -102,8 +102,8 @@ import * as settings from './ui/settings.js';
 import * as history from './ui/history.js';
 import * as calculator from './ui/calculator.js';
 import { demoModeOn, setDemoMode, openDemoDatabase, seedDemoData, DEMO_ROTATIONS } from './demo.js';
+import { DEFAULT_PLAN_ID, PLAN_FILES, belongsTo, planIdOf, cycleSettingKeys, withSharedLibrary } from './plans.js';
 
-const PLAN_URL = './data/plan-fopip-v2.json';
 const TABS = { train: 'Bulk', body: 'Body', prog: 'Progress', plan: 'Plan', log: 'Log', set: 'Settings' };
 
 /** The bottom sections, in order. Settings is reached from the gear. */
@@ -112,6 +112,11 @@ const BOTTOM_TABS = ['train', 'body', 'prog', 'plan', 'log'];
 const state = {
   db: null,
   plan: null,
+  // Every plan the app can run, by id, each with the exercises you added merged
+  // in. `plan` is whichever of these is active.
+  plans: {},
+  activePlanId: DEFAULT_PLAN_ID,
+  maxHistory: [],
   settings: { unit: 'kg', increment: 2.5, bodyweight: 90, barKg: 20 },
   storage: { supported: false, persisted: false },
   integrity: null,
@@ -200,16 +205,33 @@ async function loadEverything() {
   state.auditLog = await getAll(state.db, 'auditLog');
   state.deleted = await deletedRecords(state.db);
 
-  state.cycles = alive(await getAll(state.db, 'cycles')).sort((a, b) => a.sequence - b.sequence);
-  const finished = state.logs.filter((log) => log.endedAt);
+  state.maxHistory = await getAll(state.db, 'maxHistory');
+
+  /*
+   * Only this plan's cycles and sessions decide where this plan is.
+   *
+   * Both plans letter their sessions from A, so without this an "A" trained
+   * under one plan would complete position A of the other. Records written
+   * before plans were tagged belong to the original plan — see plans.js.
+   */
+  const planId = state.plan.meta.id;
+  state.cycles = alive(await getAll(state.db, 'cycles'))
+    .filter((cycle) => belongsTo(cycle, planId))
+    .sort((a, b) => a.sequence - b.sequence);
+  const finished = state.logs.filter((log) => log.endedAt && belongsTo(log, planId));
   const plannedFinished = finished.filter((log) => state.plan.meta.rotationOrder.includes(log.rotationPosition));
 
   // ── where the plan actually is ──
   const stored = await readSettings(state.db);
-  const sequence = Math.min(Math.max(1, Number(stored.cycleSequence ?? 1)), state.plan.meta.rotations);
+  const keys = cycleSettingKeys(planId);
+  const sequence = Math.min(Math.max(1, Number(stored[keys.sequence] ?? 1)), state.plan.meta.rotations);
   state.cycle =
     state.cycles.find((c) => c.sequence === sequence) ||
-    newCycle(state.plan, { sequence, startedAtISO: stored.cycleStartedAtISO ?? null, localStartDate: stored.cycleStartedDate ?? null });
+    newCycle(state.plan, {
+      sequence,
+      startedAtISO: stored[keys.startedAtISO] ?? null,
+      localStartDate: stored[keys.startedDate] ?? null,
+    });
 
   state.cycleProgress = cycleProgress(state.plan, state.cycle, plannedFinished);
   state.next = nextSession(state.plan, state.cycle, plannedFinished);
@@ -243,6 +265,10 @@ async function loadEverything() {
     calendarWeek: firstLogged ? Math.floor(Math.max(0, daysBetween(firstLogged, state.todayISO)) / 7) + 1 : 1,
     pace: null,
   };
+  // Cleared first: it is only set when there is a pace to project from, and a
+  // projection left over from the plan you just switched away from would
+  // describe the wrong plan.
+  state.projection = null;
   if (state.planProgress.daysElapsed > 0) {
     state.planProgress.pace = plannedFinished.length / (state.planProgress.daysElapsed / 7);
     state.projection = projectedFinish(state.plan, {
@@ -267,7 +293,13 @@ function buildHistory() {
     if (!log) continue;
     const entry = latest.get(set.exerciseId);
     if (!entry || log.dateISO > entry.dateISO) {
-      latest.set(set.exerciseId, { dateISO: log.dateISO, logId: log.id, sessionId: log.sessionId, sets: [set] });
+      latest.set(set.exerciseId, {
+        dateISO: log.dateISO,
+        logId: log.id,
+        sessionId: log.sessionId,
+        planId: planIdOf(log),
+        sets: [set],
+      });
     } else if (log.id === entry.logId) {
       entry.sets.push(set);
     }
@@ -311,6 +343,20 @@ async function restoreActiveSession() {
     state.activeLog = null;
     state.trainSessionId = state.trainSessionId || state.position.nextSessionId || state.plan.meta.rotationOrder[0];
     return;
+  }
+
+  /*
+   * An open session belongs to the plan it was started under, and its sets are
+   * stored against that plan's slots. If the active plan is somehow a different
+   * one — a backup restored from before a switch — the session wins, because
+   * showing its sets against another plan's exercises would misfile them.
+   */
+  const ownPlan = planIdOf(active);
+  if (ownPlan !== state.plan.meta.id && state.plans[ownPlan]) {
+    state.activePlanId = ownPlan;
+    state.plan = state.plans[ownPlan];
+    await writeSetting(state.db, 'activePlanId', ownPlan);
+    await loadEverything();
   }
 
   state.activeLog = active;
@@ -406,6 +452,9 @@ async function ensureActiveLog() {
         startedAt: nowISO(),
         endedAt: null,
         sessionId: state.trainSessionId,
+        // Which plan this was trained under. Both plans letter their sessions
+        // from A, and this is what stops one plan's A completing the other's.
+        planId: state.plan.meta.id,
         // Null for the blank custom session AND for a saved custom workout:
         // neither carries a rotation position, so neither can satisfy, advance
         // or inflate A–F. `cycleProgress` filters on exactly this.
@@ -1033,7 +1082,8 @@ const ctx = {
 
     await writeSetting(state.db, 'customExercises', next);
     state.settings.customExercises = next;
-    state.plan = withCustomExercises(state.plan, next);
+    for (const id of Object.keys(state.plans)) state.plans[id] = withCustomExercises(state.plans[id], next);
+    state.plan = state.plans[state.activePlanId] || withCustomExercises(state.plan, next);
     render();
     return id;
   },
@@ -1222,7 +1272,7 @@ const ctx = {
 
     const next = newCycle(state.plan, { sequence: to, startedAtISO: nowISO(), localStartDate: todayISO() });
     await put(state.db, 'cycles', next);
-    await writeSetting(state.db, 'cycleSequence', to);
+    await writeSetting(state.db, cycleSettingKeys(state.plan.meta.id).sequence, to);
     await put(state.db, 'auditLog', {
       atISO: nowISO(), entity: 'cycle', action: 'advance', from, to, reason,
     });
@@ -1247,6 +1297,11 @@ const ctx = {
   async moveSessionToCycle(logId, toSequence) {
     const log = state.logs.find((row) => row.id === logId);
     if (!log) return { moved: false, reason: 'that session is no longer here' };
+    // Rotations belong to a plan. A session from another plan has no rotation
+    // in this one to be moved into.
+    if (!belongsTo(log, state.plan.meta.id)) {
+      return { moved: false, reason: 'that session was trained under a different plan — switch to it in Settings to move it' };
+    }
 
     const to = Math.min(Math.max(1, Number(toSequence)), state.plan.meta.rotations);
     const from = log.cycleSequence ?? null;
@@ -1287,12 +1342,67 @@ const ctx = {
     if (!existing) {
       await put(state.db, 'cycles', newCycle(state.plan, { sequence: to, startedAtISO: nowISO(), localStartDate: todayISO() }));
     }
-    await writeSetting(state.db, 'cycleSequence', to);
+    await writeSetting(state.db, cycleSettingKeys(state.plan.meta.id).sequence, to);
     await put(state.db, 'auditLog', correction.entry);
 
     await loadEverything();
     render();
     return { ok: true };
+  },
+
+  /**
+   * Switch to another plan.
+   *
+   * Nothing is deleted or rewritten. Every session ever logged stays in History
+   * under the plan it was trained in, and each plan keeps its own rotation, so
+   * switching back returns the old plan to exactly where it was left.
+   *
+   * Refused while a session is open: its sets are stored against the slots of
+   * the plan it was started under, and moving those slots out from under it
+   * would file the work against different exercises.
+   */
+  async switchPlan(planId) {
+    if (!state.plans[planId]) return { ok: false, reason: 'that plan is not in this build' };
+    if (planId === state.activePlanId) return { ok: false, reason: 'that plan is already active' };
+    if (state.activeLog) {
+      return { ok: false, reason: `Session ${state.activeLog.sessionId} is open. Finish or discard it first.` };
+    }
+
+    const from = state.activePlanId;
+    const target = state.plans[planId];
+    const keys = cycleSettingKeys(planId);
+    const stored = await readSettings(state.db);
+
+    // A plan never run before starts its first rotation today, and the cycle is
+    // stored so its id carries the date rather than a placeholder.
+    const hasCycle = alive(await getAll(state.db, 'cycles')).some((cycle) => belongsTo(cycle, planId));
+    if (!hasCycle && stored[keys.sequence] == null) {
+      const first = newCycle(target, { sequence: 1, startedAtISO: nowISO(), localStartDate: todayISO() });
+      await put(state.db, 'cycles', first);
+      await writeSetting(state.db, keys.sequence, 1);
+      await writeSetting(state.db, keys.startedAtISO, first.startedAtISO);
+      await writeSetting(state.db, keys.startedDate, first.localStartDate);
+    }
+
+    await writeSetting(state.db, 'activePlanId', planId);
+    await put(state.db, 'auditLog', { atISO: nowISO(), entity: 'plan', action: 'switch', from, to: planId });
+
+    state.activePlanId = planId;
+    state.plan = target;
+    state.trainSessionId = null;
+    state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {}, phaseSwaps: {} };
+    state.swapConfirmed = new Set();
+    state.grips = {};
+    state.loggedSets = new Map();
+    state.cleared = new Set();
+    state.exOpen = new Set(['0']);
+    state.planOpenSession = undefined;
+
+    await loadEverything();
+    await restoreActiveSession();
+    buildHistory();
+    render();
+    return { ok: true, from, to: planId };
   },
 
   /**
@@ -2327,9 +2437,18 @@ async function boot() {
     );
   }
 
-  const response = await fetch(PLAN_URL);
-  if (!response.ok) throw new Error(`Could not load the plan (${response.status} ${response.statusText}).`);
-  state.plan = await response.json();
+  // Every plan, not only the active one: History shows sessions from all of
+  // them by name, and switching plans must not need a connection.
+  const loaded = [];
+  for (const file of PLAN_FILES) {
+    const response = await fetch(file.url);
+    if (!response.ok) throw new Error(`Could not load the plan ${file.id} (${response.status} ${response.statusText}).`);
+    loaded.push(await response.json());
+  }
+  const shared = withSharedLibrary(loaded);
+  // The demo seeds whichever plan is active, so it needs one before settings
+  // are readable. The real choice is made below, once the database is open.
+  state.plan = shared.find((p) => p.meta.id === DEFAULT_PLAN_ID) || shared[0];
 
   /*
    * Which database — and it is a decision made once, here, before anything else
@@ -2378,7 +2497,13 @@ async function boot() {
    * custom exercise the same way as one of the plan's own. There is nothing
    * downstream that needs to know the difference.
    */
-  state.plan = withCustomExercises(state.plan, state.settings.customExercises);
+  state.plans = Object.fromEntries(
+    shared.map((p) => [p.meta.id, withCustomExercises(p, state.settings.customExercises)])
+  );
+  // A stored choice naming a plan this build does not have falls back to the
+  // original rather than refusing to start.
+  state.activePlanId = state.plans[settings.activePlanId] ? settings.activePlanId : DEFAULT_PLAN_ID;
+  state.plan = state.plans[state.activePlanId];
 
   await loadEverything();
   resetBodyDraft();

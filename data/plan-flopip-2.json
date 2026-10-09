@@ -1,0 +1,3416 @@
+{
+  "format": 3,
+  "meta": {
+    "id": "flopip-2",
+    "name": "FLOPIP 2",
+    "longName": "Five-day bench and physique plan, version 2",
+    "sub": "25 weeks to the end of March · five sessions a week · bench strength and size",
+    "rotations": 25,
+    "rotationOrder": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E"
+    ],
+    "startDateISO": "2026-10-10",
+    "referenceBodyweightKg": 90,
+    "seedWorkingMaxes": {
+      "benchComp": 125,
+      "inclineSmith": 87.5,
+      "inclineDB": 42,
+      "dip": 160,
+      "pullupNorm": 140,
+      "chinup": 148,
+      "legpress": 280,
+      "ohpBarbell": 65,
+      "ohpDB": 35,
+      "pulldown": 145,
+      "rowCSR": 140
+    },
+    "planVersion": 3,
+    "volumeModel": 2,
+    "amrapRotations": [
+      2,
+      5,
+      7,
+      9,
+      11,
+      13,
+      16,
+      18,
+      20,
+      22
+    ],
+    "restDays": {
+      "fixed": "Thursday",
+      "options": [
+        {
+          "label": "Monday + Thursday",
+          "best": true,
+          "week": [
+            "E Fri",
+            "A Sat",
+            "B Sun",
+            "rest Mon",
+            "C Tue",
+            "D Wed",
+            "rest Thu"
+          ]
+        },
+        {
+          "label": "Tuesday + Thursday",
+          "week": [
+            "E Fri",
+            "A Sat",
+            "B Sun",
+            "C Mon",
+            "rest Tue",
+            "D Wed",
+            "rest Thu"
+          ]
+        },
+        {
+          "label": "Wednesday + Thursday",
+          "week": [
+            "E Fri",
+            "A Sat",
+            "B Sun",
+            "C Mon",
+            "D Tue",
+            "rest Wed",
+            "rest Thu"
+          ]
+        }
+      ]
+    },
+    "nutrition": {
+      "gainRateKgPerWeek": {
+        "early": {
+          "lo": 0.4,
+          "hi": 0.5,
+          "throughWeek": 12
+        },
+        "late": {
+          "lo": 0.2,
+          "hi": 0.25
+        }
+      }
+    }
+  },
+  "muscles": {
+    "chestUpper": {
+      "label": "Chest — upper (clavicular)",
+      "lo": 8,
+      "hi": 14,
+      "grp": "Chest",
+      "roll": "Chest"
+    },
+    "chestMid": {
+      "label": "Chest — mid/lower (sternal)",
+      "lo": 12,
+      "hi": 20,
+      "grp": "Chest",
+      "roll": "Chest"
+    },
+    "deltFront": {
+      "label": "Delts — front",
+      "lo": 10,
+      "hi": 16,
+      "grp": "Delts",
+      "roll": null
+    },
+    "deltSide": {
+      "label": "Delts — side",
+      "lo": 16,
+      "hi": 22,
+      "grp": "Delts",
+      "roll": null
+    },
+    "deltRear": {
+      "label": "Delts — rear",
+      "lo": 10,
+      "hi": 16,
+      "grp": "Delts",
+      "roll": null
+    },
+    "triLong": {
+      "label": "Triceps — long head",
+      "lo": 8,
+      "hi": 14,
+      "grp": "Arms",
+      "roll": "Triceps"
+    },
+    "triLat": {
+      "label": "Triceps — lateral/medial",
+      "lo": 14,
+      "hi": 22,
+      "grp": "Arms",
+      "roll": "Triceps"
+    },
+    "bicLong": {
+      "label": "Biceps — long head",
+      "lo": 8,
+      "hi": 14,
+      "grp": "Arms",
+      "roll": "Biceps"
+    },
+    "bicShort": {
+      "label": "Biceps — short head",
+      "lo": 6,
+      "hi": 12,
+      "grp": "Arms",
+      "roll": "Biceps"
+    },
+    "forearm": {
+      "whole": true,
+      "label": "Forearms & brachialis",
+      "lo": 8,
+      "hi": 12,
+      "grp": "Arms",
+      "roll": null
+    },
+    "lats": {
+      "label": "Lats",
+      "lo": 12,
+      "hi": 18,
+      "grp": "Back",
+      "roll": "Back"
+    },
+    "upperBack": {
+      "label": "Upper back & traps",
+      "lo": 12,
+      "hi": 18,
+      "grp": "Back",
+      "roll": "Back"
+    },
+    "abs": {
+      "label": "Abs — rectus abdominis",
+      "lo": 8,
+      "hi": 16,
+      "grp": "Core",
+      "roll": "Core"
+    },
+    "obliques": {
+      "label": "Obliques & deep core",
+      "lo": 6,
+      "hi": 12,
+      "grp": "Core",
+      "roll": "Core"
+    },
+    "quads": {
+      "whole": true,
+      "label": "Quads",
+      "lo": 10,
+      "hi": 16,
+      "grp": "Legs",
+      "roll": null
+    },
+    "hams": {
+      "whole": true,
+      "label": "Hamstrings",
+      "lo": 8,
+      "hi": 12,
+      "grp": "Legs",
+      "roll": null
+    },
+    "calves": {
+      "whole": true,
+      "label": "Calves",
+      "lo": 6,
+      "hi": 10,
+      "grp": "Legs",
+      "roll": null
+    },
+    "glutes": {
+      "whole": true,
+      "label": "Glutes",
+      "lo": 6,
+      "hi": 14,
+      "grp": "Legs",
+      "roll": null
+    }
+  },
+  "exercises": {
+    "jumps": {
+      "name": "Box jumps",
+      "tracksMax": false,
+      "maxConf": null,
+      "m": {
+        "quads": 0.3
+      },
+      "how": [
+        "Always first in the session, always fresh.",
+        "Land quietly — noise means you are absorbing force badly.",
+        "STEP DOWN from the box. Never jump down.",
+        "Full recovery between sets, 2–3 min."
+      ],
+      "why": "Vertical jump comes from rate of force development and reactive ability, which heavy machine work does not train. Plyometrics are the direct transfer.",
+      "subs": [
+        "Broad jumps",
+        "Vertical jump for height",
+        "Trap-bar jump"
+      ],
+      "watch": "Step down, never jump down — the landing is where knees and ankles get hurt. Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 150,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "chinup": {
+      "name": "Weighted chin-up — supinated",
+      "tracksMax": true,
+      "maxConf": "high",
+      "m": {
+        "lats": 0.9,
+        "bicLong": 0.5,
+        "bicShort": 0.5,
+        "upperBack": 0.3
+      },
+      "how": [
+        "Supinated, roughly shoulder width.",
+        "Full dead hang — at the bottom, the shoulder is flexed and the biceps long head is stretched.",
+        "Control the descent."
+      ],
+      "why": "Your strongest grip, and the only vertical pull that meaningfully trains the biceps. At the bottom of a dead hang the long head is loaded in a lengthened position, which is exactly where it grows.",
+      "subs": [
+        "Neutral-grip pull-up",
+        "Underhand lat pulldown",
+        "Machine assisted chin-up"
+      ],
+      "watch": "Chin-ups get limited by your biceps before your back, which is why this is a separate exercise rather than the tracked one.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 150,
+      "refPhotoId": null,
+      "bodyweightLoaded": true
+    },
+    "pullupNorm": {
+      "name": "Weighted pull-up — normal grip",
+      "tracksMax": true,
+      "maxConf": "high",
+      "m": {
+        "lats": 1,
+        "upperBack": 0.4,
+        "bicLong": 0.35
+      },
+      "how": [
+        "Pronated, hands roughly shoulder-width to a little outside.",
+        "Dead hang start, shoulders depressed before you pull.",
+        "Drive the elbows down and back. Chest toward the bar.",
+        "Control the descent — this is where most of the growth is."
+      ],
+      "why": "Your tracked vertical pull and the balanced version of the movement. Fixed for the whole block so the progression line stays clean.",
+      "subs": [
+        "Neutral-grip pull-up",
+        "Lat pulldown, shoulder width",
+        "Assisted pull-up machine"
+      ],
+      "watch": "This is the one that carries your progression. The other two grips are their own exercises with their own numbers — do not compare them to each other.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 150,
+      "refPhotoId": null,
+      "bodyweightLoaded": true
+    },
+    "legpressGlute": {
+      "name": "Leg press — feet high and wide, deep",
+      "tracksMax": false,
+      "maxConf": null,
+      "m": {
+        "quads": 0.6,
+        "glutes": 0.7,
+        "hams": 0.5
+      },
+      "how": [
+        "Feet high and wide on the platform, toes turned slightly out.",
+        "Three seconds down, as deep as your pelvis allows. No bounce at the bottom.",
+        "STOP the descent the moment your pelvis starts to tuck.",
+        "Much lighter than session B — the range is the point, not the load."
+      ],
+      "why": "The long-length, slow, glute-and-adductor half of your leg pressing. Same machine as session B, a different exercise: high and wide shortens knee travel and lengthens hip travel, so the glutes and adductors do the work the quads do in B.",
+      "subs": [
+        "Leg press — feet low and narrow",
+        "Barbell hip thrust",
+        "Bulgarian split squat"
+      ],
+      "watch": "That pelvic tuck at the bottom is loaded lumbar flexion — the exact thing that irritates your back. A slightly shorter range with a neutral spine beats a deep rep that costs you a week.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 120,
+      "refPhotoId": null,
+      "bodyweightLoaded": false,
+      "splitFrom": "legpress"
+    },
+    "hipThrustMachine": {
+      "name": "Hip thrust machine",
+      "tracksMax": false,
+      "maxConf": null,
+      "m": {
+        "glutes": 1,
+        "hams": 0.5,
+        "quads": 0.3
+      },
+      "how": [
+        "Set the pad across the hips, not the stomach.",
+        "Same positions as the barbell version: chin tucked, ribs down, stop level.",
+        "Pause a beat at the top."
+      ],
+      "why": "The same movement with the bar loading solved. Easier to take close to failure and much easier to set up, so it usually ends up heavier than the barbell version — which is why it needs its own number.",
+      "subs": [
+        "Barbell hip thrust",
+        "Glute bridge"
+      ],
+      "watch": "Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 150,
+      "refPhotoId": null,
+      "bodyweightLoaded": false,
+      "splitFrom": "hipThrust"
+    },
+    "hipThrust": {
+      "name": "Barbell hip thrust",
+      "tracksMax": false,
+      "maxConf": null,
+      "m": {
+        "glutes": 1,
+        "hams": 0.5,
+        "quads": 0.3
+      },
+      "how": [
+        "Upper back on the bench, chin tucked, ribs down.",
+        "Drive through the heels and finish with the hips, not the lower back.",
+        "Pause a beat at lockout. Do not hyperextend."
+      ],
+      "why": "The largest muscular omission in v1. Direct hip extension with almost no spinal load, placed in B where it cannot interfere with a bench day.",
+      "subs": [
+        "Hip thrust machine",
+        "Glute bridge",
+        "Single-leg hip thrust"
+      ],
+      "watch": "Chin tucked, ribs down, and stop at the top when the hips are level — arching the lower back is not more range. Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 150,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "legcurlSeat": {
+      "name": "Seated leg curl",
+      "tracksMax": true,
+      "maxConf": "ind",
+      "m": {
+        "hams": 1
+      },
+      "how": [
+        "Seated beats lying — hip flexion puts the hamstring at a longer length.",
+        "Control the return; do not let the weight snap back."
+      ],
+      "why": "Hamstrings, at a long muscle length, with zero spinal load. Given you are not deadlifting, this is your main posterior chain work.",
+      "subs": [
+        "Lying leg curl",
+        "Nordic curl",
+        "Standing single-leg curl"
+      ],
+      "watch": null,
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "legcurlLie": {
+      "name": "Lying leg curl",
+      "tracksMax": true,
+      "maxConf": "ind",
+      "m": {
+        "hams": 1
+      },
+      "how": [
+        "Hips down on the pad, no hip lift to cheat the rep.",
+        "Nordic: control the descent as far as you can, push back up."
+      ],
+      "why": "Second hamstring exposure. Different hip angle to the seated version.",
+      "subs": [
+        "Nordic curl",
+        "Seated leg curl",
+        "Standing single-leg curl"
+      ],
+      "watch": "Hips stay down on the pad. Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "rowMachine": {
+      "name": "Machine row",
+      "tracksMax": false,
+      "maxConf": null,
+      "m": {
+        "upperBack": 1,
+        "lats": 0.5,
+        "bicShort": 0.3
+      },
+      "how": [
+        "Chest against the pad, no torso swing.",
+        "Pull to the lower ribs, squeeze without shrugging.",
+        "Control the return; let the blade protract at the front."
+      ],
+      "why": "The cheapest possible pulling exposure, in F, where anything fatiguing would compromise the heavy bench the next day.",
+      "subs": [
+        "Chest-supported row",
+        "Seated cable row",
+        "Dumbbell chest-supported row"
+      ],
+      "watch": "Chosen for F because nothing has to be stabilised on the day after a volume bench session.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 120,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "rowOneArm": {
+      "name": "One-arm lat-biased cable row",
+      "tracksMax": false,
+      "maxConf": null,
+      "m": {
+        "lats": 1,
+        "upperBack": 0.5,
+        "bicShort": 0.3
+      },
+      "how": [
+        "Elbow tucked close to the body, drive it back and down.",
+        "Let the shoulder blade reach fully forward at the front for the stretch.",
+        "No torso rotation to finish the rep."
+      ],
+      "why": "A lat-biased pull to complement the upper-back-biased row in A. One arm at a time gives a longer range and a fuller stretch than a bar.",
+      "subs": [
+        "Half-kneeling one-arm row",
+        "Machine unilateral row",
+        "Meadows row"
+      ],
+      "watch": null,
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 120,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "quadext": {
+      "name": "Quad extension",
+      "tracksMax": true,
+      "maxConf": "ind",
+      "m": {
+        "quads": 1
+      },
+      "how": [
+        "Pause at full extension.",
+        "Slow negative.",
+        "High reps, to failure."
+      ],
+      "why": "The rectus femoris crosses the hip, so it is under-trained by pressing movements where the hip also extends. This picks it up.",
+      "subs": [
+        "Sissy squat",
+        "Reverse Nordic"
+      ],
+      "watch": null,
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "reardeltPecDeck": {
+      "name": "Reverse pec-deck rear-delt fly",
+      "tracksMax": false,
+      "maxConf": null,
+      "m": {
+        "deltRear": 1,
+        "upperBack": 0.3
+      },
+      "how": [
+        "Slight elbow bend held fixed. Lead with the elbows, not the hands.",
+        "Stop when the upper arms reach the torso line.",
+        "Slow the return."
+      ],
+      "why": "A machine keeps the rear delt loaded through the whole range without the stabilisation cost of a free-weight fly.",
+      "subs": [
+        "Cable rear-delt fly",
+        "Bent-over dumbbell fly",
+        "Face pull"
+      ],
+      "watch": null,
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "reardeltCable": {
+      "name": "Cable rear-delt fly",
+      "tracksMax": false,
+      "maxConf": null,
+      "m": {
+        "deltRear": 1,
+        "upperBack": 0.3
+      },
+      "how": [
+        "Cross the cables in front, lead with the elbows.",
+        "Constant tension — do not let the stack touch down.",
+        "Stop at the torso line."
+      ],
+      "why": "Cable tension is most even in the stretched position, which is where the rear delt is hardest to load.",
+      "subs": [
+        "Reverse pec deck",
+        "Bent-over dumbbell fly"
+      ],
+      "watch": null,
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "curlBayesian": {
+      "name": "Bayesian cable curl",
+      "tracksMax": true,
+      "maxConf": "ind",
+      "m": {
+        "bicLong": 1,
+        "bicShort": 0.4
+      },
+      "how": [
+        "Stand a step in front of a low cable, arm trailing behind you.",
+        "Keep the elbow behind the torso for the whole rep.",
+        "Slow eccentric all the way to full extension."
+      ],
+      "why": "Second long-head exposure. Cable tension in the stretched position is more consistent than a dumbbell here.",
+      "subs": [
+        "Incline dumbbell curl",
+        "Behind-the-body dumbbell curl"
+      ],
+      "watch": "Added in the audit — the long head was only being trained once a week in the first draft.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "lateral": {
+      "name": "Cable lateral raise",
+      "tracksMax": true,
+      "maxConf": "ind",
+      "m": {
+        "deltSide": 1
+      },
+      "how": [
+        "Run the cable BEHIND your body so there is tension in the stretched position.",
+        "Lead with the elbow. Slight forward lean.",
+        "Stop at shoulder height — above that the traps take over.",
+        "Slow negative."
+      ],
+      "why": "Your highest-priority aesthetic muscle. Hit in five of six sessions because side delts recover fast and the per-session ceiling is low.",
+      "subs": [
+        "Dumbbell lateral raise",
+        "Machine lateral raise",
+        "Lean-away single-arm cable raise"
+      ],
+      "watch": "Cable and dumbbell versions were found equivalent in a 2025 within-participant study. Use whichever lets you reach genuine failure without swinging — but behind-the-body cable is the upgrade.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "calfStand": {
+      "name": "Standing calf raise",
+      "tracksMax": true,
+      "maxConf": "ind",
+      "m": {
+        "calves": 1
+      },
+      "how": [
+        "2-second pause at full stretch at the bottom.",
+        "Full range. Do not bounce."
+      ],
+      "why": "Standing (knee straight) targets the gastrocnemius.",
+      "subs": [
+        "Smith machine calf raise",
+        "Leg press calf raise"
+      ],
+      "watch": "Rushing calf work is the main reason calves do not grow. The stretch pause is not optional.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "calfSeat": {
+      "name": "Seated calf raise",
+      "tracksMax": true,
+      "maxConf": "ind",
+      "m": {
+        "calves": 1
+      },
+      "how": [
+        "2-second pause at the bottom, same as standing.",
+        "Higher reps than standing."
+      ],
+      "why": "Seated (knee bent) targets the soleus, which the standing version largely misses.",
+      "subs": [
+        "Bent-knee leg press calf raise"
+      ],
+      "watch": null,
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "hangingRaise": {
+      "name": "Hanging leg raise",
+      "tracksMax": true,
+      "maxConf": "ind",
+      "m": {
+        "abs": 1,
+        "obliques": 0.3
+      },
+      "how": [
+        "Dead hang, shoulders active (not fully relaxed).",
+        "Raise the knees and then TILT THE PELVIS BACK at the top — that posterior tilt is what actually loads the abs.",
+        "No swinging. Lower under control.",
+        "Progress by straightening the legs, then by holding a dumbbell between the feet."
+      ],
+      "why": "Trains the rectus from the bottom up, which the crunch pattern does less well, and doubles as grip work.",
+      "subs": [
+        "Captain's chair leg raise",
+        "Lying leg raise",
+        "Reverse crunch"
+      ],
+      "watch": "If you only lift the knees without tilting the pelvis, this is a hip-flexor exercise and your abs are barely working. The tilt is the rep.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "benchComp": {
+      "name": "Competition bench press",
+      "tracksMax": true,
+      "maxConf": "high",
+      "m": {
+        "chestMid": 1,
+        "triLat": 0.5,
+        "deltFront": 0.5
+      },
+      "how": [
+        "Eyes under the bar. Feet planted. Moderate arch from the UPPER back, never the lower.",
+        "Grip: RING FINGER ON THE RINGS — about 73 cm, and about 8 cm inside the legal maximum. This never changes on the competition lift.",
+        "Shoulder blades back and DOWN — think about putting them in your back pockets.",
+        "Unrack, then pause 2–3 s to re-settle the arch, re-plant the feet, re-tighten the lats.",
+        "Lower for ~2 seconds to the same spot every rep, just below the nipple line.",
+        "Pause ~1 s on the chest, bar dead, still tight.",
+        "Drive with maximal intent. Bar path is a J-curve: back and up, then vertical."
+      ],
+      "why": "The lift everything else serves. It is a skill as much as a strength quality, which is why it never rotates out.",
+      "subs": [
+        "Nothing. This one is the point."
+      ],
+      "watch": "Your competition grip is fixed. Grip variation belongs in the variation slot, not on the lift you are measuring — the whole progression depends on holding one thing steady. Rushing the eccentric is your single biggest technical leak. It makes the touch point inconsistent and adds a bounce that inflates numbers without building the strength underneath.",
+      "grips": [
+        "Ring finger on rings (comp)",
+        "Index on rings (wide)",
+        "Inside rings (narrow)"
+      ],
+      "unit": "kg",
+      "defaultRestSec": 180,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "benchClose": {
+      "name": "Close-grip bench press",
+      "tracksMax": true,
+      "maxConf": "high",
+      "m": {
+        "chestMid": 0.6,
+        "triLat": 1,
+        "deltFront": 0.3
+      },
+      "how": [
+        "Hands about shoulder width — index fingers just inside the smooth rings.",
+        "Elbows tucked a little more than competition. Wrists stacked over the elbows.",
+        "Paused, one second, like the competition lift."
+      ],
+      "why": "The single best bench assistance exercise: same groove, more triceps, and it trains the transition zone where your press stalls.",
+      "subs": [
+        "Bench with a slightly narrower grip than competition",
+        "Floor press"
+      ],
+      "watch": "Do not go so narrow that your wrists hurt. Shoulder width is close grip; touching plates is a wrist exercise.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 180,
+      "refPhotoId": null,
+      "bodyweightLoaded": false,
+      "splitFrom": "benchVar",
+      "maxFrom": {
+        "exerciseId": "benchComp",
+        "ratio": 0.93,
+        "range": [
+          0.9,
+          0.96
+        ]
+      }
+    },
+    "benchPin": {
+      "name": "Pin press — bar set just below the sticking point",
+      "tracksMax": true,
+      "maxConf": "high",
+      "m": {
+        "chestMid": 0.7,
+        "triLat": 0.9,
+        "deltFront": 0.4
+      },
+      "how": [
+        "Set the pins so the bar starts with your upper arm JUST BELOW horizontal — about 2 cm under where you stall.",
+        "Bar rests dead on the pins between reps. Stay tight; do not relax under it.",
+        "Press through the sticking point, not from above it."
+      ],
+      "why": "The most specific attack on a transition-zone sticking point: you start dead at the height where you stop, with zero elastic contribution.",
+      "subs": [
+        "Long-pause bench",
+        "Close-grip bench"
+      ],
+      "watch": "Record the pin hole in the set note EVERY session. This lift has the widest ratio band in the plan because pin height decides everything — without the hole number the load is not comparable to itself. On the first session ignore the prescription: work up in 10 kg jumps to a hard triple and confirm that as the max.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 180,
+      "refPhotoId": null,
+      "bodyweightLoaded": false,
+      "splitFrom": "benchVar",
+      "maxFrom": {
+        "exerciseId": "benchComp",
+        "ratio": 0.9,
+        "range": [
+          0.85,
+          0.97
+        ]
+      }
+    },
+    "ohpDB": {
+      "name": "Seated dumbbell shoulder press",
+      "tracksMax": true,
+      "maxConf": "high",
+      "m": {
+        "deltFront": 1,
+        "deltSide": 0.4,
+        "triLat": 0.5
+      },
+      "how": [
+        "Seated, back supported, dumbbells at ear height with the forearms vertical.",
+        "Press up and very slightly in; stop just short of the bells touching.",
+        "Lower under control to a real stretch — do not cut the bottom."
+      ],
+      "why": "Overhead pressing without a bar path to steer. Each side works alone, so the weaker shoulder cannot hide, and the stretch at the bottom is deeper than a barbell allows.",
+      "subs": [
+        "Overhead press ladder",
+        "Machine shoulder press",
+        "Seated Smith shoulder press"
+      ],
+      "watch": "If the lower back arches to finish the rep the weight is too heavy. Set the bench upright, not reclined, or it becomes an incline press.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 120,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "ohpMachine": {
+      "name": "Technogym shoulder press",
+      "tracksMax": false,
+      "maxConf": "ind",
+      "m": {
+        "deltFront": 1,
+        "deltSide": 0.4,
+        "triLat": 0.5
+      },
+      "how": [
+        "Seat height so the handles start at about chin height; feet flat.",
+        "Press without letting the shoulders shrug up; the arms move independently, so finish both sides together.",
+        "Full stretch at the bottom of every rep."
+      ],
+      "why": "The same job as the dumbbell press with no balance demand, so it can be taken close to failure safely. The independent arms stop the stronger side doing the weaker side’s work.",
+      "subs": [
+        "Seated dumbbell shoulder press"
+      ],
+      "watch": null,
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 120,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "inclineDB": {
+      "name": "Incline dumbbell press (30°)",
+      "tracksMax": true,
+      "maxConf": "high",
+      "m": {
+        "chestUpper": 1,
+        "deltFront": 0.75,
+        "triLat": 0.4
+      },
+      "how": [
+        "Bench at 30°, not 45°. Above ~45° this quietly becomes a shoulder press.",
+        "Same scapular setup as flat bench.",
+        "Full stretch at the bottom — that is where the growth is.",
+        "Do not lock out hard; keep tension on the pec."
+      ],
+      "why": "Your main upper-chest driver, and upper chest is a named aesthetic priority. Dumbbells give a longer stretch; used in accumulation blocks.",
+      "subs": [
+        "Incline Smith press",
+        "Incline barbell press",
+        "Low-incline machine press"
+      ],
+      "watch": "Dumbbells in accumulation blocks, Smith in intensification blocks. One per block — not alternating weekly.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 120,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "pulldown": {
+      "name": "Lat pulldown (wide)",
+      "tracksMax": true,
+      "maxConf": "high",
+      "m": {
+        "lats": 1,
+        "upperBack": 0.3,
+        "bicLong": 0.3
+      },
+      "how": [
+        "Slight backward lean, chest up.",
+        "Pull to the upper chest, elbows down and back.",
+        "Full stretch at the top — let the shoulder blade rise."
+      ],
+      "why": "Lat volume that is easier to load precisely than pull-ups, on a day where you are already fatigued from bench volume.",
+      "subs": [
+        "Pull-up",
+        "Machine pulldown",
+        "Straight-arm pulldown (different emphasis)"
+      ],
+      "watch": null,
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 120,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "rowCSR": {
+      "name": "Chest-supported row",
+      "tracksMax": true,
+      "maxConf": "high",
+      "m": {
+        "upperBack": 1,
+        "lats": 0.5,
+        "deltRear": 0.4,
+        "bicShort": 0.3
+      },
+      "how": [
+        "Chest up, no torso swing.",
+        "Pull to the lower ribs.",
+        "Let the shoulder blade protract fully at the front for the stretch."
+      ],
+      "why": "Heavy upper-back work is the strongest cross-coach consensus point for a big bench — it builds the pressing platform, recovers fast, and protects the shoulder under high pressing frequency. Effectively free volume.",
+      "subs": [
+        "Seated cable row",
+        "Machine row",
+        "Dumbbell chest-supported row"
+      ],
+      "watch": "The chest pad is the point: it removes the lower back so the row is the only thing working. Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 120,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "triOH": {
+      "name": "Overhead rope extension",
+      "tracksMax": true,
+      "maxConf": "ind",
+      "m": {
+        "triLong": 1,
+        "triLat": 0.5
+      },
+      "how": [
+        "Elbows in and pointed up.",
+        "Full stretch behind the head — that is the whole point.",
+        "Squeeze at lockout without flaring the elbows."
+      ],
+      "why": "Bench pressing barely loads the triceps LONG head, because it is biarticular and shoulder position during pressing creates conflicting length demands. This is one of only two movements in the plan that actually trains it.",
+      "subs": [
+        "Overhead cable extension with a bar",
+        "EZ skullcrusher",
+        "Overhead dumbbell extension",
+        "Single-arm cable overhead extension"
+      ],
+      "watch": "The long head is the biggest of the three heads and the main driver of arm size from the back. Rope or bar is the same exercise — what matters is that the elbow closes fully behind your head under load.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "pushdown": {
+      "name": "Cable pushdown",
+      "tracksMax": true,
+      "maxConf": "ind",
+      "m": {
+        "triLat": 1,
+        "triLong": 0.2
+      },
+      "how": [
+        "Elbows pinned to your sides. No shoulder movement.",
+        "Squeeze hard at the bottom."
+      ],
+      "why": "Lateral and medial head volume at essentially zero systemic cost.",
+      "subs": [
+        "Rope pushdown",
+        "Single-arm pushdown",
+        "JM press"
+      ],
+      "watch": null,
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "curlHighCable": {
+      "name": "High-cable curl",
+      "tracksMax": false,
+      "maxConf": null,
+      "m": {
+        "bicShort": 1,
+        "bicLong": 0.5,
+        "forearm": 0.3
+      },
+      "how": [
+        "Upper arm slightly forward of the torso.",
+        "Squeeze at the top without swinging the elbow.",
+        "Full extension at the bottom, controlled."
+      ],
+      "why": "A short-head-biased curl pattern. Biceps work across the rotation deliberately covers lengthened, preacher, Bayesian, hammer and high-cable positions rather than repeating one curl.",
+      "subs": [
+        "Machine curl",
+        "Bayesian cable curl",
+        "Incline dumbbell curl"
+      ],
+      "watch": "Arms high and behind the torso — that is what puts the long head on stretch. Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "ohpBarbell": {
+      "name": "Barbell overhead press — standing",
+      "tracksMax": true,
+      "maxConf": "high",
+      "m": {
+        "deltFront": 1,
+        "triLat": 0.5,
+        "deltSide": 0.3
+      },
+      "how": [
+        "Grip just outside the shoulders, forearms vertical, elbows slightly in front of the bar.",
+        "Squeeze glutes and brace before every rep; the bar travels in a straight line and the head moves back and through.",
+        "Lock out with the bar over the middle of the foot. Lower to the top of the chest under control."
+      ],
+      "why": "The heaviest way to load the front and side delts, and overhead strength that carries into pressing stability. Bigger shoulders are a goal of this plan; an overhead number is not, so it runs at RPE 8 and never to failure.",
+      "subs": [
+        "Seated dumbbell shoulder press",
+        "Technogym shoulder press"
+      ],
+      "watch": "Pain at the back of the shoulder that rises during a set, or is still there the next morning: drop to the seated dumbbell or machine option for three weeks, then retry.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 180,
+      "refPhotoId": null,
+      "bodyweightLoaded": false,
+      "splitFrom": "ohpLadder"
+    },
+    "legpress": {
+      "name": "Leg press — feet low and narrow",
+      "tracksMax": true,
+      "maxConf": "high",
+      "m": {
+        "quads": 1,
+        "hams": 0.3
+      },
+      "how": [
+        "Feet low and mid-width on the platform. This is the quad-biased, heavier one.",
+        "STOP the descent the moment your pelvis starts to tuck.",
+        "Control the descent. Do not lock the knees hard at the top."
+      ],
+      "why": "Your main quad driver without any spinal loading. Session B's version: heavier, moderate depth, feet low.",
+      "subs": [
+        "Leg press — feet high and wide, deep",
+        "Hack squat",
+        "Pendulum squat",
+        "Machine squat"
+      ],
+      "watch": "That pelvic tuck at the bottom is loaded lumbar flexion — the exact thing that irritates your back. A slightly shorter range with a neutral spine beats a deep rep that costs you a week.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 150,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "bulgarian": {
+      "name": "Bulgarian split squat",
+      "tracksMax": true,
+      "maxConf": "high",
+      "m": {
+        "quads": 1,
+        "glutes": 0.4,
+        "hams": 0.3
+      },
+      "how": [
+        "Rear foot on a bench, front foot far enough forward that the front shin stays near vertical.",
+        "Down until the back knee is just off the floor.",
+        "Torso upright for quads, leaning forward for glutes. Pick one and keep it."
+      ],
+      "why": "One leg at a time, with a long stretch on the front leg. Useful when a machine is taken, brutal on balance and time.",
+      "subs": [
+        "Hack squat",
+        "Walking lunge",
+        "Leg press — feet low and narrow"
+      ],
+      "watch": "Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 150,
+      "refPhotoId": null,
+      "bodyweightLoaded": false,
+      "splitFrom": "hackBulg"
+    },
+    "backExt45": {
+      "name": "45° back extension",
+      "tracksMax": false,
+      "maxConf": null,
+      "m": {
+        "hams": 1,
+        "glutes": 0.7
+      },
+      "how": [
+        "Pads at the crease of the hip, not on the thighs.",
+        "Back flat. Hinge purely at the hip, and feel it entirely in the hamstrings.",
+        "STOP when your torso is in line with your legs. Never above it.",
+        "Hug a plate to the chest only once fifteen clean bodyweight reps are easy."
+      ],
+      "why": "The hamstrings do two jobs — bending the knee and extending the hip — and the plan only ever trained the first. This is the hip-extension half, and it loads the glutes at a long length where the hip thrust loads them short.",
+      "subs": [
+        "Hip thrust for more sets",
+        "Romanian deadlift, only if your back allows it"
+      ],
+      "watch": "Coming up past the line of your legs is lumbar extension under load — the mirror image of the pelvic tuck at the bottom of a leg press. Stop at the line.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 90,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "curlHammer": {
+      "name": "Hammer curl",
+      "tracksMax": true,
+      "maxConf": "ind",
+      "m": {
+        "forearm": 1,
+        "bicLong": 0.3
+      },
+      "how": [
+        "Neutral grip (hammer) or pronated (reverse).",
+        "No swing. Controlled both directions."
+      ],
+      "why": "Brachialis and forearm. Brachialis sits under the biceps and pushes it up — growing it makes the arm look bigger from every angle.",
+      "subs": [
+        "Reverse curl",
+        "Rope hammer curl",
+        "Cross-body hammer curl"
+      ],
+      "watch": null,
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "cableCrunch": {
+      "name": "Kneeling cable crunch",
+      "tracksMax": true,
+      "maxConf": "ind",
+      "m": {
+        "abs": 1,
+        "obliques": 0.3
+      },
+      "how": [
+        "Kneel facing away from a high cable, rope behind your head.",
+        "Flex the SPINE, not the hips — the movement is curling your ribs toward your pelvis.",
+        "Keep the hips fixed. If your hips are moving, it has become a hip-flexor exercise.",
+        "Slow, controlled, squeeze hard at the bottom."
+      ],
+      "why": "The best loaded movement for rectus abdominis hypertrophy. Abs respond to progressive load like any other muscle — the reason most people have untrained abs is that they only ever do bodyweight reps.",
+      "subs": [
+        "Machine crunch",
+        "Weighted decline sit-up",
+        "Cable crunch standing"
+      ],
+      "watch": "Controlled flexion against a cable is fine for your back. Ballistic sit-ups with a loaded spine are not — that is repeated end-range lumbar flexion under load, which is the pattern most likely to aggravate a disc-related issue.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "wristExt": {
+      "name": "Supported wrist extension",
+      "tracksMax": false,
+      "maxConf": null,
+      "m": {
+        "forearm": 1
+      },
+      "how": [
+        "Forearms braced, palms down.",
+        "Light load, full range, to failure.",
+        "Control the lowering."
+      ],
+      "why": "Wrist extensors — the side that ordinary gripping never trains, and the side implicated in elbow pain.",
+      "subs": [
+        "Reverse wrist curl",
+        "Band extension"
+      ],
+      "watch": null,
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 60,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "benchPause": {
+      "name": "Long-pause bench press — 2–3 s",
+      "tracksMax": true,
+      "maxConf": "high",
+      "m": {
+        "chestMid": 1,
+        "triLat": 0.5,
+        "deltFront": 0.5
+      },
+      "how": [
+        "Competition grip and setup. Identical to your touch-and-go bench in every way except the pause.",
+        "Touch, then hold motionless for a full two to three seconds. Same count every rep.",
+        "Stay tight through the pause — it is not a rest. Then press hard."
+      ],
+      "why": "All of your paused competition-grip work lives here, so it keeps its own number. Your logs show almost no gap between paused and touch-and-go — a 115 kg paused single on 19 August and a 115 kg touch-and-go single on the 20th — so this is not fixing a bounce. It is strict competition-groove volume: position, tightness, and control off the chest.",
+      "subs": [
+        "Spoto press",
+        "Paused bench, 1 s, heavier"
+      ],
+      "watch": "Count the same way every rep or the load stops being comparable to itself. If the pause drifts under two seconds it becomes your touch-and-go bench with extra steps.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 180,
+      "refPhotoId": null,
+      "bodyweightLoaded": false,
+      "splitFrom": "benchVar",
+      "maxFrom": {
+        "exerciseId": "benchComp",
+        "ratio": 0.94,
+        "range": [
+          0.9,
+          0.97
+        ]
+      }
+    },
+    "inclineSmith": {
+      "name": "Incline Smith press (30°)",
+      "tracksMax": true,
+      "maxConf": "high",
+      "m": {
+        "chestUpper": 1,
+        "deltFront": 0.75,
+        "triLat": 0.4
+      },
+      "how": [
+        "Bench at 30°, not 45°. Above ~45° this quietly becomes a shoulder press.",
+        "Same scapular setup as flat bench — blades back and DOWN.",
+        "The fixed bar path lets you load heavier and progress in smaller steps than dumbbells.",
+        "Full stretch at the bottom, no hard lockout at the top."
+      ],
+      "why": "Your second upper-chest driver, run alongside the dumbbell version rather than instead of it. The Smith loads heavier and progresses in 1.25 kg steps, which dumbbells cannot; the dumbbells give the longer stretch. Running one in each session gives you both mechanisms every week and two clean progression lines.",
+      "subs": [
+        "Incline barbell press",
+        "Low-incline machine press",
+        "Incline dumbbell press (30°)"
+      ],
+      "watch": "This is the precision-loading slot. Add 1.25–2.5 kg when all sets hit the top of the range — do not chase it with sloppy reps.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 150,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "pulldownStraight": {
+      "name": "Straight-arm cable pulldown",
+      "tracksMax": false,
+      "maxConf": "ind",
+      "m": {
+        "lats": 1
+      },
+      "how": [
+        "Rope or straight bar on a high cable. Hinge slightly, arms long, soft elbows that do not bend during the rep.",
+        "Pull the hands down to the thighs by driving the elbows back; pause and squeeze.",
+        "Let the weight pull the arms all the way up into a long stretch."
+      ],
+      "why": "Lats in their stretched position with almost no biceps and almost no fatigue cost — the cheapest extra lat volume available.",
+      "subs": [
+        "Lat pulldown (wide)"
+      ],
+      "watch": null,
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "inclineFly": {
+      "name": "Incline cable fly",
+      "tracksMax": true,
+      "maxConf": "ind",
+      "m": {
+        "chestUpper": 1,
+        "chestMid": 0.3
+      },
+      "how": [
+        "Slight elbow bend, fixed throughout the rep.",
+        "Let the arms travel BEHIND the torso at the bottom.",
+        "Think about the stretch, not the squeeze."
+      ],
+      "why": "Upper chest in the fully lengthened position, which is where the evidence for growth is strongest — and it does it with almost no joint or systemic cost.",
+      "subs": [
+        "Incline dumbbell fly",
+        "Low-to-high cable crossover",
+        "Pec deck with the seat raised"
+      ],
+      "watch": "Goes to failure every set. This is exactly the kind of exercise failure is for.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "facepull": {
+      "name": "Face pull",
+      "tracksMax": true,
+      "maxConf": "ind",
+      "m": {
+        "deltRear": 1,
+        "upperBack": 0.5
+      },
+      "how": [
+        "Rope at roughly eye height.",
+        "Pull toward the face, elbows high, and externally rotate at the end.",
+        "High reps, controlled."
+      ],
+      "why": "Rear delts plus shoulder health. Added because you press four times a week and rear delt frequency was the weakest link in the original draft.",
+      "subs": [
+        "Reverse pec deck",
+        "Rear delt cable fly",
+        "Prone trap raise"
+      ],
+      "watch": null,
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "curlIncline": {
+      "name": "Incline dumbbell curl",
+      "tracksMax": true,
+      "maxConf": "ind",
+      "m": {
+        "bicLong": 1,
+        "bicShort": 0.4
+      },
+      "how": [
+        "Bench at ~45°, arms hanging BEHIND the torso.",
+        "That behind-the-body position is the long-head stretch — it is the entire reason to use an incline.",
+        "Full extension at the bottom every rep."
+      ],
+      "why": "The biceps long head is the outer head — it is what creates the peak, and it only grows properly when trained in the stretched position.",
+      "subs": [
+        "Bayesian cable curl",
+        "Behind-the-body cable curl"
+      ],
+      "watch": null,
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "shrug": {
+      "name": "Shrug — dumbbell or cable",
+      "tracksMax": false,
+      "maxConf": "ind",
+      "m": {
+        "upperBack": 0.7
+      },
+      "how": [
+        "Arms long at the sides, shoulders straight up towards the ears — no rolling.",
+        "One-second hold at the top, full stretch at the bottom."
+      ],
+      "why": "Upper-trap size, which nothing else in the plan trains directly. Low cost and it does not interfere with pressing.",
+      "subs": [
+        "Machine shrug",
+        "Barbell shrug"
+      ],
+      "watch": null,
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "cableSideBend": {
+      "name": "Cable side bend",
+      "tracksMax": false,
+      "maxConf": "ind",
+      "m": {
+        "obliques": 1
+      },
+      "how": [
+        "Stand side-on to a low cable, handle in the far hand.",
+        "Bend away from the stack, then let the cable pull you into a stretch on the working side.",
+        "Hips still; the movement is in the trunk."
+      ],
+      "why": "The exercise that actually grows the obliques. The Pallof press trains trunk stiffness and builds almost no muscle.",
+      "subs": [
+        "Dumbbell side bend",
+        "Pallof press"
+      ],
+      "watch": "Bigger obliques make the waist slightly wider. If a narrow waist matters more than oblique size, remove this.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 60,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "pallof": {
+      "name": "Pallof press",
+      "tracksMax": true,
+      "maxConf": "ind",
+      "m": {
+        "obliques": 1,
+        "abs": 0.4
+      },
+      "how": [
+        "Stand side-on to a cable at chest height.",
+        "Press straight out and resist the rotation. Nothing should twist.",
+        "Hold 2–3 s at full extension. Breathe."
+      ],
+      "why": "Anti-rotation. Obliques and deep core, trained isometrically without any spinal loading at all — the safest core work available to you.",
+      "subs": [
+        "Side plank",
+        "Half-kneeling Pallof",
+        "Suitcase carry"
+      ],
+      "watch": "Zero risk to your back. If anything ever aggravates, this is the one to keep.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "dip": {
+      "name": "Weighted dip",
+      "tracksMax": true,
+      "maxConf": "high",
+      "m": {
+        "chestMid": 0.8,
+        "triLat": 0.6,
+        "deltFront": 0.4
+      },
+      "how": [
+        "Slight forward lean for chest bias; upright for triceps.",
+        "STOP the descent when your upper arm is parallel to the floor.",
+        "Control the negative."
+      ],
+      "why": "Loaded pressing through a different plane, plus real triceps work. One of your named priority lifts.",
+      "subs": [
+        "Machine dip",
+        "Bench dip (weighted)",
+        "Close-grip press"
+      ],
+      "watch": "Going deeper than parallel is where shoulders get hurt for no extra benefit. Long arms make this worse, not better.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 150,
+      "refPhotoId": null,
+      "bodyweightLoaded": true
+    },
+    "chestPressMachine": {
+      "name": "Technogym chest press",
+      "tracksMax": false,
+      "maxConf": "ind",
+      "m": {
+        "chestMid": 1,
+        "triLat": 0.5,
+        "deltFront": 0.4
+      },
+      "how": [
+        "Seat so the handles line up with the middle of the chest; shoulder blades back against the pad.",
+        "Press on the converging path; the arms are independent, so make the weaker side finish its own rep.",
+        "Control the stretch at the bottom — that is where most of the growth is."
+      ],
+      "why": "The swap for dips on a day the elbow or front of the shoulder complains: chest and triceps work with a fixed path, a load independent of bodyweight, and a failure that just stops.",
+      "subs": [
+        "Weighted dip"
+      ],
+      "watch": null,
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 120,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "curlEZ": {
+      "name": "EZ-bar curl",
+      "tracksMax": true,
+      "maxConf": "ind",
+      "m": {
+        "bicShort": 1,
+        "bicLong": 0.5
+      },
+      "how": [
+        "Preacher pad or strict standing.",
+        "Full range. No swinging, no hip drive.",
+        "Squeeze at the top."
+      ],
+      "why": "Short head — the inner head, which adds width to the arm when viewed from the front.",
+      "subs": [
+        "Preacher curl",
+        "Straight-bar curl",
+        "Dumbbell curl"
+      ],
+      "watch": "Elbows stay at your sides — drifting forward turns it into a front raise. Split out of a slot that used to name two exercises at once. Sets logged before the split may be either of them — from here they are two lifts with two numbers.",
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 75,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    },
+    "wristFlex": {
+      "name": "Supported wrist flexion",
+      "tracksMax": false,
+      "maxConf": null,
+      "m": {
+        "forearm": 1
+      },
+      "how": [
+        "Forearms braced on a bench, palms up.",
+        "Full range, high reps, to failure.",
+        "No elbow movement."
+      ],
+      "why": "Wrist flexors, trained directly and separately from the extensors so both actually get a dose.",
+      "subs": [
+        "Barbell wrist curl",
+        "Cable wrist curl"
+      ],
+      "watch": null,
+      "grips": null,
+      "unit": "kg",
+      "defaultRestSec": 60,
+      "refPhotoId": null,
+      "bodyweightLoaded": false
+    }
+  },
+  "sessions": [
+    {
+      "id": "A",
+      "name": "Lower body A and back",
+      "day": "Saturday",
+      "purpose": "Legs, back width and thickness, rear delts and biceps — and no pressing at all, so Friday’s heavy bench and Sunday’s bench volume each get a full day either side.",
+      "key": "The longest session of the week, on purpose: everything in it is a machine, a cable or a pull, so it can be hard without costing Sunday’s bench anything.",
+      "trains": "Quads, glutes, hamstrings, lats, upper back, rear and side delts, biceps, calves, abs",
+      "slots": [
+        {
+          "id": "A1",
+          "ex": "jumps",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 3,
+          "repsHigh": 3,
+          "rpe": 6,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 120,
+          "note": "Maximum height, step down. Plyometric quality, not fatigue.",
+          "effort": "Maximal intent, far from failure"
+        },
+        {
+          "id": "A2",
+          "ex": "chinup",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 6,
+          "repsHigh": 10,
+          "rpe": 9,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 150,
+          "note": null,
+          "effort": "Stop with one rep left; the last set may go to technical failure",
+          "options": [
+            "chinup",
+            "pullupNorm"
+          ]
+        },
+        {
+          "id": "A3",
+          "ex": "legpressGlute",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 10,
+          "repsHigh": 15,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 150,
+          "note": null,
+          "effort": "Every set to failure"
+        },
+        {
+          "id": "A4",
+          "ex": "hipThrustMachine",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 8,
+          "repsHigh": 15,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 120,
+          "note": "Add load until failure lands between 8 and 15 reps.",
+          "effort": "Every set to failure",
+          "options": [
+            "hipThrustMachine",
+            "hipThrust"
+          ]
+        },
+        {
+          "id": "A5",
+          "ex": "legcurlSeat",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 8,
+          "repsHigh": 12,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 90,
+          "note": null,
+          "effort": "Every set to failure",
+          "options": [
+            "legcurlSeat",
+            "legcurlLie"
+          ]
+        },
+        {
+          "id": "A6",
+          "ex": "rowMachine",
+          "role": "accessory",
+          "label": "Low Row — one arm, elbows tucked",
+          "sets": 3,
+          "repsLow": 8,
+          "repsHigh": 12,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 90,
+          "note": "Lats: elbow travels back towards the hip. Start with the right arm and stop the left at the same rep count.",
+          "effort": "Every set to failure",
+          "options": [
+            "rowMachine",
+            "rowOneArm"
+          ]
+        },
+        {
+          "id": "A7",
+          "ex": "quadext",
+          "role": "accessory",
+          "label": null,
+          "sets": 2,
+          "repsLow": 12,
+          "repsHigh": 20,
+          "rpe": 10,
+          "failLast": 2,
+          "failLastHigh": 2,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Every set to failure"
+        },
+        {
+          "id": "A8",
+          "ex": "reardeltPecDeck",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 12,
+          "repsHigh": 20,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Every set to failure",
+          "options": [
+            "reardeltPecDeck",
+            "reardeltCable"
+          ]
+        },
+        {
+          "id": "A9",
+          "ex": "curlBayesian",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 10,
+          "repsHigh": 15,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Every set to failure"
+        },
+        {
+          "id": "A10",
+          "ex": "lateral",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 12,
+          "repsHigh": 20,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Every set to failure"
+        },
+        {
+          "id": "A11",
+          "ex": "calfStand",
+          "role": "accessory",
+          "label": "single leg, holding a dumbbell",
+          "sets": 3,
+          "repsLow": 10,
+          "repsHigh": 20,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 60,
+          "note": "Hold enough weight that failure comes between 10 and 20 reps, not at 50.",
+          "effort": "Every set to failure",
+          "options": [
+            "calfStand",
+            "calfSeat"
+          ]
+        },
+        {
+          "id": "A12",
+          "ex": "hangingRaise",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 8,
+          "repsHigh": 15,
+          "rpe": 9,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Stop with one rep left; the last set may go to technical failure"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "Bench volume and shoulders",
+      "day": "Sunday",
+      "purpose": "Paused competition bench for volume, one bench variation, both overhead and incline pressing, and the vertical pull. The second of the three bench days.",
+      "key": "Competition grip first, then the variation. The exercise done first gets the most strength out of the session, so the lift that matters always leads.",
+      "trains": "Chest, triceps, front and side delts, upper chest, lats, upper back, biceps",
+      "slots": [
+        {
+          "id": "B1",
+          "ex": "benchComp",
+          "role": "volume",
+          "label": "paused",
+          "sets": 4,
+          "repsLow": 6,
+          "repsHigh": 6,
+          "rpe": 8,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": false,
+          "optional": false,
+          "restSec": 180,
+          "note": "Paused on the chest, pinky-on-ring grip. Push every rep as fast as you can.",
+          "effort": null
+        },
+        {
+          "id": "B2",
+          "ex": "benchClose",
+          "role": "volume",
+          "label": null,
+          "sets": 3,
+          "repsLow": 6,
+          "repsHigh": 6,
+          "rpe": 8,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": false,
+          "optional": false,
+          "restSec": 180,
+          "note": "Option A, close-grip: full range and more triceps — the default. Option B, pin press: the bar dead-stopped just below your sticking point, for heavy blocks if you want to overload that spot.",
+          "effort": null,
+          "options": [
+            "benchClose",
+            "benchPin"
+          ]
+        },
+        {
+          "id": "B3",
+          "ex": "ohpDB",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 6,
+          "repsHigh": 10,
+          "rpe": 9,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 150,
+          "note": null,
+          "effort": "Stop with one rep left; the last set may go to technical failure",
+          "options": [
+            "ohpDB",
+            "ohpMachine"
+          ]
+        },
+        {
+          "id": "B4",
+          "ex": "inclineDB",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 6,
+          "repsHigh": 10,
+          "rpe": 9,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 150,
+          "note": null,
+          "effort": "Stop with one rep left; the last set may go to technical failure"
+        },
+        {
+          "id": "B5",
+          "ex": "pullupNorm",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 5,
+          "repsHigh": 8,
+          "rpe": 9,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 150,
+          "note": null,
+          "effort": "Stop with one rep left; the last set may go to technical failure",
+          "options": [
+            "pullupNorm",
+            "pulldown"
+          ]
+        },
+        {
+          "id": "B6",
+          "ex": "rowCSR",
+          "role": "accessory",
+          "label": "Low Row — wide grip, elbows flared",
+          "sets": 3,
+          "repsLow": 10,
+          "repsHigh": 15,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 90,
+          "note": "Upper back and rear delts: elbows out at about 60°, squeeze the shoulder blades together at the back.",
+          "effort": "Every set to failure"
+        },
+        {
+          "id": "B7",
+          "ex": "lateral",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 12,
+          "repsHigh": 20,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": true,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Every set to failure"
+        },
+        {
+          "id": "B8",
+          "ex": "triOH",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 10,
+          "repsHigh": 15,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Every set to failure",
+          "options": [
+            "triOH",
+            "pushdown"
+          ]
+        },
+        {
+          "id": "B9",
+          "ex": "curlHighCable",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 10,
+          "repsHigh": 15,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Every set to failure"
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "name": "Lower body B and overhead press",
+      "day": "Monday or Tuesday — whichever you train",
+      "purpose": "The barbell overhead press while the shoulders are fresh, the second leg day, arms and the small muscles. No bench, so it can sit next to any bench day.",
+      "key": "The overhead press here is the serious one — but at RPE 8, never to failure. Shoulder size is the goal, not an overhead number.",
+      "trains": "Front and side delts, quads, hamstrings, glutes, biceps, triceps long head, rear delts, calves, abs, forearms",
+      "slots": [
+        {
+          "id": "C1",
+          "ex": "ohpBarbell",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 5,
+          "repsHigh": 8,
+          "rpe": 8,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": false,
+          "optional": false,
+          "restSec": 180,
+          "note": "Standing, strict. If the back of the shoulder hurts during a set or the next morning, use the seated dumbbell option for three weeks.",
+          "effort": null,
+          "options": [
+            "ohpBarbell",
+            "ohpDB"
+          ]
+        },
+        {
+          "id": "C2",
+          "ex": "legpress",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 8,
+          "repsHigh": 12,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 150,
+          "note": null,
+          "effort": "Every set to failure",
+          "options": [
+            "legpress",
+            "bulgarian"
+          ]
+        },
+        {
+          "id": "C3",
+          "ex": "backExt45",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 10,
+          "repsHigh": 15,
+          "rpe": 9,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 90,
+          "note": null,
+          "effort": "Stop with one rep left; the last set may go to technical failure"
+        },
+        {
+          "id": "C4",
+          "ex": "legcurlSeat",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 8,
+          "repsHigh": 12,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 90,
+          "note": null,
+          "effort": "Every set to failure",
+          "options": [
+            "legcurlSeat",
+            "legcurlLie"
+          ]
+        },
+        {
+          "id": "C5",
+          "ex": "quadext",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 12,
+          "repsHigh": 20,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Every set to failure"
+        },
+        {
+          "id": "C6",
+          "ex": "curlHammer",
+          "role": "accessory",
+          "label": null,
+          "sets": 2,
+          "repsLow": 10,
+          "repsHigh": 15,
+          "rpe": 10,
+          "failLast": 2,
+          "failLastHigh": 2,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Every set to failure"
+        },
+        {
+          "id": "C7",
+          "ex": "lateral",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 12,
+          "repsHigh": 20,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Every set to failure"
+        },
+        {
+          "id": "C8",
+          "ex": "reardeltCable",
+          "role": "accessory",
+          "label": null,
+          "sets": 2,
+          "repsLow": 12,
+          "repsHigh": 20,
+          "rpe": 10,
+          "failLast": 2,
+          "failLastHigh": 2,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Every set to failure"
+        },
+        {
+          "id": "C9",
+          "ex": "triOH",
+          "role": "accessory",
+          "label": "one arm",
+          "sets": 3,
+          "repsLow": 10,
+          "repsHigh": 15,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": "The first triceps slot to become a pushdown if the elbow complains.",
+          "effort": "Every set to failure",
+          "options": [
+            "triOH",
+            "pushdown"
+          ]
+        },
+        {
+          "id": "C10",
+          "ex": "calfStand",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 10,
+          "repsHigh": 20,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 60,
+          "note": null,
+          "effort": "Every set to failure",
+          "options": [
+            "calfStand",
+            "calfSeat"
+          ]
+        },
+        {
+          "id": "C11",
+          "ex": "cableCrunch",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 10,
+          "repsHigh": 15,
+          "rpe": 9,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Stop with one rep left; the last set may go to technical failure"
+        },
+        {
+          "id": "C12",
+          "ex": "wristExt",
+          "role": "accessory",
+          "label": null,
+          "sets": 2,
+          "repsLow": 12,
+          "repsHigh": 20,
+          "rpe": 10,
+          "failLast": 2,
+          "failLastHigh": 2,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 60,
+          "note": null,
+          "effort": "Every set to failure"
+        }
+      ]
+    },
+    {
+      "id": "D",
+      "name": "Paused bench, upper chest and lats",
+      "day": "Wednesday (Tuesday if you rest Wednesday)",
+      "purpose": "Long-pause bench and incline Smith for the chest, then lats, rear delts, biceps, traps and obliques. Friday is 48 hours away, so nothing that presses goes to failure and there is no triceps isolation.",
+      "key": "The pressing stops one rep short of failure today. Everything that cannot hurt Friday — back, biceps, traps, obliques — is here, taken as hard as you like.",
+      "trains": "Chest, upper chest, lats, rear and side delts, upper back and traps, biceps, obliques",
+      "slots": [
+        {
+          "id": "D1",
+          "ex": "benchPause",
+          "role": "volume",
+          "label": null,
+          "sets": 4,
+          "repsLow": 5,
+          "repsHigh": 5,
+          "rpe": 8,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": false,
+          "optional": false,
+          "restSec": 180,
+          "note": "2–3 second pause, motionless, on the chest. Competition grip.",
+          "effort": null
+        },
+        {
+          "id": "D2",
+          "ex": "inclineSmith",
+          "role": "accessory",
+          "label": "index set",
+          "sets": 1,
+          "repsLow": 6,
+          "repsHigh": 10,
+          "rpe": 9,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": null,
+          "idx": true,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 150,
+          "note": "The progress anchor for the upper chest: the same weight for more reps, then more weight. Plates only — do not count the bar.",
+          "effort": "Stop with one rep left; the last set may go to technical failure"
+        },
+        {
+          "id": "D3",
+          "ex": "inclineSmith",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 8,
+          "repsHigh": 12,
+          "rpe": 9,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 150,
+          "note": null,
+          "effort": "Stop with one rep left; the last set may go to technical failure"
+        },
+        {
+          "id": "D4",
+          "ex": "pulldown",
+          "role": "accessory",
+          "label": "lat machine — full stretch at the top",
+          "sets": 4,
+          "repsLow": 8,
+          "repsHigh": 12,
+          "rpe": 10,
+          "failLast": 4,
+          "failLastHigh": 4,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 120,
+          "note": null,
+          "effort": "Every set to failure",
+          "options": [
+            "pulldown",
+            "chinup"
+          ]
+        },
+        {
+          "id": "D5",
+          "ex": "pulldownStraight",
+          "role": "accessory",
+          "label": null,
+          "sets": 2,
+          "repsLow": 12,
+          "repsHigh": 15,
+          "rpe": 10,
+          "failLast": 2,
+          "failLastHigh": 2,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Every set to failure"
+        },
+        {
+          "id": "D6",
+          "ex": "inclineFly",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 10,
+          "repsHigh": 15,
+          "rpe": 9,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": "One rep short of failure today — Friday is two days away.",
+          "effort": "Stop with one rep left; the last set may go to technical failure"
+        },
+        {
+          "id": "D7",
+          "ex": "lateral",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 12,
+          "repsHigh": 20,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": true,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Every set to failure"
+        },
+        {
+          "id": "D8",
+          "ex": "reardeltCable",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 12,
+          "repsHigh": 20,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Every set to failure"
+        },
+        {
+          "id": "D9",
+          "ex": "facepull",
+          "role": "accessory",
+          "label": null,
+          "sets": 2,
+          "repsLow": 15,
+          "repsHigh": 20,
+          "rpe": 9,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Stop with one rep left; the last set may go to technical failure"
+        },
+        {
+          "id": "D10",
+          "ex": "curlIncline",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 8,
+          "repsHigh": 12,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Every set to failure"
+        },
+        {
+          "id": "D11",
+          "ex": "shrug",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 10,
+          "repsHigh": 15,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Every set to failure"
+        },
+        {
+          "id": "D12",
+          "ex": "cableSideBend",
+          "role": "accessory",
+          "label": null,
+          "sets": 2,
+          "repsLow": 12,
+          "repsHigh": 20,
+          "rpe": 10,
+          "failLast": 2,
+          "failLastHigh": 2,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 60,
+          "note": null,
+          "effort": "Every set to failure",
+          "options": [
+            "cableSideBend",
+            "pallof"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E",
+      "name": "Heavy bench",
+      "day": "Friday, after the Thursday rest day",
+      "purpose": "The heaviest bench of the week, always after a rest day: one paused single, the back-offs worked out from it, and the 100 kg AMRAP every second week. Then dips and the rest of the push.",
+      "key": "The single finds the day; the back-offs build the strength. They are calculated from the single you actually logged, so a strong day loads them heavier and a weak one lighter.",
+      "trains": "Chest, triceps, front delts, upper chest, lats, side delts, biceps, forearms",
+      "slots": [
+        {
+          "id": "E1",
+          "ex": "benchComp",
+          "role": "top_single",
+          "label": null,
+          "sets": 1,
+          "repsLow": 1,
+          "repsHigh": 1,
+          "rpe": 8,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": null,
+          "idx": true,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": false,
+          "optional": false,
+          "restSec": 300,
+          "note": "Paused, pinky-on-ring. Work up to one single at the target RPE — not a max. The back-offs below are worked out from it, so log it as it really was.",
+          "effort": null
+        },
+        {
+          "id": "E2",
+          "ex": "benchComp",
+          "role": "amrap",
+          "label": "AMRAP",
+          "sets": 1,
+          "repsLow": 1,
+          "repsHigh": 1,
+          "rpe": 10,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": true,
+          "myoOption": false,
+          "accessory": false,
+          "optional": false,
+          "restSec": 300,
+          "note": "One set, paused, same grip every time. Stop when another clean paused rep is not there — not when it gets hard. The reps are the measurement.",
+          "effort": "One set to a clean-rep failure",
+          "fixedLoad": 100,
+          "whenNoAmrap": {
+            "drop": true
+          }
+        },
+        {
+          "id": "E3",
+          "ex": "benchComp",
+          "role": "backoff",
+          "label": "back-offs",
+          "sets": 3,
+          "repsLow": 5,
+          "repsHigh": 5,
+          "rpe": 8,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": "topSingleRpe",
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": false,
+          "optional": false,
+          "restSec": 240,
+          "note": "Calculated from the single you logged today. Below RPE 7 on the first one, add 2.5 kg; above 8.5, drop 2.5–5 kg.",
+          "effort": null,
+          "whenAmrap": {
+            "sets": 2
+          }
+        },
+        {
+          "id": "E4",
+          "ex": "dip",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 6,
+          "repsHigh": 10,
+          "rpe": 9,
+          "failLast": 0,
+          "failLastHigh": 0,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 150,
+          "note": null,
+          "effort": "Stop with one rep left; the last set may go to technical failure",
+          "options": [
+            "dip",
+            "chestPressMachine"
+          ]
+        },
+        {
+          "id": "E5",
+          "ex": "inclineFly",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 10,
+          "repsHigh": 15,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Every set to failure"
+        },
+        {
+          "id": "E6",
+          "ex": "rowOneArm",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 8,
+          "repsHigh": 12,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 90,
+          "note": null,
+          "effort": "Every set to failure"
+        },
+        {
+          "id": "E7",
+          "ex": "triOH",
+          "role": "accessory",
+          "label": "one arm",
+          "sets": 3,
+          "repsLow": 10,
+          "repsHigh": 15,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Every set to failure",
+          "options": [
+            "triOH",
+            "pushdown"
+          ]
+        },
+        {
+          "id": "E8",
+          "ex": "lateral",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 12,
+          "repsHigh": 20,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": true,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Every set to failure"
+        },
+        {
+          "id": "E9",
+          "ex": "curlEZ",
+          "role": "accessory",
+          "label": null,
+          "sets": 3,
+          "repsLow": 8,
+          "repsHigh": 12,
+          "rpe": 10,
+          "failLast": 3,
+          "failLastHigh": 3,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 75,
+          "note": null,
+          "effort": "Every set to failure"
+        },
+        {
+          "id": "E10",
+          "ex": "wristFlex",
+          "role": "accessory",
+          "label": null,
+          "sets": 2,
+          "repsLow": 12,
+          "repsHigh": 20,
+          "rpe": 10,
+          "failLast": 2,
+          "failLastHigh": 2,
+          "pct": null,
+          "pctBasis": null,
+          "idx": false,
+          "amrap": false,
+          "myoOption": false,
+          "accessory": true,
+          "optional": false,
+          "restSec": 60,
+          "note": null,
+          "effort": "Every set to failure"
+        }
+      ]
+    }
+  ],
+  "blocks": [
+    {
+      "id": 1,
+      "name": "Settle in",
+      "from": 1,
+      "to": 2,
+      "type": "accumulation",
+      "effortWave": "standard",
+      "accessoryMultiplier": 1,
+      "variation": "Close-grip (option: pin press)",
+      "theme": "Two weeks to run the new order as written and to find your real weights on the new exercises.",
+      "changes": [
+        "The week runs A (Saturday) → E (Friday); rest Thursday and Monday or Tuesday",
+        "Friday single at RPE 8; back-offs calculated from it",
+        "AMRAP at 100 kg in rotation 2 (Friday 23 October), one set",
+        "Barbell overhead press at RPE 7 while it beds in"
+      ],
+      "slots": {
+        "E1": {
+          "rpe": 8
+        },
+        "E3": {
+          "repsLow": 5,
+          "repsHigh": 5
+        },
+        "B1": {
+          "sets": 4,
+          "repsLow": 6,
+          "repsHigh": 6,
+          "rpe": 8
+        },
+        "B2": {
+          "sets": 3,
+          "repsLow": 6,
+          "repsHigh": 6,
+          "rpe": 8
+        },
+        "D1": {
+          "sets": 4,
+          "repsLow": 5,
+          "repsHigh": 5,
+          "rpe": 8
+        },
+        "C1": {
+          "rpe": 7
+        }
+      }
+    },
+    {
+      "id": 2,
+      "name": "Taper and test",
+      "from": 3,
+      "to": 3,
+      "type": "test",
+      "effortWave": "none",
+      "accessoryMultiplier": 0.6,
+      "rpeCap": 8,
+      "variation": "Close-grip, light",
+      "theme": "Same intensity, about half the work, nothing to failure — then a paused max on Friday.",
+      "changes": [
+        "Bench volume cut to triples and doubles at RPE 7",
+        "Accessories at 60%, nothing to failure",
+        "Friday: paused max test, no back-offs"
+      ],
+      "slots": {
+        "E1": {
+          "role": "attempt",
+          "sets": 1,
+          "repsLow": 1,
+          "repsHigh": 1,
+          "rpe": 10,
+          "idx": true,
+          "isTest": true,
+          "label": "test",
+          "note": "Test day. Paused, pinky-on-ring, butt on the bench, spotter and safeties. Warm up, then about 117.5 → 122.5 → 125–127.5. Only take 130 if 122.5 felt RPE 8 or easier. A single only becomes your max if it met the standard; press made or missed on the attempt and the app records it."
+        },
+        "E3": null,
+        "B1": {
+          "sets": 3,
+          "repsLow": 3,
+          "repsHigh": 3,
+          "rpe": 7,
+          "note": "Taper: same weight range, a third of the work. Fast and crisp."
+        },
+        "B2": {
+          "sets": 2,
+          "repsLow": 3,
+          "repsHigh": 3,
+          "rpe": 7
+        },
+        "D1": {
+          "sets": 3,
+          "repsLow": 2,
+          "repsHigh": 2,
+          "rpe": 7,
+          "note": "Two days before the test: sharp, light-feeling doubles."
+        },
+        "D2": null,
+        "C1": {
+          "rpe": 7
+        }
+      }
+    },
+    {
+      "id": 3,
+      "name": "Accumulation",
+      "from": 4,
+      "to": 10,
+      "type": "accumulation",
+      "effortWave": "standard",
+      "accessoryMultiplier": 1,
+      "variation": "Close-grip (option: pin press)",
+      "theme": "The block that builds the muscle the next test is made of: more reps per set on the bench, accessories at full volume.",
+      "changes": [
+        "Friday single at RPE 8, back-offs 3×5",
+        "Sunday paused bench 4×6, close-grip 3×6",
+        "AMRAP every second Friday"
+      ],
+      "slots": {
+        "E1": {
+          "rpe": 8
+        },
+        "E3": {
+          "repsLow": 5,
+          "repsHigh": 5
+        },
+        "B1": {
+          "sets": 4,
+          "repsLow": 6,
+          "repsHigh": 6,
+          "rpe": 8
+        },
+        "B2": {
+          "sets": 3,
+          "repsLow": 6,
+          "repsHigh": 6,
+          "rpe": 8
+        },
+        "D1": {
+          "sets": 4,
+          "repsLow": 5,
+          "repsHigh": 5,
+          "rpe": 8
+        },
+        "C1": {
+          "rpe": 8
+        }
+      }
+    },
+    {
+      "id": 4,
+      "name": "Intensification",
+      "from": 11,
+      "to": 13,
+      "type": "intensification",
+      "effortWave": "standard",
+      "accessoryMultiplier": 1,
+      "variation": "Close-grip triples (option: pin press)",
+      "theme": "Heavier and fewer: turn the muscle from the last block into a bigger single.",
+      "changes": [
+        "Friday single at RPE 9",
+        "Back-offs 3×3",
+        "Sunday paused bench 4×4, variation 3×4",
+        "Long-pause 4×3"
+      ],
+      "slots": {
+        "E1": {
+          "rpe": 9
+        },
+        "E3": {
+          "repsLow": 3,
+          "repsHigh": 3
+        },
+        "B1": {
+          "sets": 4,
+          "repsLow": 4,
+          "repsHigh": 4,
+          "rpe": 8
+        },
+        "B2": {
+          "sets": 3,
+          "repsLow": 4,
+          "repsHigh": 4,
+          "rpe": 8
+        },
+        "D1": {
+          "sets": 4,
+          "repsLow": 3,
+          "repsHigh": 3,
+          "rpe": 8
+        },
+        "C1": {
+          "rpe": 8
+        }
+      }
+    },
+    {
+      "id": 5,
+      "name": "Taper and test",
+      "from": 14,
+      "to": 14,
+      "type": "test",
+      "effortWave": "none",
+      "accessoryMultiplier": 0.6,
+      "rpeCap": 8,
+      "variation": "Close-grip, light",
+      "theme": "Same as before the first test: same intensity, half the work, then a paused max on Friday.",
+      "changes": [
+        "Bench volume cut to triples and doubles at RPE 7",
+        "Accessories at 60%, nothing to failure",
+        "Friday: paused max test"
+      ],
+      "slots": {
+        "E1": {
+          "role": "attempt",
+          "sets": 1,
+          "repsLow": 1,
+          "repsHigh": 1,
+          "rpe": 10,
+          "idx": true,
+          "isTest": true,
+          "label": "test",
+          "note": "Test day. Paused, pinky-on-ring, butt on the bench, spotter and safeties. Warm up, then about 117.5 → 122.5 → 125–127.5. Only take 130 if 122.5 felt RPE 8 or easier. A single only becomes your max if it met the standard; press made or missed on the attempt and the app records it."
+        },
+        "E3": null,
+        "B1": {
+          "sets": 3,
+          "repsLow": 3,
+          "repsHigh": 3,
+          "rpe": 7,
+          "note": "Taper: same weight range, a third of the work. Fast and crisp."
+        },
+        "B2": {
+          "sets": 2,
+          "repsLow": 3,
+          "repsHigh": 3,
+          "rpe": 7
+        },
+        "D1": {
+          "sets": 3,
+          "repsLow": 2,
+          "repsHigh": 2,
+          "rpe": 7,
+          "note": "Two days before the test: sharp, light-feeling doubles."
+        },
+        "D2": null,
+        "C1": {
+          "rpe": 7
+        }
+      }
+    },
+    {
+      "id": 6,
+      "name": "Accumulation II",
+      "from": 15,
+      "to": 21,
+      "type": "accumulation",
+      "effortWave": "standard",
+      "accessoryMultiplier": 1,
+      "variation": "Close-grip (option: pin press)",
+      "theme": "The second building block, from whatever the January test showed.",
+      "changes": [
+        "As Accumulation, from the new working max",
+        "AMRAP every second Friday"
+      ],
+      "slots": {
+        "E1": {
+          "rpe": 8
+        },
+        "E3": {
+          "repsLow": 5,
+          "repsHigh": 5
+        },
+        "B1": {
+          "sets": 4,
+          "repsLow": 6,
+          "repsHigh": 6,
+          "rpe": 8
+        },
+        "B2": {
+          "sets": 3,
+          "repsLow": 6,
+          "repsHigh": 6,
+          "rpe": 8
+        },
+        "D1": {
+          "sets": 4,
+          "repsLow": 5,
+          "repsHigh": 5,
+          "rpe": 8
+        },
+        "C1": {
+          "rpe": 8
+        }
+      }
+    },
+    {
+      "id": 7,
+      "name": "Intensification II",
+      "from": 22,
+      "to": 24,
+      "type": "intensification",
+      "effortWave": "standard",
+      "accessoryMultiplier": 1,
+      "variation": "Close-grip triples (option: pin press)",
+      "theme": "The run-in to the end of March: heavy singles and triples.",
+      "changes": [
+        "Friday single at RPE 9",
+        "Back-offs 3×3",
+        "No AMRAP in the last two weeks before the test"
+      ],
+      "slots": {
+        "E1": {
+          "rpe": 9
+        },
+        "E3": {
+          "repsLow": 3,
+          "repsHigh": 3
+        },
+        "B1": {
+          "sets": 4,
+          "repsLow": 4,
+          "repsHigh": 4,
+          "rpe": 8
+        },
+        "B2": {
+          "sets": 3,
+          "repsLow": 4,
+          "repsHigh": 4,
+          "rpe": 8
+        },
+        "D1": {
+          "sets": 4,
+          "repsLow": 3,
+          "repsHigh": 3,
+          "rpe": 8
+        },
+        "C1": {
+          "rpe": 8
+        }
+      }
+    },
+    {
+      "id": 8,
+      "name": "Peak test",
+      "from": 25,
+      "to": 25,
+      "type": "test",
+      "effortWave": "none",
+      "accessoryMultiplier": 0.6,
+      "rpeCap": 8,
+      "variation": "Close-grip, light",
+      "theme": "The end of March: taper, then the paused max the whole plan is aiming at.",
+      "changes": [
+        "Taper as before",
+        "Friday: the peak paused max"
+      ],
+      "slots": {
+        "E1": {
+          "role": "attempt",
+          "sets": 1,
+          "repsLow": 1,
+          "repsHigh": 1,
+          "rpe": 10,
+          "idx": true,
+          "isTest": true,
+          "label": "test",
+          "note": "Test day. Paused, pinky-on-ring, butt on the bench, spotter and safeties. Warm up, then about 117.5 → 122.5 → 125–127.5. Only take 130 if 122.5 felt RPE 8 or easier. A single only becomes your max if it met the standard; press made or missed on the attempt and the app records it."
+        },
+        "E3": null,
+        "B1": {
+          "sets": 3,
+          "repsLow": 3,
+          "repsHigh": 3,
+          "rpe": 7,
+          "note": "Taper: same weight range, a third of the work. Fast and crisp."
+        },
+        "B2": {
+          "sets": 2,
+          "repsLow": 3,
+          "repsHigh": 3,
+          "rpe": 7
+        },
+        "D1": {
+          "sets": 3,
+          "repsLow": 2,
+          "repsHigh": 2,
+          "rpe": 7,
+          "note": "Two days before the test: sharp, light-feeling doubles."
+        },
+        "D2": null,
+        "C1": {
+          "rpe": 7
+        }
+      }
+    }
+  ],
+  "fallbacks": {
+    "fourDay": [
+      {
+        "n": 1,
+        "from": "A",
+        "contents": "A in full, with C’s barbell overhead press first"
+      },
+      {
+        "n": 2,
+        "from": "B",
+        "contents": "B in full"
+      },
+      {
+        "n": 3,
+        "from": "D",
+        "contents": "D in full"
+      },
+      {
+        "n": 4,
+        "from": "E",
+        "contents": "E in full — C is the session that goes"
+      }
+    ],
+    "threeDay": [
+      {
+        "n": 1,
+        "from": "E",
+        "contents": "Single + back-offs, dips, row, laterals, curls"
+      },
+      {
+        "n": 2,
+        "from": "A",
+        "contents": "Leg press, leg curl, chin-ups, Low Row, laterals"
+      },
+      {
+        "n": 3,
+        "from": "B",
+        "contents": "Paused bench 4×6, dumbbell shoulder press, pull-ups, triceps"
+      }
+    ]
+  },
+  "knowledge": [
+    {
+      "s": "How this plan works",
+      "t": "The week, and which workout is which",
+      "c": "<p><strong>A · Saturday</strong> — lower body A and back. <strong>B · Sunday</strong> — bench volume and shoulders. <strong>C · Monday or Tuesday</strong> — lower body B and the barbell overhead press. <strong>D · Wednesday</strong> — paused bench, upper chest and lats. <strong>E · Friday</strong> — heavy bench.</p><p>Thursday is always a rest day, so Friday — the heaviest bench of the week — always follows one. The second rest day is Monday or Tuesday: Lower B goes on whichever of the two you train.</p><p>Bench days are B, D and E, and they are never next to each other in any of the three rest-day options. The order is fixed; the days are not. Miss a day and you do the next workout in the order — never two in one day.</p>"
+    },
+    {
+      "s": "How this plan works",
+      "t": "Which rest days, and what changes if you move them",
+      "c": "<p><strong>Monday + Thursday (best):</strong> Fri Sat Sun train, Mon rest, Tue Wed train, Thu rest. Bench Friday, Sunday and Wednesday — 48, 72 and 48 hours apart. The longest run of training days is three.</p><p><strong>Tuesday + Thursday:</strong> Lower B moves to Monday. Exactly the same bench days; the only cost is that Monday is the fourth day in a row.</p><p><strong>Wednesday + Thursday:</strong> Lower B Monday, paused bench Tuesday. Friday gets two rest days in front of it, but Monday and Tuesday are days four and five of a run, so expect those two to be weaker.</p><p>What a rest day changes: which session is freshest (the one after it), the gap between sessions that train the same muscles, and how long a run of training days gets. It does not change how much you grow — the same sets get done either way.</p>"
+    },
+    {
+      "s": "How this plan works",
+      "t": "The heavy single: RPE 8 or RPE 9",
+      "c": "<p>In volume blocks the Friday single is <strong>RPE 8</strong> — heavy practice at low cost. In heavy blocks it is <strong>RPE 9</strong>: near-maximal practice when it matters most. At a 125 kg max that is about 115 and about 120.</p><p><strong>The 110 kg warm-up decides the day.</strong> If it is fast and clearly has about three reps left, your max is where the app thinks and the target is right. If it feels like an 8, today is a lighter day — take the lighter single.</p><p>A 9 means you are certain another rep was there. If it moved like a grinder, it was a 10: log it as a 10.</p><p>The back-offs are calculated from the single you log, so the single is the most important number you type all week.</p>"
+    },
+    {
+      "s": "How this plan works",
+      "t": "The AMRAP, every second Friday",
+      "c": "<p>One set at a fixed 100 kg, paused, same grip, stopped when another clean paused rep is not there. One extra rep is worth about 3 kg of strength, and you need about 0.6 kg a week to reach the goal — so a rep of progress takes about five weeks. Weekly AMRAPs mostly measure your sleep.</p><p>It runs in rotations 2, 5, 7, 9, 11, 13, 16, 18, 20 and 22: never in a test week, never the week after one, and not in the last two weeks before the final test. In an AMRAP week the back-offs drop from three sets to two.</p><p>Extra sets at 100 kg after the AMRAP go in as back-offs, not as more AMRAPs, or the measurement gets mixed with training.</p>"
+    },
+    {
+      "s": "How this plan works",
+      "t": "Failure: which sets, and why not the bench",
+      "c": "<p><strong>To failure (F):</strong> anything on a cable or a machine, and isolation work — laterals, curls, flys, extensions, leg curls, quad extensions, pulldowns, machine rows, leg press. A failed rep there just stops.</p><p><strong>RPE 9 — one rep left, the last set may go to technical failure:</strong> heavy free-weight compounds — dips, weighted pull-ups and chins, dumbbell and incline pressing. On these the form breaks before the muscle fails. The barbell overhead press stays at RPE 8.</p><p><strong>RPE 7–9:</strong> the bench and its variations. Strength does not need failure, fresher bench sessions are heavier bench sessions, and the growth comes from the accessories. The AMRAP is the one bench set to failure, every second week, and it keeps your RPE honest.</p><p>Wednesday is the exception: nothing that presses goes to failure, because Friday is 48 hours away.</p>"
+    },
+    {
+      "s": "How this plan works",
+      "t": "Tests, and why there is no weekly max any more",
+      "c": "<p>A max test varies about 2–3% from day to day — around 3 kg at 125. Weekly progress is about 0.6 kg. A weekly max mostly measures noise, and a max ladder that adds 2.5 kg on every make writes a good day into every prescription for the next week.</p><p>So the plan tests three times — rotations 3, 14 and 25 — each after a week with the same intensity and about half the work. A taper like that raised bench by 2–6% in strength athletes: the strength was there, fatigue was hiding it.</p><p>Between tests, the Friday single, the AMRAP and the estimated max from your heavy sets track progress.</p>"
+    },
+    {
+      "s": "How this plan works",
+      "t": "Option A or B, and swapping",
+      "c": "<p>Some exercises offer two choices — close-grip or pin press, dips or the Technogym chest press, barbell or dumbbell overhead press. Pick one on the exercise card while you log; the load is worked out for whichever you chose, and History records which it was.</p><p>Option A is the default and the one the plan is built around. Option B is there for a reason — pain, equipment, or a heavy block where it suits better.</p><p>Anything else can be swapped with <strong>Swap</strong> on the card: search for any exercise by name.</p>"
+    },
+    {
+      "s": "How this plan works",
+      "t": "When to deviate, and how",
+      "c": "<p><strong>You want an RPE 10 single:</strong> Friday only, at most once every four weeks, ideally after a lighter week. Work up in place of the planned single, then skip that day’s AMRAP and do two back-off sets.</p><p><strong>A bad day</strong> (the single is 5% or more below your recent ones): do the single, two back-offs, nothing to failure on compounds. Use the yellow readiness button.</p><p><strong>The Friday single is down two weeks running:</strong> take a light week — half the sets, RPE 7.</p><p><strong>Pain:</strong> up to about 3/10 that does not climb during the session and is gone the next morning — carry on. Anything more: take option B, or swap, for one to two weeks, then try again. Elbow: Monday’s overhead extension becomes a pushdown first, then dips become the chest press. Front of the shoulder: drop the barbell overhead press to dumbbells. Wrist: wraps on pressing, neutral-grip pulldown.</p><p><strong>Missed a day:</strong> do the next workout in the order. After seven or more days off, one week at RPE 7.</p>"
+    },
+    {
+      "s": "How this plan works",
+      "t": "Working maxes",
+      "c": "<p>Every load is worked out from a working max: the stable number prescriptions are calculated from. It is not a record. Your bench is your own number — Settings → Working maxes shows every one and lets you change it.</p><p>For a lift with no max you have set yourself, the app uses what your recent sets show (the middle of your best estimated maxes over the last six weeks), and says so. Bench variations follow from your competition bench by their ratio until you set their own.</p><p>Rule for moving the bench max: if the prescribed weights land a whole RPE off target in two sessions in a row, move it by 2.5 kg.</p>"
+    },
+    {
+      "s": "Execution",
+      "t": "Bar speed and intent",
+      "c": "<p><strong>On compounds: roughly two seconds down, then accelerate as hard as you physically can.</strong> In a study that equated load and volume exactly and varied only concentric intent, maximal intent produced +18.2% on the bench and deliberately slow lifting produced +9.7%. Double the gain from identical work, with 38% less time under tension.</p>\n<p><strong>Two things people get wrong.</strong> Intent is not the same as speed — at 92% the bar moves slowly no matter what you do, and that is fine, because intent is about the attempt not the result. And intent is not looser form: the eccentric stays controlled, the pause stays honest, the bar path stays the same. Only the concentric changes.</p>\n<p><strong>Not on isolation.</strong> Explosive lateral raises become swinging, which takes tension off the exact muscle you are trying to grow. Control there.</p>\n<p><strong>The rule:</strong> intent when you are training force production, control when you are training a muscle. And note the intent effect disappears at failure — fatigue recruits everything regardless — so on the isolation sets that go to failure, intent is irrelevant anyway. The two rules agree.</p>"
+    },
+    {
+      "s": "Execution",
+      "t": "Rest periods",
+      "c": "<ul>\n<li>Heavy singles and doubles — <strong>3–5 min</strong></li>\n<li>Heavy back-offs, 3–5 reps — 3–4 min</li>\n<li>Volume bench, 5s at 75–80% — 2.5–3 min</li>\n<li>Speed bench — 90–120 s, enough to stay fast</li>\n<li>Bench variations — 2.5–3 min</li>\n<li>Weighted pull-ups and dips — 2–3 min</li>\n<li>Incline press, rows — 2 min</li>\n<li>Leg press, hack squat — 2–3 min</li>\n<li>Isolation: laterals, curls, pushdowns, flies — <strong>60–90 s</strong></li>\n<li>Jumps — <strong>full recovery, 2–3 min.</strong> Never conditioning.</li>\n</ul>\n<p><strong>Why long on compounds and short on isolation.</strong> With long rests, per-session growth for a muscle plateaus around 6–8 sets. With short rests it extends further but needs roughly double the volume to get the same result. So spend your long rests where the load actually matters, and keep isolation dense — you are chasing failure there anyway and the absolute load is not the point.</p>"
+    },
+    {
+      "s": "The bench",
+      "t": "Setup, every single time",
+      "c": "<ol>\n<li>Eyes under the bar. Feet planted. Moderate arch — <strong>from the upper back, never the lower</strong>.</li>\n<li>Grip: ring fingers on the rings, which is roughly 73 cm and about 8 cm inside the legal maximum.</li>\n<li>Shoulder blades back and <em>down</em>. Not just back — down. Think about putting them in your back pockets.</li>\n<li>Unrack, then <strong>pause 2–3 seconds</strong> to re-settle the arch, re-plant the feet, re-tighten the lats. This was the best free advice you have been given and it costs nothing.</li>\n<li>Big breath, hold it.</li>\n</ol>\n<p><strong>The rep.</strong> Two seconds down to the same spot every time, just below the nipple line. Pause about a second on the chest, bar dead, still tight. Then drive with maximal intent. Bar path is a J-curve — back and up off the chest, then vertical once the bar is over the shoulder joint. Leg drive pushes the feet into the floor and <em>toward your head</em>, not up; nothing should lift off the bench.</p>"
+    },
+    {
+      "s": "The bench",
+      "t": "Your specific leaks",
+      "c": "<p><strong>1 · Rushing sets.</strong> The single biggest free improvement available to you. Rushing means an inconsistent touch point, a variable bar path, and a bounce that inflates your numbers without building the strength underneath. It also means every rep is a slightly different lift, so your body never grooves one motor pattern.</p>\n<p><strong>2 · Long arms.</strong> At 190 cm your range of motion is long and your moment arms are long. Grip width and bar path optimisation are worth more to you than to most lifters. The 81 cm competition grip cap does not scale with arm length, so your maximum legal grip is functionally a moderate grip — which makes your bench more triceps-dominant than a shorter lifter's.</p>\n<p><strong>3 · The arch.</strong> Moderate is the right call given your back. Build range through thoracic extension and hip flexor mobility, never through lumbar hyperextension. A big arch is a sustained loaded lumbar extension, repeated four times a week — for you that is the wrong trade.</p>"
+    },
+    {
+      "s": "Nutrition",
+      "t": "Steering without counting calories",
+      "c": "<p>You need two instruments and one rule.</p>\n<p><strong>Scale</strong> — every morning, after the toilet, before food. Only the 7-day average counts. <strong>Tape measure</strong> — waist at the navel, once a week, relaxed, same time of day.</p>\n<p><strong>The rule:</strong> adjust on 2–3 week trends, never on single readings.</p>\n<p><strong>The one thing worth actually counting is protein</strong>, and only for two weeks. Everything else can be eyeballed on a bulk because the scale tells you whether total intake is right. Protein is the only nutrient where you cannot see the deficit until months of training have been wasted. Count it until you know what 180 g looks like on your plate, then stop.</p>\n<p><strong>A trick for untracked meals.</strong> Do not try to estimate them. Instead make sure your <em>tracked</em> portions — breakfast, post-workout, before bed — reliably deliver 120–140 g of protein. Then whatever the untracked meals add is a bonus rather than a gap.</p>\n<p><strong>Your anchors:</strong> Greek yoghurt, chicken, eggs, milk, quark, whey, lean beef, fish. Carbs: rice, potatoes, oats, bread, pasta, bananas. Fats: olive oil, nuts, whole eggs, fatty fish. You have picked well already.</p>"
+    },
+    {
+      "s": "Measuring progress",
+      "t": "What the tape measure tells you that the scale cannot",
+      "c": "<p>The scale tells you whether you are gaining. It cannot tell you <strong>what</strong> you are gaining. That is what the tape is for, and it matters just as much on a cut as on a bulk.</p>\n<p><strong>On a bulk</strong>, you want arms, chest and shoulders climbing faster than the waist. If the waist is rising at more than roughly a third of the rate bodyweight is, the surplus is too big — slow it down regardless of what the scale says.</p>\n<p><strong>On a cut</strong>, you want the opposite: waist falling fast while the arms and chest hold. If the arms are falling as fast as the waist, you are losing muscle and the deficit is too aggressive.</p>\n<p><strong>How to take them.</strong> Same time of day, relaxed, no flexing, waist at the navel. Consistency of method beats precision — a slightly wrong number taken the same way every week is far more useful than an accurate one taken differently each time.</p>\n<p>The Progress screen shows every site with its rate of change per week, next to what bodyweight did over the same stretch. That comparison is the entire point of measuring.</p>"
+    },
+    {
+      "s": "Measuring progress",
+      "t": "How much volume is enough",
+      "c": "<p>The honest answer from the current evidence: <strong>more sets keep producing more growth, with diminishing returns and no clear ceiling</strong> that anyone has managed to identify. The largest meta-regression to date — 67 studies, over 2,000 subjects — found hypertrophy still climbing at the top of the range studied. Strength, by contrast, shows much sharper diminishing returns: you do not need much volume to get strong, you need frequency and practice.</p>\n<p><strong>What limits you is not the stimulus.</strong> It is recovery, session length, and joints. That is why this plan puts its volume where it is cheap — cables, machines, isolation — and keeps it lean where it is expensive.</p>\n<p><strong>Per session</strong>, returns become hard to detect past roughly 11 fractional sets for one muscle in one workout. No session here exceeds that, which is why the work is spread across four to five exposures a week rather than piled into two.</p>\n<p><strong>On counting.</strong> A set counts fractionally: 1.0 where the muscle is the main mover, 0.5 for a meaningful supporting role, nothing below 0.3. That fractional method predicts growth better than counting direct sets alone. The whole-muscle figures on the Plan screen take the largest head contribution per set rather than adding heads together — adding them double counts, and the familiar ~20-sets-a-week figure is a whole-muscle number.</p>"
+    },
+    {
+      "s": "Measuring progress",
+      "t": "Where the estimated max comes from",
+      "c": "<p>A one-rep max is a number you almost never want to measure. Testing it costs a session, adds fatigue you then have to recover from, and buys one data point about <em>that</em> day — that sleep, that mood, that room temperature.</p><p>So the app estimates it instead, from every set you log. That estimate is <strong>e1RM</strong>, and it works because of one reliable fact: <strong>how many reps you can do with a load is a stable function of what fraction of your max that load is.</strong> Five reps and no more means roughly 86%. Turn that around and you have a max you never tested.</p><svg viewBox=\"0 0 340 190\" role=\"img\" aria-label=\"Percentage of one-rep max against reps to failure\" style=\"width:100%;height:auto;display:block;margin:8px 0 4px;overflow:visible\"><line x1=\"34\" x2=\"328\" y1=\"164.0\" y2=\"164.0\" stroke=\"var(--grid)\" stroke-width=\"1\"/><text x=\"29\" y=\"167.0\" text-anchor=\"end\" font-size=\"8\" fill=\"var(--muted)\">60</text><line x1=\"34\" x2=\"328\" y1=\"127.3\" y2=\"127.3\" stroke=\"var(--grid)\" stroke-width=\"1\"/><text x=\"29\" y=\"130.3\" text-anchor=\"end\" font-size=\"8\" fill=\"var(--muted)\">70</text><line x1=\"34\" x2=\"328\" y1=\"90.7\" y2=\"90.7\" stroke=\"var(--grid)\" stroke-width=\"1\"/><text x=\"29\" y=\"93.7\" text-anchor=\"end\" font-size=\"8\" fill=\"var(--muted)\">80</text><line x1=\"34\" x2=\"328\" y1=\"54.0\" y2=\"54.0\" stroke=\"var(--grid)\" stroke-width=\"1\"/><text x=\"29\" y=\"57.0\" text-anchor=\"end\" font-size=\"8\" fill=\"var(--muted)\">90</text><line x1=\"34\" x2=\"328\" y1=\"17.3\" y2=\"17.3\" stroke=\"var(--grid)\" stroke-width=\"1\"/><text x=\"29\" y=\"20.3\" text-anchor=\"end\" font-size=\"8\" fill=\"var(--muted)\">100</text><text x=\"34.0\" y=\"175\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--muted)\">1</text><text x=\"60.7\" y=\"175\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--muted)\">2</text><text x=\"87.5\" y=\"175\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--muted)\">3</text><text x=\"114.2\" y=\"175\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--muted)\">4</text><text x=\"140.9\" y=\"175\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--muted)\">5</text><text x=\"167.6\" y=\"175\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--muted)\">6</text><text x=\"221.1\" y=\"175\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--muted)\">8</text><text x=\"274.5\" y=\"175\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--muted)\">10</text><text x=\"328.0\" y=\"175\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--muted)\">12</text><line x1=\"34\" x2=\"328\" y1=\"164\" y2=\"164\" stroke=\"var(--axis)\" stroke-width=\"1\"/><text x=\"181\" y=\"187\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--ink2)\">reps to failure</text><text x=\"0\" y=\"0\" transform=\"translate(9,87) rotate(-90)\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--ink2)\">% of 1RM</text><path d=\"M34.0 17.3 L60.7 33.8 L87.5 45.9 L114.2 56.9 L140.9 67.6 L167.6 77.1 L221.1 95.8 L274.5 113.0 L328.0 134.7\" fill=\"none\" stroke=\"var(--s1)\" stroke-width=\"2\" stroke-linejoin=\"round\"/><circle cx=\"34.0\" cy=\"17.3\" r=\"3.2\" fill=\"var(--s1)\" stroke=\"var(--surface)\" stroke-width=\"1.5\"/><circle cx=\"60.7\" cy=\"33.8\" r=\"3.2\" fill=\"var(--s1)\" stroke=\"var(--surface)\" stroke-width=\"1.5\"/><circle cx=\"87.5\" cy=\"45.9\" r=\"3.2\" fill=\"var(--s1)\" stroke=\"var(--surface)\" stroke-width=\"1.5\"/><circle cx=\"114.2\" cy=\"56.9\" r=\"3.2\" fill=\"var(--s1)\" stroke=\"var(--surface)\" stroke-width=\"1.5\"/><circle cx=\"140.9\" cy=\"67.6\" r=\"3.2\" fill=\"var(--s1)\" stroke=\"var(--surface)\" stroke-width=\"1.5\"/><circle cx=\"167.6\" cy=\"77.1\" r=\"3.2\" fill=\"var(--s1)\" stroke=\"var(--surface)\" stroke-width=\"1.5\"/><circle cx=\"221.1\" cy=\"95.8\" r=\"3.2\" fill=\"var(--s1)\" stroke=\"var(--surface)\" stroke-width=\"1.5\"/><circle cx=\"274.5\" cy=\"113.0\" r=\"3.2\" fill=\"var(--s1)\" stroke=\"var(--surface)\" stroke-width=\"1.5\"/><circle cx=\"328.0\" cy=\"134.7\" r=\"3.2\" fill=\"var(--s1)\" stroke=\"var(--surface)\" stroke-width=\"1.5\"/><text x=\"40.0\" y=\"10.3\" text-anchor=\"start\" font-size=\"9\" font-weight=\"600\" fill=\"var(--s1)\">100.0%</text><text x=\"146.9\" y=\"60.6\" text-anchor=\"start\" font-size=\"9\" font-weight=\"600\" fill=\"var(--s1)\">86.3%</text><text x=\"326.0\" y=\"147.7\" text-anchor=\"end\" font-size=\"9\" font-weight=\"600\" fill=\"var(--s1)\">68.0%</text></svg><p style=\"font-size:12px;color:var(--muted);margin:2px 2px 14px\">Percentage of your one-rep max you can lift for <em>n</em> reps to failure — the app&rsquo;s own table.</p><p>Read the shape. The first reps are the expensive ones: going from a single to a triple costs nearly 8% of your max, while going from eight reps to ten costs under 5%. That curvature is exactly why &ldquo;3&nbsp;&times;&nbsp;3&rdquo; and &ldquo;3&nbsp;&times;&nbsp;3 at 86%&rdquo; stop being the same instruction on a bad day.</p>"
+    },
+    {
+      "s": "Measuring progress",
+      "t": "What one point of RPE is worth",
+      "c": "<p>Reps alone are not enough. A set of five that nearly killed you and a set of five you strolled through are not the same evidence, and what separates them is the effort rating.</p><p><strong>RPE 10 means no more reps were available. RPE 9 means one more. RPE 8 means two.</strong> Once the app has reps <em>and</em> RPE it knows how many reps the load was really worth, and it can read the curve. A set logged without an effort rating gets <em>no</em> estimate rather than a guessed one — that is deliberate.</p><svg viewBox=\"0 0 340 190\" role=\"img\" aria-label=\"One curve per RPE, the same shape shifted down\" style=\"width:100%;height:auto;display:block;margin:8px 0 4px;overflow:visible\"><line x1=\"34\" x2=\"296\" y1=\"139.4\" y2=\"139.4\" stroke=\"var(--grid)\" stroke-width=\"1\"/><text x=\"29\" y=\"142.4\" text-anchor=\"end\" font-size=\"8\" fill=\"var(--muted)\">60</text><line x1=\"34\" x2=\"296\" y1=\"108.6\" y2=\"108.6\" stroke=\"var(--grid)\" stroke-width=\"1\"/><text x=\"29\" y=\"111.6\" text-anchor=\"end\" font-size=\"8\" fill=\"var(--muted)\">70</text><line x1=\"34\" x2=\"296\" y1=\"77.8\" y2=\"77.8\" stroke=\"var(--grid)\" stroke-width=\"1\"/><text x=\"29\" y=\"80.8\" text-anchor=\"end\" font-size=\"8\" fill=\"var(--muted)\">80</text><line x1=\"34\" x2=\"296\" y1=\"47.0\" y2=\"47.0\" stroke=\"var(--grid)\" stroke-width=\"1\"/><text x=\"29\" y=\"50.0\" text-anchor=\"end\" font-size=\"8\" fill=\"var(--muted)\">90</text><line x1=\"34\" x2=\"296\" y1=\"16.2\" y2=\"16.2\" stroke=\"var(--grid)\" stroke-width=\"1\"/><text x=\"29\" y=\"19.2\" text-anchor=\"end\" font-size=\"8\" fill=\"var(--muted)\">100</text><text x=\"34.0\" y=\"175\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--muted)\">1</text><text x=\"57.8\" y=\"175\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--muted)\">2</text><text x=\"81.6\" y=\"175\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--muted)\">3</text><text x=\"105.5\" y=\"175\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--muted)\">4</text><text x=\"129.3\" y=\"175\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--muted)\">5</text><text x=\"153.1\" y=\"175\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--muted)\">6</text><text x=\"200.7\" y=\"175\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--muted)\">8</text><text x=\"248.4\" y=\"175\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--muted)\">10</text><text x=\"296.0\" y=\"175\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--muted)\">12</text><line x1=\"34\" x2=\"296\" y1=\"164\" y2=\"164\" stroke=\"var(--axis)\" stroke-width=\"1\"/><text x=\"165\" y=\"187\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--ink2)\">reps performed</text><text x=\"0\" y=\"0\" transform=\"translate(9,87) rotate(-90)\" text-anchor=\"middle\" font-size=\"8\" fill=\"var(--ink2)\">% of 1RM</text><path d=\"M34.0 16.2 L57.8 30.0 L81.6 40.2 L105.5 49.4 L129.3 58.4 L153.1 66.4 L200.7 82.1 L248.4 96.5 L296.0 114.7\" fill=\"none\" stroke=\"var(--s1)\" stroke-width=\"2\" opacity=\"1\" stroke-linecap=\"round\"/><text x=\"301.0\" y=\"117.7\" font-size=\"8.5\" font-weight=\"600\" fill=\"var(--s1)\" opacity=\"1\">RPE 10</text><path d=\"M34.0 30.0 L57.8 40.2 L81.6 49.4 L105.5 58.4 L129.3 66.4 L153.1 74.4 L200.7 89.5 L248.4 106.4 L296.0 123.0\" fill=\"none\" stroke=\"var(--s1)\" stroke-width=\"2\" opacity=\"0.78\" stroke-linecap=\"round\"/><text x=\"301.0\" y=\"126.0\" font-size=\"8.5\" font-weight=\"600\" fill=\"var(--s1)\" opacity=\"0.78\">RPE 9</text><path d=\"M34.0 40.2 L57.8 49.4 L81.6 58.4 L105.5 66.4 L129.3 74.4 L153.1 82.1 L200.7 96.5 L248.4 114.7 L296.0 131.4\" fill=\"none\" stroke=\"var(--s1)\" stroke-width=\"2\" opacity=\"0.58\" stroke-linecap=\"round\"/><text x=\"301.0\" y=\"134.4\" font-size=\"8.5\" font-weight=\"600\" fill=\"var(--s1)\" opacity=\"0.58\">RPE 8</text><path d=\"M34.0 49.4 L57.8 58.4 L81.6 66.4 L105.5 74.4 L129.3 82.1 L153.1 89.5 L200.7 106.4 L248.4 123.0 L296.0 139.7\" fill=\"none\" stroke=\"var(--s1)\" stroke-width=\"2\" opacity=\"0.4\" stroke-linecap=\"round\"/><text x=\"301.0\" y=\"142.7\" font-size=\"8.5\" font-weight=\"600\" fill=\"var(--s1)\" opacity=\"0.4\">RPE 7</text><path d=\"M34.0 58.4 L57.8 66.4 L81.6 74.4 L105.5 82.1 L129.3 89.5 L153.1 96.5 L200.7 114.7 L248.4 131.4 L296.0 148.0\" fill=\"none\" stroke=\"var(--s1)\" stroke-width=\"2\" opacity=\"0.26\" stroke-linecap=\"round\"/><text x=\"301.0\" y=\"151.0\" font-size=\"8.5\" font-weight=\"600\" fill=\"var(--s1)\" opacity=\"0.26\">RPE 6</text></svg><p style=\"font-size:12px;color:var(--muted);margin:2px 2px 14px\">The same curve, once per RPE. Darker is closer to failure.</p><p>The curves are near-parallel, which is the useful property: a point of RPE is worth about the same percentage wherever you are in the rep range. At five reps, RPE&nbsp;8&nbsp;&rarr;&nbsp;RPE&nbsp;9 is 81.1% &rarr; 83.7%. <strong>That is 2.6% of your max — roughly 3&nbsp;kg on a 115&nbsp;kg bench.</strong></p><p>So a set you rate one point too hard drags your estimate down about 3&nbsp;kg, and one rated too easy inflates it by the same. Rate honestly, and rate it before you rack the bar — the question is <em>how many more could I have done at that bar speed</em>, not <em>how much did that hurt</em>.</p>"
+    }
+  ],
+  "customWorkouts": []
+}

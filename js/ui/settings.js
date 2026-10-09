@@ -7,7 +7,19 @@
  * rounding drift into a single stored number.
  */
 
-import { escape, fmtNum, toDisplay, flag, deviceIsolationNote, openSheet, closeSheet } from './components.js';
+import {
+  escape,
+  fmtNum,
+  fmtLoad,
+  toDisplay,
+  fromDisplay,
+  parseNumber,
+  flag,
+  deviceIsolationNote,
+  openSheet,
+  closeSheet,
+} from './components.js';
+import { workingMaxInfo } from './train.js';
 
 const bytes = (n) =>
   n == null ? '—' : n > 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n > 1e6 ? `${(n / 1e6).toFixed(0)} MB` : `${(n / 1e3).toFixed(0)} KB`;
@@ -55,6 +67,10 @@ export function view(ctx) {
            <button class="big ghost" data-act="demo-on">Explore the demo</button>`
     }
   </div>
+
+  ${planChooser(state)}
+
+  ${maxesCard(state)}
 
   <details class="card settings-group" open><summary><span>Training &amp; display<small>Units, plates and bodyweight</small></span></summary><div class="c"><div class="seg">
     <button class="${unit === 'kg' ? 'on' : ''}" data-act="unit" data-id="kg">Kilograms</button>
@@ -165,6 +181,111 @@ export function view(ctx) {
     are visible immediately.</p></div></details>`;
 }
 
+/**
+ * Which plan the app runs.
+ *
+ * Switching keeps everything: sessions stay in History under the plan they were
+ * trained in, and each plan keeps its own rotation, so going back resumes the
+ * old one exactly where it was.
+ */
+function planChooser(state) {
+  const plans = Object.values(state.plans || {});
+  if (plans.length < 2) return '';
+  const active = state.plan.meta.id;
+  return `<details class="card settings-group" open><summary><span>Training plan<small>${escape(
+    state.plan.meta.name
+  )} \u00b7 rotation ${state.cycle?.sequence ?? 1} of ${state.plan.meta.rotations}</small></span></summary><div class="c">
+    ${plans
+      .map(
+        (plan) => `<button class="plan-choice ${plan.meta.id === active ? 'on' : ''}" data-act="pick-plan" data-id="${escape(
+          plan.meta.id
+        )}">
+          <div style="flex:1"><b>${plan.meta.id === active ? '\u2713 ' : ''}${escape(plan.meta.name)}</b>
+          <span>${escape(plan.meta.sub || plan.meta.longName || '')}</span>
+          <span>${plan.sessions.length} sessions \u00b7 ${plan.meta.rotations} rotations${
+            plan.meta.id === active ? ' \u00b7 active' : ''
+          }</span></div></button>`
+      )
+      .join('')}
+    <p class="hint">Switching moves nothing and deletes nothing. Every session stays in your History under the plan
+    it was trained in, and each plan keeps its own rotation — switch back and the old one carries on where you left
+    it. Not possible while a session is open.</p>
+  </div></details>`;
+}
+
+/**
+ * Every working max the plan uses, where each one comes from, and a way to
+ * change it.
+ *
+ * A max you set yourself is the strongest source and is shown as such. Without
+ * one, the number is either what your recent sets show, a fraction of your
+ * competition bench (for a bench variation), or the plan's starting estimate —
+ * and the screen says which, because "why is it asking for 37.5 kg" has to be
+ * answerable from the screen.
+ */
+export function maxRowsFor(state) {
+  const used = new Set();
+  for (const session of state.plan.sessions || []) {
+    for (const slot of session.slots || []) {
+      for (const id of [slot.ex, ...(slot.options || [])]) used.add(id);
+    }
+  }
+  for (const id of state.maxes?.keys?.() || []) used.add(id);
+
+  return [...used]
+    .map((id) => ({ id, exercise: state.plan.exercises[id] }))
+    .filter(({ exercise }) => exercise && exercise.tracksMax && exercise.maxConf === 'high')
+    .map(({ id, exercise }) => ({ id, exercise, info: workingMaxInfo(state, id) }))
+    .sort((a, b) => {
+      const rank = (row) => (row.id === 'benchComp' ? 0 : row.exercise.maxFrom ? 1 : 2);
+      return rank(a) - rank(b) || a.exercise.name.localeCompare(b.exercise.name);
+    });
+}
+
+const SOURCE_TEXT = {
+  confirmed: 'set by you',
+  ratio: 'from your competition bench',
+  evidence: 'from your recent sets',
+  seed: 'plan starting estimate',
+};
+
+function sourceLine(state, row) {
+  const info = row.info;
+  if (!info) return 'no max yet — the first sets you log will set one';
+  const unit = state.settings.unit;
+  if (info.source === 'confirmed') return `set by you${info.setAtISO ? ` on ${escape(info.setAtISO.slice(0, 10))}` : ''}`;
+  if (info.source === 'ratio') {
+    return `${Math.round(info.ratio * 100)}% of your ${escape(fmtLoad(info.parent.value, unit))} ${escape(unit)} competition bench`;
+  }
+  if (info.source === 'evidence') {
+    return `from ${info.evidence.sessions} session${info.evidence.sessions === 1 ? '' : 's'} since ${escape(
+      info.evidence.fromISO
+    )}`;
+  }
+  return 'the plan\u2019s starting estimate — set your own';
+}
+
+function maxesCard(state) {
+  const rows = maxRowsFor(state);
+  const unit = state.settings.unit;
+  return `<details class="card settings-group"><summary><span>Working maxes<small>${rows.length} lifts \u00b7 ${
+    rows.filter((row) => row.info?.source === 'confirmed').length
+  } set by you</small></span></summary><div class="c">
+    ${rows
+      .map(
+        (row) => `<div class="maxrow" data-act="open-max" data-id="${escape(row.id)}" style="cursor:pointer">
+          <div class="m"><b>${escape(row.exercise.name)}</b><span>${sourceLine(state, row)}</span></div>
+          <div class="v">${row.info ? `${escape(fmtLoad(row.info.value, unit))}<small>${escape(unit)}</small>` : '\u2014'}</div>
+          <div class="car">\u203a</div></div>`
+      )
+      .join('')}
+    <p class="hint">Every prescribed load is worked out from these. A max you set yourself always wins. Without one,
+    a lift uses what your recent sets show (the middle of your best estimates over the last six weeks), a bench
+    variation follows your competition bench, and only failing both does the plan's starting estimate apply. On
+    pull-ups, chin-ups and dips the number includes your bodyweight.</p>
+  </div></details>`;
+}
+
 /** File pickers, handled on change rather than click. */
 export const files = {
   /**
@@ -235,6 +356,99 @@ export const files = {
 };
 
 export const actions = {
+  'pick-plan'(ctx, data) {
+    const { state } = ctx;
+    const target = state.plans?.[data.id];
+    if (!target || data.id === state.plan.meta.id) return;
+    if (state.activeLog) {
+      openSheet(`<div class="ttl">A session is open</div>
+        <p style="text-align:center;margin:14px 0;font-size:13px">Finish or discard session <b>${escape(
+          state.activeLog.sessionId
+        )}</b> first. Its sets belong to the plan it was started in.</p>
+        <button class="big mt" data-act="sheet-close">OK</button>`);
+      return;
+    }
+    openSheet(`<div class="ttl">Switch to ${escape(target.meta.name)}?</div>
+      <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">${escape(target.meta.sub || '')}</p>
+      <p style="text-align:center;font-size:13px">Nothing is moved or deleted. ${escape(
+        state.plan.meta.name
+      )} keeps its rotation and its sessions stay in your History; you can switch back at any time.</p>
+      <button class="big mt" data-act="confirm-plan" data-id="${escape(data.id)}">Switch to ${escape(target.meta.name)}</button>
+      <button class="big ghost mt" data-act="sheet-close">Stay on ${escape(state.plan.meta.name)}</button>`);
+  },
+
+  async 'confirm-plan'(ctx, data) {
+    const result = await ctx.switchPlan(data.id);
+    closeSheet();
+    if (!result?.ok) {
+      openSheet(`<div class="ttl">Not switched</div>
+        <p style="text-align:center;margin:14px 0;font-size:13px">${escape(result?.reason || 'Nothing changed.')}</p>
+        <button class="big mt" data-act="sheet-close">OK</button>`);
+      return;
+    }
+    ctx.goTo({ tab: 'train' });
+  },
+
+  'open-max'(ctx, data) {
+    const { state } = ctx;
+    const row = maxRowsFor(state).find((candidate) => candidate.id === data.id);
+    if (!row) return;
+    const unit = state.settings.unit;
+    const info = row.info;
+    const evidence = info?.source === 'evidence' ? info.evidence : null;
+    const history = (state.maxHistory || [])
+      .filter((entry) => entry.exerciseId === row.id)
+      .sort((a, b) => String(b.setAtISO).localeCompare(String(a.setAtISO)))
+      .slice(0, 6);
+    const shown = info ? Math.round(toDisplay(info.value, unit) * 10) / 10 : '';
+
+    openSheet(`<div class="ttl">${escape(row.exercise.name)}</div>
+      <p style="text-align:center;margin:10px 0 4px;font-size:28px;font-weight:800;font-variant-numeric:tabular-nums">${
+        info ? `${escape(fmtLoad(info.value, unit))} ${escape(unit)}` : '\u2014'
+      }</p>
+      <p style="text-align:center;font-size:12.5px;margin:0 0 14px">${sourceLine(state, row)}</p>
+      <label for="max-value">Working max (${escape(unit)})${row.exercise.bodyweightLoaded ? ' \u2014 bodyweight + added' : ''}</label>
+      <input id="max-value" type="number" inputmode="decimal" step="0.5" value="${shown}" data-pick>
+      <button class="big mt" data-act="save-max" data-id="${escape(row.id)}">Save as my working max</button>
+      ${
+        evidence
+          ? `<p class="hint">Your recent sets: ${evidence.rows
+              .slice(-5)
+              .map((r) => `${escape(r.dateISO.slice(5))} \u2192 ${escape(fmtLoad(r.value, unit))}`)
+              .join(' \u00b7 ')}. The middle of these is what the app is using now.</p>`
+          : ''
+      }
+      ${
+        history.length
+          ? `<h4>History</h4><table><tbody>${history
+              .map(
+                (entry) => `<tr><td>${escape(String(entry.setAtISO || '').slice(0, 10))}</td><td>${
+                  entry.workingMax == null ? '\u2014' : `${escape(fmtLoad(entry.workingMax, unit))} ${escape(unit)}`
+                }</td><td>${escape(String(entry.reason || ''))}</td></tr>`
+              )
+              .join('')}</tbody></table>`
+          : ''
+      }
+      <p class="hint">Saving writes a new working max and keeps the old one in the history above. Every load on this
+      lift — and on the bench variations, if this is your competition bench — recalculates from it.</p>
+      <button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
+  },
+
+  async 'save-max'(ctx, data) {
+    const { state } = ctx;
+    const typed = parseNumber(document.getElementById('max-value')?.value);
+    if (!(typed > 0)) {
+      openSheet(`<div class="ttl">Not saved</div>
+        <p style="text-align:center;margin:14px 0;font-size:13px">A working max has to be a weight above zero.</p>
+        <button class="big mt" data-act="open-max" data-id="${escape(data.id)}">Back</button>`);
+      return;
+    }
+    const kg = Math.round(fromDisplay(typed, state.settings.unit) * 100) / 100;
+    await ctx.confirmMax(data.id, kg, 'set in Settings');
+    closeSheet();
+    ctx.render();
+  },
+
   /**
    * The one action in the app that destroys data, and the only one described
    * in those words. It offers the backup first, like every delete does.

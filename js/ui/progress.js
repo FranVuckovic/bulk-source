@@ -21,6 +21,7 @@
  *   review; confirming each proposed working max is a deliberate tap.
  */
 
+import { belongsTo } from '../plans.js';
 import { pct, systemLoad, proposeBlockBoundaryMax, proposeMidBlockBump } from '../calc.js';
 import {
   strengthSeries,
@@ -399,7 +400,7 @@ function verdict(state, m, unit) {
     push('adherence', [
       'info',
       'Training pace needs a few sessions',
-      'The plan advances by completed A–F sessions, not by calendar weeks. A pace appears once there is enough history.',
+      `The plan advances by completed ${[...(state.plan.meta.rotationOrder || [])].sort().join('–').replace(/–.*–/, '–')} sessions, not by calendar weeks. A pace appears once there is enough history.`,
       {},
     ]);
   }
@@ -730,7 +731,10 @@ function plannedCard(state, m) {
   const cycleLogIds = new Set(
     m.logs
       .filter(
-        (log) => log.cycleId === state.cycle.id && state.plan.meta.rotationOrder.includes(log.rotationPosition)
+        (log) =>
+          log.cycleId === state.cycle.id &&
+          belongsTo(log, state.plan.meta.id) &&
+          state.plan.meta.rotationOrder.includes(log.rotationPosition)
       )
       .map((log) => log.id)
   );

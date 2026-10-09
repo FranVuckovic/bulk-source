@@ -172,7 +172,10 @@ test('Settings keeps routine controls open and everything else in named compact 
   assert.match(html, /Privacy &amp; storage/);
   assert.match(html, /Deletion &amp; reset/);
   assert.match(html, /About this build/);
-  assert.equal((html.match(/<details class="card settings-group/g) || []).length, 5);
+  // Working maxes joined in v2.28: every max the plan uses, where it comes from,
+  // and a way to change it.
+  assert.match(html, /Working maxes/);
+  assert.equal((html.match(/<details class="card settings-group/g) || []).length, 6);
 });
 
 test('measurement history shows real dates, a selectable chart and a bodyweight comparison', () => {
