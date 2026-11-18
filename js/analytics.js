@@ -18,6 +18,7 @@
 import { planIdOf, DEFAULT_PLAN_ID } from './plans.js';
 import { estimateForSet, isHighConfidence, systemLoad, e1rm, setDifficulty, noEstimateReason } from './calc.js';
 import { daysBetween, weekStart } from './dates.js';
+import { TAPE_RANGES_CM, BODYWEIGHT_RANGE_KG, WEIGH_IN_DEVIATION_KG, outlierReason } from './plausibility.js';
 
 /* ═══════════════════════════════════════════════════════════════════════
    Eligibility — said out loud, every time
@@ -318,6 +319,83 @@ export function alignByDate(a, b) {
   return a
     .map((point) => ({ dateISO: point.dateISO, a: point.value, b: bByDate.get(point.dateISO)?.value ?? null }))
     .filter((row) => row.a != null || row.b != null);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Body readings, with the typos set aside
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const median = (values) => {
+  const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
+
+/**
+ * One tape site over time, without the readings that cannot be real.
+ *
+ * His export holds chest 408.7, arm L 3492, quad R 26.5, arm R flexed 97.1 and
+ * forearm L 91 — typed, saved, and then plotted: the chest axis ran to 454 cm
+ * and arm L "grew" 17.5 cm a week. A reading outside the site's range, or more
+ * than 25% from the median of that site's other readings, is left out of the
+ * points and listed in `excluded` with the reason. Nothing is deleted; it stays
+ * in the Log, where it can be corrected.
+ */
+export function measurementSeries(measurements, site) {
+  const readings = (measurements || [])
+    .filter((row) => !row.deletedAtISO && Number.isFinite(row[site]) && row.dateISO)
+    .map((row) => ({ id: row.id, dateISO: row.dateISO.slice(0, 10), value: row[site] }))
+    .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+
+  const points = [];
+  const excluded = [];
+  readings.forEach((reading, i) => {
+    const others = readings.filter((_, j) => j !== i).map((row) => row.value);
+    const reason = outlierReason(reading.value, others, { range: TAPE_RANGES_CM[site] || null, share: 0.25, unit: 'cm' });
+    if (reason) excluded.push({ ...reading, site, reason });
+    else points.push(reading);
+  });
+  return { points, excluded, sampleCount: points.length };
+}
+
+/**
+ * Daily weigh-ins, without the ones that cannot be real.
+ *
+ * Judged against the readings around it rather than the whole history: a bulk
+ * moves bodyweight on purpose, so 86 in August and 93 in November are both
+ * right. A reading more than 3 kg from the median of the readings within a
+ * week either side (at least three of them) — the same 3 kg the weigh-in check
+ * asks about — or outside any possible bodyweight, is set aside with the
+ * reason. One 97 among 91s moved the gain verdict from "under" to "in".
+ */
+export function bodyweightSeries(daily) {
+  const readings = (daily || [])
+    .filter((row) => !row.deletedAtISO && Number.isFinite(row.bodyweight) && row.dateISO)
+    .map((row) => ({ id: row.id, dateISO: row.dateISO.slice(0, 10), value: row.bodyweight }))
+    .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+
+  const points = [];
+  const excluded = [];
+  readings.forEach((reading, i) => {
+    if (reading.value < BODYWEIGHT_RANGE_KG.lo || reading.value > BODYWEIGHT_RANGE_KG.hi) {
+      excluded.push({ ...reading, reason: `outside ${BODYWEIGHT_RANGE_KG.lo}–${BODYWEIGHT_RANGE_KG.hi} kg` });
+      return;
+    }
+    const around = readings
+      .filter((row, j) => j !== i && Math.abs(daysBetween(row.dateISO, reading.dateISO) ?? Infinity) <= 7)
+      .map((row) => row.value);
+    const middle = around.length >= 3 ? median(around) : null;
+    if (middle != null && Math.abs(reading.value - middle) > WEIGH_IN_DEVIATION_KG) {
+      excluded.push({
+        ...reading,
+        reason: `${Math.round(Math.abs(reading.value - middle) * 10) / 10} kg from the ${Math.round(middle * 10) / 10} kg of the readings around it`,
+      });
+      return;
+    }
+    points.push(reading);
+  });
+  return { points, excluded, sampleCount: points.length };
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

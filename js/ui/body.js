@@ -6,7 +6,7 @@
  * information; a zero is a lie that drags an average down.
  */
 
-import { rollingMean, gainRateVerdict } from '../analytics.js';
+import { rollingMean, gainRateVerdict, bodyweightSeries } from '../analytics.js';
 import { checkWeighIn, checkTape } from '../plausibility.js';
 import { preparePhoto, imageUrl, releaseImageUrl, formatBytes } from '../photos.js';
 import { escape, fmtLoad, fmtNum, toDisplay, section, openSheet, closeSheet, parseNumber } from './components.js';
@@ -276,9 +276,8 @@ export function view(ctx) {
   const loggedDaily = entriesToday(state, 'daily');
   const loggedTape = entriesToday(state, 'measurements');
 
-  const weights = state.daily
-    .filter((d) => Number.isFinite(d.bodyweight))
-    .map((d) => ({ dateISO: d.dateISO, value: d.bodyweight }));
+  // Stored typos set aside, as on Progress.
+  const weights = bodyweightSeries(state.daily).points;
   // The same average and the same verdict Progress shows, with its minimum
   // sample rules. This screen fitted its own slope to as few as two readings
   // and printed it as a weekly rate.

@@ -35,6 +35,8 @@ import {
   blockComparison as blockChanges,
   records as recordsFor,
   recordHistory,
+  measurementSeries,
+  bodyweightSeries as cleanBodyweight,
   GAIN_TARGETS,
 } from '../analytics.js';
 import { weeklyLoads, decisionFlags, weekStartISO, daysBetween, shouldDeload } from '../progress.js';
@@ -82,11 +84,15 @@ const CONFIDENCE_WORD = { good: 'a good fit', fair: 'a fair fit', weak: 'a weak 
 /** Soft-deleted rows are not evidence. They are recoverable, not present. */
 const liveRecords = (state) => ({ logs: alive(state.logs), sets: alive(state.sets) });
 
-function bodyweightSeries(state) {
-  return state.daily
-    .filter((d) => Number.isFinite(d.bodyweight))
-    .map((d) => ({ dateISO: d.dateISO, value: d.bodyweight }))
-    .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+/** Weigh-ins with stored typos set aside — see `bodyweightSeries` in analytics. */
+const bodyweightSeries = (state) => cleanBodyweight(state.daily);
+
+/** "Left out: 97 kg on 2026-11-17 (6 kg from …)." — every exclusion, said once. */
+function leftOut(excluded, format) {
+  if (!excluded?.length) return '';
+  return ` <b>Left out as likely typos:</b> ${excluded
+    .map((row) => `${escape(format(row))} on ${escape(row.dateISO)} (${escape(row.reason)})`)
+    .join('; ')}. They are still in the Log, where they can be corrected.`;
 }
 
 /** The gain-rate targets are training content, so they come from the plan. */
@@ -138,15 +144,15 @@ function metrics(state) {
   const change = changeOver(series.points, { weeks: 4 });
   const best = series.points.length ? Math.max(...series.points.map((p) => p.value)) : null;
 
-  const bodyweight = bodyweightSeries(state);
+  const bodyweightClean = bodyweightSeries(state);
+  const bodyweight = bodyweightClean.points;
   const averaged = rollingMean(bodyweight, 7);
   const latestAverage = averaged.length ? averaged[averaged.length - 1].value : null;
   const calendarWeek = state.planProgress.calendarWeek ?? 1;
   const gain = gainRateVerdict(bodyweight, { calendarWeek, targets: gainTargets(state) });
 
-  const waist = state.measurements
-    .filter((m) => Number.isFinite(m.waist))
-    .map((m) => ({ dateISO: m.dateISO, value: m.waist }));
+  const waistClean = measurementSeries(state.measurements, 'waist');
+  const waist = waistClean.points;
 
   const relative = relativeStrengthSnapshot(
     perCycle.length ? perCycle : series.points,
@@ -164,12 +170,14 @@ function metrics(state) {
     change,
     best,
     bodyweight,
+    bodyweightExcluded: bodyweightClean.excluded,
     averaged,
     relative,
     latestAverage,
     calendarWeek,
     gain,
     waist,
+    waistExcluded: waistClean.excluded,
     waistTrend: trend(waist, { label: 'waist' }),
     goal: focus === 'benchComp' ? goalProgress(series.points, { goalKg: GOAL_BENCH_KG }) : null,
   };
@@ -640,7 +648,7 @@ function bodyweightCard(state, m, unit) {
             anchor?.dateISO || ''
           )} — being inside it means you are where the plan expects, not merely moving at a plausible speed.`
         : `The corridor is the ${target.lo}–${target.hi} kg/week target. A rate needs ${escape(m.gain.reason || 'more weigh-ins')}.`
-    }</p></div>`;
+    }${leftOut(m.bodyweightExcluded, (row) => `${fmtLoad(row.value, unit)} ${unit}`)}</p></div>`;
 }
 
 function waistCard(m, len = 'cm') {
@@ -656,7 +664,7 @@ function waistCard(m, len = 'cm') {
       m.waistTrend.ok
         ? ` Currently <b>${fmtLength(m.waistTrend.perWeek, len)} ${lu}/week</b> over ${m.waistTrend.spanDays} days.`
         : ''
-    }</p></div>`;
+    }${leftOut(m.waistExcluded, (row) => `${fmtLength(row.value, len)} ${lu}`)}</p></div>`;
 }
 
 export function relativeStrengthSeries(strengthPoints, bodyweightPoints, maxGapDays = 3) {
@@ -1102,12 +1110,12 @@ function measurementsCard(state) {
     ['armL', 'Arm L'], ['armR', 'Arm R'], ['quadL', 'Quad L'], ['quadR', 'Quad R'], ['neck', 'Neck'],
   ];
 
+  const excluded = [];
   const rows = sites
     .map(([id, label]) => {
-      const points = state.measurements
-        .filter((m) => Number.isFinite(m[id]))
-        .map((m) => ({ dateISO: m.dateISO, value: m[id] }))
-        .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+      const series = measurementSeries(state.measurements, id);
+      excluded.push(...series.excluded.map((row) => ({ ...row, label })));
+      const points = series.points;
       if (points.length < 2) return null;
 
       const firstPoint = points[0];
@@ -1133,10 +1141,7 @@ function measurementsCard(state) {
 
   const requestedFocus = state.measurementFocus || 'chest';
   const focus = rows.find((row) => row.id === requestedFocus) || rows[0];
-  const bodyweight = state.daily
-    .filter((d) => Number.isFinite(d.bodyweight))
-    .map((d) => ({ dateISO: d.dateISO, value: d.bodyweight }))
-    .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+  const bodyweight = bodyweightSeries(state).points;
   const weightByDate = new Map(bodyweight.map((point) => [point.dateISO, point.value]));
   const comparison = focus.points.map((point) => {
     let weight = weightByDate.get(point.dateISO) ?? null;
@@ -1205,7 +1210,10 @@ function measurementsCard(state) {
         )
         .join('')}
     </tbody></table>
-    <p class="hint">All tape values are centimetres. A rate needs at least three readings across fourteen days. Tape changes describe circumference, not body composition: repeat the same landmarks and tension before treating a difference as real.</p></div>`;
+    <p class="hint">All tape values are centimetres. A rate needs at least three readings across fourteen days. Tape changes describe circumference, not body composition: repeat the same landmarks and tension before treating a difference as real.${leftOut(
+      excluded,
+      (row) => `${row.label} ${fmtLength(row.value, len)} ${lu}`
+    )}</p></div>`;
 }
 
 /** Total weight moved — useless for programming, oddly compelling at 6am. */

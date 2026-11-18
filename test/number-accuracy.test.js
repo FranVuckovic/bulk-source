@@ -551,3 +551,42 @@ test('plausibility: a 1300 kg working max asks first; Save keeps what he typed',
     assert.deepEqual(written, [['benchComp', 1300]]);
   }, { 'max-value': '1300' });
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   QA H3 · typos already stored are left out of trends, with the reason
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('QA H3: his stored tape typos are left out of the series and named, never deleted', async () => {
+  const { measurementSeries } = await import('../js/analytics.js');
+  const tape = [
+    { id: 1, dateISO: '2026-08-30', chest: 106, armL: 38, armRFlex: 41, forearmL: 31, quadR: 26.5 },
+    { id: 2, dateISO: '2026-09-02', chest: 106.5, armL: 38.2, armRFlex: 97.1, forearmL: 91, quadR: 61 },
+    { id: 3, dateISO: '2026-09-20', chest: 107, armL: 38.4, armRFlex: 41.5, forearmL: 31.2, quadR: 61.5 },
+    { id: 4, dateISO: '2026-10-20', chest: 107.5, armL: 3492, armRFlex: 41.8, forearmL: 31.3, quadR: 62 },
+    { id: 5, dateISO: '2026-10-23', chest: 408.7, armL: 38.8, armRFlex: 42, forearmL: 31.5, quadR: 62.2 },
+    { id: 6, dateISO: '2026-11-10', chest: 108, armL: 39, armRFlex: 42.1, forearmL: 31.6, quadR: 62.5 },
+  ];
+  const typos = { chest: 408.7, armL: 3492, armRFlex: 97.1, forearmL: 91, quadR: 26.5 };
+  for (const [site, typo] of Object.entries(typos)) {
+    const series = measurementSeries(tape, site);
+    assert.ok(!series.points.some((p) => p.value === typo), `${site} ${typo} was plotted`);
+    const why = series.excluded.find((row) => row.value === typo);
+    assert.ok(why?.reason, `${site} ${typo} was dropped without a reason`);
+    assert.equal(series.points.length, 5, `${site}: a real reading was thrown out with the typo`);
+  }
+  assert.equal(tape[4].chest, 408.7, 'the stored reading was changed');
+});
+
+test('QA H3: a 97 kg reading among 91s is left out of the bodyweight trend, with its reason', async () => {
+  const { bodyweightSeries, gainRateVerdict } = await import('../js/analytics.js');
+  const daily = weighIns([91.0, 91.1, 91.2, 91.1, 97, 91.3, 91.2, 91.4, 91.5, 91.4, 91.6, 91.5, 91.7, 91.8, 91.7], '2026-11-01')
+    .map((p, i) => ({ id: i, dateISO: p.dateISO, bodyweight: p.value }));
+  const series = bodyweightSeries(daily);
+  assert.ok(!series.points.some((p) => p.value === 97));
+  assert.match(series.excluded[0].reason, /kg from/);
+  const clean = gainRateVerdict(series.points);
+  assert.ok(clean.perWeek < 0.5, `one typo still moved the rate to ${clean.perWeek}`);
+  const steady = bodyweightSeries(weighIns([86, 86.5, 87, 87.4, 88, 88.5, 89], '2026-08-01', 7)
+    .map((p, i) => ({ id: i, dateISO: p.dateISO, bodyweight: p.value })));
+  assert.equal(steady.excluded.length, 0, 'a real 3 kg gain over seven weeks was called a typo');
+});
