@@ -826,9 +826,20 @@ export function softDeleteSession(db, sessionLogId, { reason = null } = {}) {
   });
 }
 
-/** Undo a soft delete, sets included. */
-export function restoreSession(db, sessionLogId) {
-  return withTransaction(db, ['sessionLogs', 'sets', 'auditLog'], 'readwrite', async ([logs, sets, audit]) => {
+/**
+ * Undo a soft delete, sets included.
+ *
+ * `today` is the device's local date. It decides what happens to a session
+ * that was still open when it was deleted — the Train screen's "discard".
+ * Restored as it was, it came back `active` with no end time while the active
+ * pointer had been cleared: not on the Train screen, not finishable, and with
+ * no Reopen in the Log because it had never ended. Now it either becomes the
+ * open session again (discarded today, and nothing else is open) or comes back
+ * finished at its last set, as a partial session that can be reopened.
+ */
+export function restoreSession(db, sessionLogId, { today = null } = {}) {
+  const stores = ['sessionLogs', 'sets', 'auditLog', 'settings'];
+  return withTransaction(db, stores, 'readwrite', async ([logs, sets, audit, settings]) => {
     const log = await request(logs.get(sessionLogId));
     if (!log) throw new Error('that session no longer exists');
 
@@ -844,18 +855,46 @@ export function restoreSession(db, sessionLogId) {
       (set) => set.deletedAtISO && set.deletedAtISO === log.deletedAtISO
     );
     for (const set of attached) await request(sets.put({ ...set, deletedAtISO: null }));
-    const restored = {
+    const atISO = new Date().toISOString();
+    let restored = {
       ...log,
       deletedAtISO: null,
       status: log.statusBeforeDelete ?? (log.endedAt ? 'complete' : 'active'),
       statusBeforeDelete: null,
     };
+
+    let reopened = false;
+    if (!log.endedAt) {
+      const pointer = await request(settings.get('activeSessionLogId'));
+      const other = pointer?.value != null && pointer.value !== sessionLogId ? await request(logs.get(pointer.value)) : null;
+      const anotherOpen = !!(other && !other.endedAt && !other.deletedAtISO);
+      const day = String(log.localDate || log.dateISO || '').slice(0, 10);
+
+      if (!anotherOpen && today && day === today) {
+        restored = { ...restored, status: 'active' };
+        await request(settings.put({ key: 'activeSessionLogId', value: sessionLogId }));
+        reopened = true;
+      } else {
+        const stamps = attached.map((set) => set.timestampISO).filter(Boolean).sort();
+        restored = {
+          ...restored,
+          endedAt: stamps[stamps.length - 1] ?? log.startedAt ?? atISO,
+          localEndDate: day || null,
+          status: 'partial',
+          isPartial: true,
+        };
+      }
+    }
+
     await request(logs.put(restored));
     await request(
-      audit.put({ atISO: new Date().toISOString(), entity: 'sessionLog', entityId: sessionLogId, action: 'restore' })
+      audit.put({
+        atISO, entity: 'sessionLog', entityId: sessionLogId, action: 'restore',
+        ...(log.endedAt ? {} : { reopened, closedAt: reopened ? null : restored.endedAt }),
+      })
     );
 
-    return { log: restored, restoredSets: attached.length };
+    return { log: restored, restoredSets: attached.length, reopened };
   });
 }
 

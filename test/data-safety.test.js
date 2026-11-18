@@ -27,6 +27,7 @@ import {
   softDeleteSession,
   restoreSession,
   deletedRecords,
+  startSessionAtomic,
 } from '../js/db.js';
 import { toCsv, CSV_COLUMNS, buildExport, parseImport, validateImport, applyImport, verifyAgainst } from '../js/export.js';
 import { exportRangeDefaults } from '../js/ui/settings.js';
@@ -293,4 +294,71 @@ test('M1: restoring a deleted session does not bring back displaced sets or sets
   assert.deepEqual(live.map((row) => row.id), [hack.id], 'and exactly that one after the restore');
   const binned = (await deletedRecords(db)).filter((entry) => entry.store === 'sets');
   assert.ok(binned.some((entry) => entry.id === duplicate.id), 'the purposely deleted set is still in the bin');
+});
+
+/* ── L2: restoring a discarded open session ─────────────────────────── */
+
+/** An open session with two sets, discarded the way the Train screen does it. */
+async function discardedOpenSession(db, { day = '2026-08-18' } = {}) {
+  const { log } = await startSessionAtomic(
+    db,
+    { dateISO: day, localDate: day, sessionId: 'A', startedAt: `${day}T17:00:00.000Z`, endedAt: null },
+    { operationId: `start-${day}` }
+  );
+  for (const [setIndex, minute] of [[0, '10'], [1, '20']]) {
+    await putSetIdempotent(
+      db,
+      { sessionLogId: log.id, slotIndex: 0, setIndex, exerciseId: 'benchComp', load: 100, reps: 5, rpe: 8, timestampISO: `${day}T17:${minute}:00.000Z` },
+      { operationId: `set-${day}-${setIndex}` }
+    );
+  }
+  await softDeleteSession(db, log.id, { reason: 'discarded while active' });
+  await put(db, 'settings', { key: 'activeSessionLogId', value: null });
+  return log.id;
+}
+
+test('L2: a session discarded by mistake today comes back as the open session, not stuck', async () => {
+  const db = await freshDb();
+  const id = await discardedOpenSession(db);
+
+  const result = await restoreSession(db, id, { today: '2026-08-18' });
+  assert.equal(result.reopened, true);
+  const settings = await getAll(db, 'settings');
+  assert.equal(settings.find((row) => row.key === 'activeSessionLogId').value, id, 'it is the active session again');
+  const log = (await getAll(db, 'sessionLogs')).find((row) => row.id === id);
+  assert.equal(log.status, 'active');
+  assert.equal(log.endedAt, null);
+});
+
+test('L2: a discarded session that cannot be reopened is restored finished, at its last set', async () => {
+  // Discarded on an earlier day: reopening it would start a clock that has
+  // been running for days. And if another session is open, two open sessions
+  // is exactly what startSessionAtomic exists to prevent. Either way it comes
+  // back finished, so it can be seen, counted and reopened from the Log.
+  const db = await freshDb();
+  const id = await discardedOpenSession(db);
+
+  const result = await restoreSession(db, id, { today: '2026-08-25' });
+  assert.equal(result.reopened, false);
+  const log = (await getAll(db, 'sessionLogs')).find((row) => row.id === id);
+  assert.equal(log.endedAt, '2026-08-18T17:20:00.000Z', 'ended at the last set logged');
+  assert.equal(log.status, 'partial');
+  const settings = await getAll(db, 'settings');
+  assert.equal(settings.find((row) => row.key === 'activeSessionLogId').value, null, 'nothing was made active');
+
+  const other = await freshDb();
+  const discarded = await discardedOpenSession(other);
+  const { log: open } = await startSessionAtomic(other, { dateISO: '2026-08-18', sessionId: 'B', endedAt: null }, { operationId: 'b' });
+  const again = await restoreSession(other, discarded, { today: '2026-08-18' });
+  assert.equal(again.reopened, false, 'another session is open, so it is not displaced');
+  const pointer = (await getAll(other, 'settings')).find((row) => row.key === 'activeSessionLogId').value;
+  assert.equal(pointer, open.id);
+});
+
+test('L2: the bin passes today to the restore and picks up a reopened session', () => {
+  const app = source('../js/app.js');
+  const body = app.slice(app.indexOf('async restoreEntry(store, rawKey)'));
+  const restoreEntry = body.slice(0, body.indexOf('\n  },'));
+  assert.match(restoreEntry, /restoreSession\(state\.db, key, \{ today: todayISO\(\) \}\)/);
+  assert.match(restoreEntry, /reopened[\s\S]*restoreActiveSession\(\)/, 'a reopened session is put back on the Train screen');
 });

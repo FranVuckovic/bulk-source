@@ -1213,9 +1213,13 @@ const ctx = {
     // keyed by its date and a session by a number, so it has to be put back
     // into its own type before IndexedDB will find it.
     const key = parseStoreKey(store, rawKey);
-    if (store === 'sessionLogs') await restoreSession(state.db, key);
-    else await restoreRow(state.db, store, key);
+    const result =
+      store === 'sessionLogs' ? await restoreSession(state.db, key, { today: todayISO() }) : await restoreRow(state.db, store, key);
     await loadEverything();
+    // A session discarded by mistake today comes back as the open one. Only
+    // then is the Train screen rebuilt, so restoring anything else leaves a
+    // half-typed note alone.
+    if (result?.reopened && !state.activeLog) await restoreActiveSession();
     buildHistory();
   },
 
