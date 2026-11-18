@@ -20,6 +20,7 @@ import {
   closeSheet,
 } from './components.js';
 import { workingMaxInfo } from './train.js';
+import { localDate } from '../dates.js';
 
 const bytes = (n) =>
   n == null ? '—' : n > 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n > 1e6 ? `${(n / 1e6).toFixed(0)} MB` : `${(n / 1e3).toFixed(0)} KB`;
@@ -118,8 +119,8 @@ export function view(ctx) {
     <button class="big ghost mt" data-act="pick-import">Import from a zip</button>
     <button class="big ghost mt" data-act="pick-verify">Verify a backup restores</button>
     <button class="big ghost mt" data-act="history-backup">Download a plain JSON backup</button>
-    <input type="file" id="import-file" accept=".zip,application/zip" hidden data-act-file="import">
-    <input type="file" id="verify-file" accept=".zip,application/zip" hidden data-act-file="verify">
+    <input type="file" id="import-file" accept=".zip,application/zip,.json,application/json" hidden data-act-file="import">
+    <input type="file" id="verify-file" accept=".zip,application/zip,.json,application/json" hidden data-act-file="verify">
     <p class="hint">The zip holds CSVs you can open in anything, a lossless <b>data.json</b> for restoring, your plan,
     and your photos as real files. It is also how data moves between your phone and your laptop.</p>
     <p class="hint">Verify reads a backup and checks it against what is stored, without touching your data — so you
@@ -286,6 +287,25 @@ function maxesCard(state) {
   </div></details>`;
 }
 
+/**
+ * The export sheet's default range: everything stored, up to today.
+ *
+ * "From" used to be the first session's date, so weigh-ins, tape readings and
+ * photos from before it were silently left out of the default export. "To" was
+ * `toISOString()`, a UTC date, so for the first hour or two after local
+ * midnight it was yesterday and left out the session just logged. Today is
+ * `state.todayISO`, the local civil date the rest of the app uses.
+ */
+export function exportRangeDefaults(state) {
+  const today = state.todayISO || localDate();
+  const dates = [state.logs, state.daily, state.measurements, state.niggles, state.media]
+    .flatMap((rows) => rows || [])
+    .map((row) => String(row.localDate || row.dateISO || '').slice(0, 10))
+    .filter((day) => /^\d{4}-\d{2}-\d{2}$/.test(day))
+    .sort();
+  return { from: dates[0] && dates[0] < today ? dates[0] : today, to: today };
+}
+
 /** File pickers, handled on change rather than click. */
 export const files = {
   /**
@@ -307,10 +327,17 @@ export const files = {
       return;
     }
 
+    // A merged store keeps what it has and takes the backup's rows over the
+    // same entries, so its final count is not known from counts alone — it is
+    // said in words rather than guessed at.
     const rows = report.preview
       .map(
         (row) => `<tr><td>${escape(row.store)}</td><td>${row.existing}</td><td>${
-          row.incoming == null ? '<span style="color:var(--muted)">untouched</span>' : row.incoming
+          row.incoming == null
+            ? '<span style="color:var(--muted)">untouched</span>'
+            : row.mode === 'merge'
+              ? `${row.existing} kept + ${row.incoming} from backup`
+              : row.incoming
         }</td></tr>`
       )
       .join('');
@@ -326,6 +353,17 @@ export const files = {
           ? `<div class="flag f-warn" style="margin-top:12px"><i>!</i><span>This <b>replaces</b> ${escape(
               report.replaces.join(', ')
             )}. Anything in those stores that is not in the backup is lost.</span></div>`
+          : ''
+      }
+      ${
+        report.merges.length
+          ? `<div class="flag f-ok" style="margin-top:8px"><i>✓</i><span>This backup holds only part of ${escape(
+              report.merges.join(', ')
+            )}${
+              report.range?.from || report.range?.to
+                ? ` (${escape(report.range.from || '…')} to ${escape(report.range.to || '…')})`
+                : ''
+            }, so those are <b>merged</b>: entries outside it are kept.</span></div>`
           : ''
       }
       ${
@@ -482,18 +520,17 @@ export const actions = {
   },
 
   async 'confirm-import'(ctx) {
-    const restored = await ctx.applyStagedImport();
+    const { restored, modes = {} } = await ctx.applyStagedImport();
     openSheet(`<div class="ttl">Restored</div>
       <p style="text-align:center;font-size:13px;margin:14px 0">${Object.entries(restored)
         .filter(([, count]) => count)
-        .map(([store, count]) => `${count} ${escape(store)}`)
+        .map(([store, count]) => `${count} ${escape(store)}${modes[store] === 'merge' ? ' merged' : ''}`)
         .join(' · ')}</p>
       <button class="big mt" data-act="sheet-close">Done</button>`);
   },
 
   'open-export'(ctx) {
-    const today = new Date().toISOString().slice(0, 10);
-    const earliest = ctx.state.logs[0]?.dateISO?.slice(0, 10) || today;
+    const { from: earliest, to: today } = exportRangeDefaults(ctx.state);
 
     openSheet(`<div class="ttl">Export</div>
       <p style="font-size:13px;margin:12px 0 8px;color:var(--ink2)">Pick a range and what to include. One zip comes
@@ -533,8 +570,8 @@ export const actions = {
     const meta = await ctx.exportZip({ from: value('ex-from'), to: value('ex-to'), include });
     openSheet(`<div class="ttl">Exported</div>
       <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">Your zip is in your downloads.</p>
-      <p style="text-align:center;font-size:13px">${meta.counts.sessionLogs} sessions · ${meta.counts.sets} sets ·
-      ${meta.counts.daily} daily · ${meta.counts.measurements} measurements · ${meta.counts.media} media</p>
+      <p style="text-align:center;font-size:13px">${meta.counts.sessionLogs ?? 0} sessions · ${meta.counts.sets ?? 0} sets ·
+      ${meta.counts.daily ?? 0} daily · ${meta.counts.measurements ?? 0} measurements · ${meta.counts.media ?? 0} media</p>
       <button class="big mt" data-act="sheet-close">Done</button>`);
   },
 

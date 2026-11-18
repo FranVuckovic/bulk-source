@@ -225,8 +225,10 @@ test('leaving content out of an export leaves it out', async () => {
   const { zip, files } = buildExport(full, null, { include: { media: false, daily: false } });
   const parsed = parseImport(zip);
 
-  assert.equal(parsed.data.media.length, 0);
-  assert.equal(parsed.data.daily.length, 0);
+  // Absent rather than an empty list: an empty list is a claim that there are
+  // none, and a restore believed it and deleted them (H2, data-safety.test.js).
+  assert.equal(parsed.data.media, undefined);
+  assert.equal(parsed.data.daily, undefined);
   assert.equal(parsed.data.sets.length, 4, 'what was included is untouched');
   assert.ok(!files.some((name) => name.startsWith('photos/')));
   assert.ok(!files.includes('daily.csv'));

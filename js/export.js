@@ -219,6 +219,19 @@ export const CSV_COLUMNS = Object.freeze({
    Building and restoring
    ═══════════════════════════════════════════════════════════════════════ */
 
+/** The stores a date range filters; everything else always travels whole. */
+const DATED_STORES = Object.freeze(['sessionLogs', 'sets', 'daily', 'measurements', 'niggles', 'media']);
+
+/** Export checkbox → the stores it covers. */
+const CATEGORY_STORES = Object.freeze({
+  sets: ['sessionLogs', 'sets'],
+  daily: ['daily'],
+  measurements: ['measurements'],
+  niggles: ['niggles'],
+  media: ['media'],
+  maxes: ['maxes', 'maxHistory'],
+});
+
 const inRange = (dateISO, from, to) => {
   const day = (dateISO || '').slice(0, 10);
   if (from && day < from) return false;
@@ -243,16 +256,21 @@ export function buildExport(snapshot, plan, { from = null, to = null, include = 
   const logs = (data.sessionLogs || []).filter((log) => inRange(log.dateISO, from, to));
   const logIds = new Set(logs.map((log) => log.id));
   const sets = (data.sets || []).filter((set) => logIds.has(set.sessionLogId));
+  const dated = (store) => (data[store] || []).filter((row) => inRange(row.dateISO, from, to));
 
+  /*
+   * A category that is not ticked is left OUT of the archive, not written as an
+   * empty list. An empty list is a statement — "there are no sessions" — and a
+   * restore believes it: unticking "Sets & sessions" produced a zip that, when
+   * imported, deleted every session and set in the database.
+   */
   const selected = {
-    sessionLogs: want.sets ? logs : [],
-    sets: want.sets ? sets : [],
-    daily: want.daily ? (data.daily || []).filter((row) => inRange(row.dateISO, from, to)) : [],
-    measurements: want.measurements ? (data.measurements || []).filter((row) => inRange(row.dateISO, from, to)) : [],
-    niggles: want.niggles ? (data.niggles || []).filter((row) => inRange(row.dateISO, from, to)) : [],
-    media: want.media ? (data.media || []).filter((row) => inRange(row.dateISO, from, to)) : [],
-    maxes: want.maxes ? data.maxes || [] : [],
-    maxHistory: want.maxes ? data.maxHistory || [] : [],
+    ...(want.sets ? { sessionLogs: logs, sets } : {}),
+    ...(want.daily ? { daily: dated('daily') } : {}),
+    ...(want.measurements ? { measurements: dated('measurements') } : {}),
+    ...(want.niggles ? { niggles: dated('niggles') } : {}),
+    ...(want.media ? { media: dated('media') } : {}),
+    ...(want.maxes ? { maxes: data.maxes || [], maxHistory: data.maxHistory || [] } : {}),
     settings: data.settings || [],
 
     /*
@@ -273,12 +291,24 @@ export function buildExport(snapshot, plan, { from = null, to = null, include = 
     auditLog: data.auditLog || [],
   };
 
+  /*
+   * Which stores the archive holds only PART of, because the date range left
+   * rows out. A restore merges these instead of replacing them, so a backup of
+   * August cannot delete July. Worked out from what was actually dropped, not
+   * from whether a range was typed: a range that happens to cover everything is
+   * a complete backup and restores like one.
+   */
+  const partial = Object.keys(selected).filter(
+    (store) => DATED_STORES.includes(store) && selected[store].length < (data[store] || []).length
+  );
+
   const meta = {
     format: FORMAT_VERSION,
     exportedAtISO: new Date().toISOString(),
     app: 'Bulk',
     range: { from, to },
     included: want,
+    partial,
     counts: Object.fromEntries(Object.entries(selected).map(([name, rows]) => [name, rows.length])),
   };
 
@@ -311,7 +341,7 @@ export function buildExport(snapshot, plan, { from = null, to = null, include = 
     return { ...rest, photoFile: name, thumbFile };
   });
 
-  const payload = { ...meta, data: { ...selected, media: mediaForJson } };
+  const payload = { ...meta, data: { ...selected, ...(selected.media ? { media: mediaForJson } : {}) } };
 
   const files = [
     { name: 'meta.json', data: utf8(JSON.stringify(meta, null, 2)) },
@@ -330,8 +360,60 @@ export function buildExport(snapshot, plan, { from = null, to = null, include = 
   return { zip: makeZip(files), meta, files: files.map((f) => f.name), photos: photoFiles.length };
 }
 
-/** Pull the lossless payload back out of a zip. */
+/*
+ * A Uint8Array written with JSON.stringify comes out as {"0":255,"1":216,…}.
+ * That is what the plain JSON backup holds for every photo, so reading one back
+ * turns that shape into bytes again rather than storing an object where the
+ * app expects an image.
+ */
+const BYTE_FIELDS = ['imageBytes', 'thumbBytes'];
+function reviveBytes(value) {
+  if (!value || typeof value !== 'object' || value instanceof Uint8Array || Array.isArray(value)) return value;
+  const keys = Object.keys(value);
+  if (!keys.length || !keys.every((key, index) => key === String(index))) return value;
+  return Uint8Array.from(keys.map((key) => value[key]));
+}
+
+/**
+ * The plain JSON backup — `db.snapshot()` written as a file.
+ *
+ * It is what the app downloads before an import, before an erase, and from
+ * every "Export a backup first" button. Until it could be read here, the one
+ * file taken to protect against a bad restore was a file the restore refused.
+ */
+function parseJsonSnapshot(bytes) {
+  let parsed;
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    throw new Error('That file is not a Bulk backup — it is neither a zip nor readable JSON.');
+  }
+  if (!parsed || typeof parsed !== 'object' || !parsed.data) {
+    throw new Error('That JSON file has no data in it — it was not exported by Bulk.');
+  }
+  for (const rows of Object.values(parsed.data)) {
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      if (!row || typeof row !== 'object') continue;
+      for (const field of BYTE_FIELDS) if (field in row) row[field] = reviveBytes(row[field]);
+    }
+  }
+  return parsed;
+}
+
+/** Pull the lossless payload back out of a zip, or out of a plain JSON backup. */
 export function parseImport(bytes) {
+  // A zip starts with "PK"; the JSON backup starts with "{" (after any
+  // whitespace or a byte-order mark).
+  const first = [...bytes.subarray(0, 8)].find((byte) => ![0x20, 0x09, 0x0a, 0x0d, 0xef, 0xbb, 0xbf].includes(byte));
+  if (first === 0x7b) {
+    const parsed = parseJsonSnapshot(bytes);
+    if (parsed.format > FORMAT_VERSION) {
+      throw new Error(`This backup came from a newer version of the app (format ${parsed.format}).`);
+    }
+    return parsed;
+  }
+
   const files = readZip(bytes);
   const payload = files['data.json'];
   if (!payload) throw new Error('This zip has no data.json — it was not exported by Bulk.');
@@ -343,7 +425,9 @@ export function parseImport(bytes) {
   }
 
   // Put the photo bytes back on their records, so a restore is byte-for-byte.
-  parsed.data.media = (parsed.data.media || []).map((item) => {
+  // Only when the archive carries photos at all: an absent store stays absent.
+  if (!Array.isArray(parsed.data.media)) return parsed;
+  parsed.data.media = parsed.data.media.map((item) => {
     const restored = { ...item };
     if (item.photoFile) {
       const bytes = files[item.photoFile];
@@ -362,20 +446,59 @@ export function parseImport(bytes) {
 }
 
 /**
- * Restore into a database. Replaces the contents of every store the export
- * carries and leaves the rest alone, so a partial export cannot silently wipe
- * what it did not include.
+ * Restore into a database. Replaces every store the export holds completely,
+ * merges the ones it holds part of, and leaves the rest alone, so a partial
+ * export cannot silently wipe what it did not include. See importModes.
  */
 export async function restore(db, parsed, { put, clearStore }) {
   const restored = {};
+  const modes = importModes(parsed);
   for (const store of ALL_STORES) {
     const rows = parsed.data[store];
-    if (!rows) continue;
-    await clearStore(db, store);
+    if (!rows || !modes[store]) continue;
+    if (modes[store] === 'replace') await clearStore(db, store);
     for (const row of rows) await put(db, store, row);
     restored[store] = rows.length;
   }
   return restored;
+}
+
+/**
+ * What a restore does to each store the archive carries: `replace` (empty it
+ * and refill from the archive) or `merge` (write the archive's rows over the
+ * same keys and leave every other row alone). A store missing from the result
+ * is not touched at all.
+ *
+ * Only a store the archive holds COMPLETELY may replace. Two shapes of archive
+ * hold less than that, and both used to be restored by clearing:
+ *
+ *   A date range. The sheet defaulted "From" to the first session, so the
+ *   weigh-ins and tape readings from before it were not in the zip — and a
+ *   restore emptied `daily` and kept only what was in range. Ranged stores now
+ *   merge. Archives written before `partial` existed say only what range they
+ *   were cut to, so any range on those makes every dated store merge.
+ *
+ *   An unticked category. Older archives wrote it as an empty list beside
+ *   `included: { sets: false }`; that list is ignored rather than believed.
+ */
+export function importModes(parsed) {
+  const data = parsed?.data || {};
+  const included = parsed?.included || {};
+  const skipped = new Set(
+    Object.entries(CATEGORY_STORES).flatMap(([category, stores]) => (included[category] === false ? stores : []))
+  );
+
+  let partial;
+  if (Array.isArray(parsed?.partial)) partial = new Set(parsed.partial);
+  else if (parsed?.range?.from || parsed?.range?.to) partial = new Set(DATED_STORES);
+  else partial = new Set();
+
+  const modes = {};
+  for (const store of ALL_STORES) {
+    if (!Array.isArray(data[store]) || skipped.has(store)) continue;
+    modes[store] = partial.has(store) ? 'merge' : 'replace';
+  }
+  return modes;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -477,10 +600,12 @@ export function validateImport(parsed, { current = {} } = {}) {
     keys.add(key);
   }
 
+  const modes = importModes(parsed);
   const preview = ALL_STORES.map((store) => ({
     store,
-    incoming: Array.isArray(data[store]) ? data[store].length : null,
+    incoming: modes[store] ? data[store].length : null,
     existing: current[store] ?? 0,
+    mode: modes[store] ?? null,
   })).filter((row) => row.incoming != null || row.existing);
 
   return {
@@ -488,9 +613,12 @@ export function validateImport(parsed, { current = {} } = {}) {
     problems,
     warnings,
     preview,
-    takenAtISO: parsed.takenAtISO ?? null,
+    modes,
+    takenAtISO: parsed.takenAtISO ?? parsed.exportedAtISO ?? null,
     format: parsed.format,
-    replaces: preview.filter((row) => row.incoming != null && row.existing).map((row) => row.store),
+    range: parsed.range ?? null,
+    replaces: preview.filter((row) => row.mode === 'replace' && row.existing).map((row) => row.store),
+    merges: preview.filter((row) => row.mode === 'merge').map((row) => row.store),
   };
 }
 
@@ -503,7 +631,8 @@ export function validateImport(parsed, { current = {} } = {}) {
  */
 export function applyImport(db, parsed, { withTransaction, request, stores = ALL_STORES }) {
   const data = parsed.data || {};
-  const affected = stores.filter((store) => Array.isArray(data[store]));
+  const modes = importModes(parsed);
+  const affected = stores.filter((store) => modes[store]);
   if (!affected.length) return Promise.resolve({});
 
   return withTransaction(db, affected, 'readwrite', async (handles) => {
@@ -512,7 +641,9 @@ export function applyImport(db, parsed, { withTransaction, request, stores = ALL
 
     for (const [index, store] of affected.entries()) {
       const handle = list[index];
-      await request(handle.clear());
+      // A store the archive holds only part of is merged: its rows land over
+      // the same keys and nothing outside them is touched. See importModes.
+      if (modes[store] === 'replace') await request(handle.clear());
       for (const row of data[store]) await request(handle.put(row));
       restored[store] = data[store].length;
     }
@@ -557,14 +688,25 @@ export function verifyAgainst(parsed, snapshot) {
     return JSON.stringify(flat, Object.keys(flat).sort());
   };
 
+  const modes = importModes(parsed);
   for (const store of ALL_STORES) {
     const backup = parsed.data?.[store];
     const live = snapshot.data?.[store];
-    if (!backup) continue;
+    if (!backup || !modes[store]) continue;
     if (!live) {
       problems.push(`${store} is in the backup but not in the database.`);
       continue;
     }
+
+    // A ranged backup holds part of a store by design. Every row it has must
+    // be here; the rows outside its range are not its business.
+    if (modes[store] === 'merge') {
+      const liveRows = new Set(live.map(canonical));
+      const missing = backup.filter((row) => !liveRows.has(canonical(row)));
+      if (missing.length) problems.push(`${store}: ${missing.length} records in the backup are not stored as they are there.`);
+      continue;
+    }
+
     if (backup.length !== live.length) {
       problems.push(`${store}: ${backup.length} records in the backup against ${live.length} stored.`);
       continue;

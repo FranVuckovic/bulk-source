@@ -1668,6 +1668,7 @@ const ctx = {
     await ctx.downloadBackup({ label: 'before-import' });
 
     const restored = await applyImport(state.db, staged.parsed, { withTransaction, request });
+    const modes = staged.report.modes || {};
     state.pendingImport = null;
 
     await loadEverything();
@@ -1675,7 +1676,7 @@ const ctx = {
     buildHistory();
     resetBodyDraft();
     render();
-    return restored;
+    return { restored, modes };
   },
 
   /** Read a backup and compare its contents with what is stored. Writes nothing. */
