@@ -165,9 +165,15 @@ export const sessionStatusFor = (ratio) =>
  * after an import. Every correction here produces an audit entry; nothing
  * changes irreversibly and silently.
  */
-export function planCorrection({ field, from, to, reason, atISO }) {
+export function planCorrection({ field, from, to, reason, atISO, max = null }) {
   if (!['cycleSequence', 'blockId', 'position', 'startDate'].includes(field)) {
     return { ok: false, reason: `${field} is not a correctable field` };
+  }
+  // A rotation is a whole number from 1 to the plan's last. A blank field
+  // arrives as Number('') = 0, which used to be stored as a cycle with
+  // sequence 0 and no block; 7.5 gave a rotation with no effort mode.
+  if (field === 'cycleSequence' && (!Number.isInteger(to) || to < 1 || (max != null && to > max))) {
+    return { ok: false, reason: `a rotation is a whole number from 1${max != null ? ` to ${max}` : ''}` };
   }
   if (from === to) return { ok: false, reason: 'that is already the current value' };
   if (!reason) return { ok: false, reason: 'a correction has to say why' };

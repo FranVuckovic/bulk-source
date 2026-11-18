@@ -33,6 +33,7 @@ import {
   ALL_STORES,
 } from '../js/db.js';
 import { cycleSettingKeys } from '../js/plans.js';
+import { planCorrection } from '../js/cycle.js';
 import { toCsv, CSV_COLUMNS, buildExport, parseImport, validateImport, applyImport, verifyAgainst } from '../js/export.js';
 import { exportRangeDefaults } from '../js/ui/settings.js';
 
@@ -429,4 +430,28 @@ test('L5: erasing a database leaves no rotation pointer for either plan', async 
   }
   assert.equal(settings.activePlanId, undefined, 'and the plan choice falls back to the default');
   assert.equal(settings.unit, 'kg', 'defaults still apply to what was erased');
+});
+
+/* ── L1: rotation correction accepted 0, fractions and out-of-range ──── */
+
+test('L1: a rotation correction refuses 0, a blank, a fraction and a rotation past the end', () => {
+  // A blank field is Number('') = 0, which was accepted and stored a cycle
+  // with sequence 0 and no block; 7.5 gave a rotation with no effort mode.
+  const correct = (to) =>
+    planCorrection({ field: 'cycleSequence', from: 3, to, reason: 'trained away from the app', atISO: 'x', max: 33 });
+  for (const bad of [0, Number(''), 7.5, -1, 34, NaN, Infinity]) {
+    assert.equal(correct(bad).ok, false, `${bad} is refused`);
+  }
+  assert.equal(correct(4).ok, true);
+  assert.equal(correct(33).ok, true, 'the last rotation is a rotation');
+});
+
+test('L1: the app passes the plan length to the correction, and moving a session validates the same way', () => {
+  const app = source('../js/app.js');
+  const correctCycle = bodyOf(app, 'async correctCycle(');
+  assert.match(correctCycle, /max: state\.plan\.meta\.rotations/);
+
+  const move = bodyOf(app, 'async moveSessionToCycle(');
+  assert.match(move, /Number\.isInteger\(to\)/, 'a fraction is refused rather than clamped');
+  assert.doesNotMatch(move, /Math\.max\(1, Number\(toSequence\)\)/, 'and 0 is refused rather than silently becoming 1');
 });

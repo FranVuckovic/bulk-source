@@ -1306,7 +1306,12 @@ const ctx = {
       return { moved: false, reason: 'that session was trained under a different plan — switch to it in Settings to move it' };
     }
 
-    const to = Math.min(Math.max(1, Number(toSequence)), state.plan.meta.rotations);
+    // Refused rather than clamped: a blank became 0 and then rotation 1, and
+    // 7.5 became a rotation with no effort mode.
+    const to = Number(toSequence);
+    if (!Number.isInteger(to) || to < 1 || to > state.plan.meta.rotations) {
+      return { moved: false, reason: `a rotation is a whole number from 1 to ${state.plan.meta.rotations}` };
+    }
     const from = log.cycleSequence ?? null;
     if (to === from) return { moved: false, reason: 'it is already in that rotation' };
 
@@ -1337,7 +1342,7 @@ const ctx = {
    */
   async correctCycle(to, reason) {
     const correction = planCorrection({
-      field: 'cycleSequence', from: state.cycle.sequence, to, reason, atISO: nowISO(),
+      field: 'cycleSequence', from: state.cycle.sequence, to, reason, atISO: nowISO(), max: state.plan.meta.rotations,
     });
     if (!correction.ok) return correction;
 
