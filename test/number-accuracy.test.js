@@ -590,3 +590,56 @@ test('QA H3: a 97 kg reading among 91s is left out of the bodyweight trend, with
     .map((p, i) => ({ id: i, dateISO: p.dateISO, bodyweight: p.value })));
   assert.equal(steady.excluded.length, 0, 'a real 3 kg gain over seven weeks was called a typo');
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   M9 · a made attempt's working max is checked, and undone with it
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('M9: only becoming made, or a new load, writes the working max — not a note edit', async () => {
+  const { attemptMaxEffect } = await import('../js/calc.js');
+  const made = { id: 7, exerciseId: 'benchComp', load: 127.5, reps: 1, attemptResult: 'made' };
+  assert.equal(attemptMaxEffect(undefined, made), 'write', 'a new made attempt');
+  assert.equal(attemptMaxEffect({ ...made, attemptResult: null }, made), 'write', 'marked made later');
+  assert.equal(attemptMaxEffect(made, { ...made, note: 'felt fast' }), 'none', 'a note edit appended another history row');
+  assert.equal(attemptMaxEffect(made, { ...made, load: 130 }), 'write', 'a corrected load');
+  assert.equal(attemptMaxEffect(made, { ...made, attemptResult: 'missed' }), 'revert', 'un-made left its max in place');
+  assert.equal(attemptMaxEffect(made, { ...made, deletedAtISO: '2026-11-18T10:00:00Z' }), 'revert', 'deleted left its max in place');
+  assert.equal(attemptMaxEffect({ ...made, attemptResult: 'missed' }, { ...made, attemptResult: 'missed', note: 'x' }), 'none');
+});
+
+test('M9: undoing an attempt restores the max that was in force before it', async () => {
+  const { maxBeforeAttempt } = await import('../js/calc.js');
+  const history = [
+    { id: 1, setAtISO: '2026-09-04T17:00:00Z', workingMax: 120, sourceSetId: 403 },
+    { id: 2, setAtISO: '2026-09-11T17:00:00Z', workingMax: 122.5, sourceSetId: 566 },
+    { id: 3, setAtISO: '2026-09-15T08:00:00Z', workingMax: 123, sourceSetId: null }, // set in Settings
+    { id: 4, setAtISO: '2026-09-18T17:00:00Z', workingMax: 1325, sourceSetId: 748 }, // the typo
+    { id: 5, setAtISO: '2026-09-18T17:01:00Z', workingMax: 132.5, sourceSetId: 748 }, // load corrected
+  ];
+  const current = { exerciseId: 'benchComp', workingMax: 132.5, sourceSetId: 748 };
+  assert.deepEqual(maxBeforeAttempt(history, current, 748), { workingMax: 123, sourceSetId: null });
+  assert.equal(maxBeforeAttempt(history, current, 566), null, 'a later max replaced it — undoing 566 must change nothing');
+  assert.deepEqual(
+    maxBeforeAttempt([{ id: 1, setAtISO: 'x', workingMax: 120, sourceSetId: 9 }], { workingMax: 120, sourceSetId: 9 }, 9),
+    { workingMax: null, sourceSetId: null },
+    'with nothing before it, the max is cleared rather than left'
+  );
+});
+
+test('M9: every path that un-makes or deletes a set goes through the attempt rule (wiring)', () => {
+  // Written, tested and then not called is how two defects in this app
+  // shipped. These are the four ways a made attempt stops being one.
+  const app = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+  const body = (name) => {
+    const start = app.search(new RegExp(`(async function ${name}\\(|async ${name}\\()`));
+    assert.ok(start >= 0, `${name} not found`);
+    const ends = ['\n}\n', '\n  },\n'].map((end) => app.indexOf(end, start)).filter((i) => i > 0);
+    return app.slice(start, Math.min(...ends));
+  };
+  assert.match(body('saveSet'), /applyAttemptMax\(existing, written\)/, 'saveSet');
+  assert.match(body('removeSet'), /applyAttemptMax\(/, 'Remove this set');
+  assert.match(body('deleteSet'), /applyAttemptMax\(/, 'delete from the Log');
+  assert.match(body('repairSet'), /applyAttemptMax\(/, 'Fix this set');
+  assert.match(body('deleteEntry'), /applyAttemptMax\(/, 'deleting the whole session');
+  assert.doesNotMatch(app, /if \(written\.attemptResult === 'made'/, 'the unconditional write is back');
+});

@@ -47,7 +47,8 @@ import {
   isPartialSession,
   sortLogsByDate,
 } from './progress.js';
-import { systemLoad, estimateForSet, isHighConfidence } from './calc.js';
+import { systemLoad, estimateForSet, isHighConfidence, attemptMaxEffect, maxBeforeAttempt } from './calc.js';
+import { checkWorkingMax } from './plausibility.js';
 import { personalBestBefore } from './analytics.js';
 import { localDate, nowISO, timeZone, utcOffsetMinutes, daysBetween } from './dates.js';
 import {
@@ -561,35 +562,101 @@ async function saveSet(slotIndex, setIndex, values) {
   // that was fixed for the dated stores and missed here.
   state.sets = alive(await getAll(state.db, 'sets'));
 
-  /*
-   * A made attempt writes the working max, because the button that marks it
-   * made is the confirmation — a measured single is better evidence than any
-   * estimate the app can compute, and every prescription in the plan, the five
-   * bench variations included, is derived from this one number.
-   *
-   * It is not gated on being higher. If a lower single is what he actually
-   * pressed, that is what is true, and `maxHistory` is append-only, so nothing
-   * is lost by writing it.
-   */
-  if (written.attemptResult === 'made' && Number.isFinite(written.load)) {
-    await confirmWorkingMax(
-      state.db,
-      {
-        exerciseId: written.exerciseId,
-        workingMax: systemLoad(written.load, written.bodyweightUsed || 0),
-        conf: state.plan.exercises[written.exerciseId]?.maxConf ?? 'high',
-        setAtISO: nowISO(),
-        sourceSetId: written.id,
-        blockId: state.block.idx,
-      },
-      'measured-single'
-    );
-    state.maxes = new Map((await getAll(state.db, 'maxes')).map((m) => [m.exerciseId, m]));
-  }
+  const asked = await applyAttemptMax(existing, written);
 
   render();
 
-  if (beaten) celebrate(beaten);
+  // A question about the working max outranks the celebration: an implausible
+  // attempt is far more likely a typo than a record.
+  if (beaten && asked !== 'asked') celebrate(beaten);
+}
+
+/**
+ * What a change to an attempt set does to the working max.
+ *
+ * A made attempt writes the working max, because the button that marks it
+ * made is the confirmation — a measured single is better evidence than any
+ * estimate the app can compute, and every prescription in the plan, the five
+ * bench variations included, is derived from this one number. It is not
+ * gated on being higher: if a lower single is what he actually pressed, that
+ * is what is true.
+ *
+ * Three things it did not do. It wrote on every save of a made set, so
+ * editing the note appended another history row. It had no sanity check, so
+ * 1325 for 132.5 became the max for every bench load. And nothing undid it:
+ * un-marking the attempt or deleting the set left its max in place. Now it
+ * writes only when the attempt becomes made or its load changes, asks first
+ * when the new max is far from the current one, and restores the previous
+ * max — through the append-only history, so the undo is itself recorded —
+ * when the attempt is un-made or deleted.
+ */
+async function applyAttemptMax(before, after) {
+  const effect = attemptMaxEffect(before, after);
+  if (effect === 'write') return writeAttemptMax(after);
+  if (effect === 'revert') return revertAttemptMax(before);
+  return 'none';
+}
+
+async function writeAttemptMax(set, { confirmed = false } = {}) {
+  const workingMax = systemLoad(set.load, set.bodyweightUsed || 0);
+  const exercise = state.plan.exercises[set.exerciseId];
+  if (!confirmed) {
+    const unit = state.settings.unit;
+    const current = train.workingMaxInfo(state, set.exerciseId)?.value ?? null;
+    const check = checkWorkingMax(workingMax, current, {
+      name: exercise?.name?.split(' (')[0] || 'this lift',
+      fmt: (kg) => `${Math.round(toDisplay(kg, unit) * 10) / 10} ${unit}`,
+    });
+    if (!check.ok) {
+      openSheet(`<div class="ttl">Check this number</div>
+        <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">${escape(check.message)}</p>
+        <p style="text-align:center;font-size:13px">The set is saved either way. This only decides whether it becomes the working max.</p>
+        <button class="big mt" data-act="confirm-attempt-max" data-id="${escape(String(set.id))}">Save as the working max</button>
+        <button class="big ghost mt" data-act="sheet-close">Fix the set first</button>`);
+      return 'asked';
+    }
+  }
+  await confirmWorkingMax(
+    state.db,
+    {
+      exerciseId: set.exerciseId,
+      workingMax,
+      conf: exercise?.maxConf ?? 'high',
+      setAtISO: nowISO(),
+      sourceSetId: set.id,
+      blockId: state.block.idx,
+    },
+    'measured-single'
+  );
+  state.maxes = new Map((await getAll(state.db, 'maxes')).map((m) => [m.exerciseId, m]));
+  state.maxHistory = await getAll(state.db, 'maxHistory');
+  return 'written';
+}
+
+async function revertAttemptMax(set) {
+  const current = state.maxes.get(set.exerciseId) || null;
+  const history = (await getAll(state.db, 'maxHistory')).filter((row) => row.exerciseId === set.exerciseId);
+  const previous = maxBeforeAttempt(history, current, set.id);
+  if (!previous) return 'none';
+  await confirmWorkingMax(
+    state.db,
+    {
+      exerciseId: set.exerciseId,
+      workingMax: previous.workingMax,
+      conf: state.plan.exercises[set.exerciseId]?.maxConf ?? 'high',
+      setAtISO: nowISO(),
+      sourceSetId: previous.sourceSetId,
+      blockId: state.block.idx,
+    },
+    'attempt undone'
+  );
+  await put(state.db, 'auditLog', {
+    atISO: nowISO(), entity: 'max', entityId: set.exerciseId, action: 'revert', field: 'workingMax',
+    from: current?.workingMax ?? null, to: previous.workingMax, reason: `attempt set ${set.id} no longer made`,
+  });
+  state.maxes = new Map((await getAll(state.db, 'maxes')).map((m) => [m.exerciseId, m]));
+  state.maxHistory = await getAll(state.db, 'maxHistory');
+  return 'reverted';
 }
 
 function celebrate(pr) {
@@ -625,6 +692,7 @@ async function removeSet(slotIndex, setIndex) {
   const existing = state.loggedSets.get(key);
   if (existing) {
     await softDeleteRow(state.db, 'sets', existing.id, { reason: 'removed from the set editor' });
+    await applyAttemptMax(existing, { ...existing, deletedAtISO: nowISO() });
     state.loggedSets.delete(key);
     state.sets = alive(await getAll(state.db, 'sets'));
     state.deleted = await deletedRecords(state.db);
@@ -1148,7 +1216,9 @@ const ctx = {
    */
   async deleteEntry(kind, id, { reason = null } = {}) {
     if (kind === 'session') {
+      const attempts = state.sets.filter((set) => set.sessionLogId === id && set.attemptResult === 'made');
       await softDeleteSession(state.db, id, { reason });
+      for (const set of attempts) await applyAttemptMax(set, { ...set, deletedAtISO: nowISO() });
       if (state.activeLog?.id === id) {
         state.activeLog = null;
         state.loggedSets = new Map();
@@ -1533,6 +1603,7 @@ const ctx = {
     // nothing derived has to be corrected alongside them. That is the whole
     // reason nothing derived is ever stored.
     await put(state.db, 'sets', { ...set, ...patch });
+    await applyAttemptMax(set, { ...set, ...patch });
     for (const [field, to] of changed) {
       await put(state.db, 'auditLog', {
         atISO: nowISO(), entity: 'set', entityId: setId, action: 'edit', field, from: set[field] ?? null, to: to ?? null,
@@ -1547,7 +1618,9 @@ const ctx = {
 
   /** Remove one set, recoverably. */
   async deleteSet(setId, { reason = null } = {}) {
+    const set = state.sets.find((row) => row.id === setId);
     await softDeleteRow(state.db, 'sets', setId, { reason });
+    if (set) await applyAttemptMax(set, { ...set, deletedAtISO: nowISO() });
     await loadEverything();
     buildHistory();
     render();
@@ -1946,6 +2019,14 @@ function wireBackButton() {
 const globalActions = {
   'reload-app'() {
     location.reload();
+  },
+
+  /** "Save as the working max" on the question a far-off made attempt asks. */
+  async 'confirm-attempt-max'(ctx, data) {
+    const set = state.sets.find((row) => String(row.id) === String(data.id));
+    closeSheet();
+    if (set && set.attemptResult === 'made' && !set.deletedAtISO) await writeAttemptMax(set, { confirmed: true });
+    render();
   },
 
   /**
