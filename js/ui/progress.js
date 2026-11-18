@@ -42,6 +42,7 @@ import { volumeByRotation, plannedVsCompleted } from '../volume.js';
 import { resolveSession, toDisplaySession } from '../plan.js';
 import { alive } from '../db.js';
 import { addDays } from '../dates.js';
+import { workingMaxInfo } from './train.js';
 import { escape, fmtLoad, fmtNum, toDisplay, flag, subnav, openSheet, closeSheet , fmtLength, toLength, lengthLabel } from './components.js';
 import {
   barChart,
@@ -1300,7 +1301,11 @@ export function maxRows(state) {
   const blockTo = state.block.to ?? state.cycle.sequence;
 
   return trackedLifts(state).map((lift) => {
-    const stored = state.maxes.get(lift.id)?.workingMax ?? state.plan.meta.seedWorkingMaxes[lift.id] ?? null;
+    // The number prescriptions actually use — confirmed, else by ratio, else
+    // your recent sets, else the seed. Reading only "confirmed or seed" here
+    // proposed changes against a number no prescription was using.
+    const info = workingMaxInfo(state, lift.id);
+    const stored = info?.value ?? null;
     const points = e1rmPoints(state, lift.id);
 
     // The block is the active plan's: the other plan's rotations with the same
@@ -1333,6 +1338,7 @@ export function maxRows(state) {
     return {
       ...lift,
       workingMax: stored,
+      workingMaxSource: info?.source ?? null,
       observed,
       bestObservation,
       observations: inBlock,

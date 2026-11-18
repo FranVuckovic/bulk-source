@@ -359,3 +359,37 @@ test('M4: the Body screen’s rate is the same verdict, not a slope from two rea
   const html = view({ state });
   assert.ok(!/kg\/week/.test(html), 'Body printed a weekly rate from two weigh-ins');
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   L10 · the review compares against the number prescriptions use
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('L10: the working-max review uses the same max as the prescriptions', async () => {
+  const { workingMaxInfo } = await import('../js/ui/train.js');
+  const [, plan] = withSharedLibrary([FOPIP, FLOPIP]);
+  const logs = [log(40, '2026-11-06', { cycleSequence: 4 })];
+  const sets = [
+    { id: 40, sessionLogId: 40, exerciseId: 'benchClose', isIndexSet: true, load: 100, reps: 5, rpe: 8 },
+    { id: 41, sessionLogId: 40, exerciseId: 'inclineSmith', isIndexSet: true, load: 70, reps: 8, rpe: 9 },
+  ];
+  const state = {
+    plan,
+    settings: { unit: 'kg', bodyweight: 90 },
+    block: { idx: 3, from: 4, to: 10, name: 'Accumulation' },
+    cycle: { sequence: 5 },
+    maxes: new Map([['benchComp', { exerciseId: 'benchComp', workingMax: 125 }]]),
+    sets,
+    logs,
+    todayISO: '2026-11-18',
+    activeLog: null,
+  };
+  for (const id of ['benchClose', 'inclineSmith']) {
+    const row = maxRows(state).find((r) => r.id === id);
+    assert.ok(row, `${id} is not in the review`);
+    assert.equal(
+      row.workingMax,
+      workingMaxInfo(state, id).value,
+      `${id}: the review proposed changes against a number no prescription uses`
+    );
+  }
+});
