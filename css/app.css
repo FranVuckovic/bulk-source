@@ -270,6 +270,7 @@ nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.9;st
 .hint{font-size:11.5px;color:var(--muted);margin:9px 0 0;font-variant-numeric:tabular-nums;line-height:1.5}
 .hint b{color:var(--ink2);font-weight:650}
 .cue{font-size:12.5px;color:var(--ink2);background:var(--raised);border-radius:9px;padding:9px 11px;margin-top:10px;border-left:3px solid var(--s1);line-height:1.5}
+.cue:empty{display:none}
 .mini{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
 .mini button{font-size:12px;padding:7px 11px;border-radius:8px;border:1px solid var(--line);background:var(--raised);color:var(--ink2);cursor:pointer;font-family:inherit;font-weight:600}
 .mini button.warn{color:var(--s2);border-color:var(--s2)}

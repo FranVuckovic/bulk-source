@@ -41,9 +41,9 @@ import {
   slotById,
   companionSlots,
   BORROWABLE_FIELDS,
-  substitutesFor,
 } from '../plan.js';
 import { exerciseNoteHistory, recentEvidenceMax } from '../analytics.js';
+import { rankSwaps, listedSubs, searchKey, matchesQuery, guessBasedOn, normalize } from '../library.js';
 import { daysBetween } from '../dates.js';
 import {
   escape,
@@ -1152,40 +1152,53 @@ function phaseTable(state, slotId, here, { slotIndex, borrowed, main }) {
 /**
  * The substitutes for one slot, closest first.
  *
- * Three groups, and the order is the point. The plan's own suggestions lead,
- * because someone chose them. Then everything else the app knows, ranked by
- * how much of the same work it does — derived from the muscle map rather than
- * written down, so it cannot drift. Then the suggestions with no exercise
- * behind them, named rather than dropped: they used to render as dead buttons
- * saying "not tracked", which reads as a bug rather than as an invitation.
+ * The plan's own choices lead, because someone chose them: the slot's other
+ * option (A/B), then the exercise's `subs`, matched to real exercises by name
+ * or alias. Then everything else the app knows — the plans and the exercise
+ * library — ranked by `rankSwaps`: muscle overlap, movement pattern and
+ * equipment. Then the suggestions with no exercise behind them, named rather
+ * than dropped.
  *
- * That last group is what "add your own" is for. The gym that has no hack squat
- * is the reason this screen exists.
+ * Typing switches to every exercise in the same order — pinned first, then by
+ * similarity — and filters it. It used to switch to an alphabetical list,
+ * which threw the ranking away the moment you looked for anything. The last
+ * row is "Other": whatever you typed, created on the spot, counted like the
+ * exercise it replaces.
  */
 function swapSheet(state, slotIndex, slot, exercise) {
-  const { listed, similar, unlisted } = substitutesFor(state.plan, slot.ex);
-
-  const row = (entry, badge) => exerciseButton(state, entry.id, entry.exercise, {
-    act: 'do-swap',
-    slotIndex,
-    badge,
-  });
+  const exercises = state.plan.exercises;
+  const muscles = state.plan.muscles;
 
   // Back to the plan's own exercise, when today's is a swap of it.
-  const revert =
-    slot.swappedFrom && state.plan.exercises[slot.plannedEx]
-      ? `<button class="big ghost mt" data-act="do-swap" data-si="${slotIndex}" data-id="${escape(
-          slot.plannedEx
-        )}">Back to ${escape(state.plan.exercises[slot.plannedEx].name)}</button>`
-      : '';
+  const reverting = slot.swappedFrom && exercises[slot.plannedEx];
+  const revert = reverting
+    ? `<button class="big ghost mt" data-act="do-swap" data-si="${slotIndex}" data-id="${escape(
+        slot.plannedEx
+      )}">Back to ${escape(exercises[slot.plannedEx].name)}</button>`
+    : '';
 
-  const everything = Object.entries(state.plan.exercises)
-    .filter(([id, other]) => id !== slot.ex && !other.retired && !/\(retired/i.test(other.name))
-    .sort((a, b) => a[1].name.localeCompare(b[1].name));
+  const options = (slot.options || [])
+    .map((id, n) => ({ id, exercise: exercises[id], badge: `option ${String.fromCharCode(65 + n)}` }))
+    .filter((entry) => entry.exercise && entry.id !== slot.ex && !(reverting && entry.id === slot.plannedEx));
+  const { listed, unlisted } = listedSubs(slot.ex, exercises);
+  const pinned = [
+    ...options,
+    ...listed.filter((entry) => !options.some((o) => o.id === entry.id)).map((entry) => ({ ...entry, badge: 'listed' })),
+  ];
+  const pinnedIds = pinned.map((entry) => entry.id);
+  const similar = rankSwaps(slot.ex, exercises, { exclude: pinnedIds, limit: 30, muscles });
+  const everything = rankSwaps(slot.ex, exercises, { exclude: pinnedIds, floor: -Infinity, muscles });
+
+  const row = (entry) =>
+    exerciseButton(state, entry.id, entry.exercise, { act: 'do-swap', slotIndex, badge: entry.badge || null });
+
+  // A custom exercise is counted through the one it was based on; basing a new
+  // one on a custom exercise would leave it nothing to copy after a reload.
+  const base = exercise?.custom && exercises[exercise.basedOn] ? exercise.basedOn : slot.ex;
 
   return `<div class="ttl">Swap ${escape(exercise.name)}</div>
 
-    <input class="mt" type="search" placeholder="Search every exercise by name…" autocomplete="off"
+    <input class="mt" type="search" placeholder="Search by name, machine or muscle…" autocomplete="off"
       data-act-input="exercise-filter" aria-label="Search exercises">
     ${revert}
 
@@ -1196,19 +1209,17 @@ function swapSheet(state, slotIndex, slot, exercise) {
     backups. Use it when the gym does not have what the plan asks for.</p>
 
     ${
-      listed.length
+      pinned.length
         ? `<h4>The plan's own substitutes</h4>
-           <div class="picklist">${listed.map((entry) => row(entry, 'listed')).join('')}</div>`
+           <div class="picklist">${pinned.map(row).join('')}</div>`
         : ''
     }
 
     ${
       similar.length
         ? `<h4>Closest by what they train</h4>
-           <div class="picklist" style="max-height:38vh;overflow:auto">${similar
-             .map((entry) => row(entry, null))
-             .join('')}</div>`
-        : '<p class="hint" style="margin:10px 2px">Nothing else in the plan trains this closely enough to stand in for it.</p>'
+           <div class="picklist" style="max-height:38vh;overflow:auto">${similar.map(row).join('')}</div>`
+        : '<p class="hint" style="margin:10px 2px">Nothing else the app knows trains this closely enough to stand in for it.</p>'
     }
 
     ${
@@ -1222,12 +1233,10 @@ function swapSheet(state, slotIndex, slot, exercise) {
     </div>
 
     <div data-filter-group="all" hidden>
-      <h4>Every exercise</h4>
-      <div class="picklist" style="max-height:46vh;overflow:auto">${everything
-        .map(([id, other]) => exerciseButton(state, id, other, { act: 'do-swap', slotIndex }))
-        .join('')}</div>
-      <p class="hint" data-filter-empty hidden style="margin:10px 2px">Nothing by that name. Add it as your own
-      exercise with the button below.</p>
+      <h4>Every exercise, closest first</h4>
+      <div class="picklist" style="max-height:46vh;overflow:auto">${[...pinned, ...everything].map(row).join('')}
+        ${quickCreateRow({ slotIndex, basedOnName: exercises[base]?.name })}</div>
+      <p class="hint" data-filter-empty hidden style="margin:10px 2px">Nothing by that name. Add it with Other above.</p>
       <button class="big ghost mt" data-act="open-custom-exercise" data-si="${slotIndex}">+ An exercise the plan does not have</button>
     </div>
 
@@ -1235,21 +1244,40 @@ function swapSheet(state, slotIndex, slot, exercise) {
 }
 
 /**
+ * "Other: …" — the name you typed, as a new exercise, in one tap.
+ *
+ * He logged a T-bar row as "Machine row" and a curl machine as "High-cable
+ * curl" because adding the right one meant leaving the search, finding a
+ * button, and filling in a form. This is the last row of the search results,
+ * kept in step with the box by `exercise-filter`, and it says what the new
+ * exercise will be counted as before you tap it.
+ */
+function quickCreateRow({ slotIndex = null, basedOnName = null }) {
+  return `<button data-act="quick-exercise"${slotIndex == null ? '' : ` data-si="${slotIndex}"`} data-quick-create hidden>
+      Other: “<b data-quick-label></b>”<i class="tag">new</i>
+      <span data-quick-basis>${
+        basedOnName ? `Added as your own exercise · counted like ${escape(basedOnName)}` : 'Added as your own exercise'
+      }</span></button>`;
+}
+
+/**
  * One exercise in a pick list: its name, and the muscles it mainly trains.
  *
- * `data-name` is what the search box matches against. The search filters rows
- * that are already on the page rather than re-rendering the sheet, so the box
- * keeps its focus and the keyboard stays up while you type.
+ * `data-search` is what the search box matches against: the name, its
+ * aliases, its equipment and the muscles it mainly trains, normalized once
+ * here. The search filters rows that are already on the page rather than
+ * re-rendering the sheet, so the box keeps its focus and the keyboard stays up
+ * while you type — and the rows keep the order they were rendered in.
  */
 function exerciseButton(state, id, exercise, { act, slotIndex = null, badge = null }) {
   const share = Object.entries(exercise.m || {})
     .filter(([, weight]) => weight >= 0.5)
-    .map(([muscle]) => state.plan.muscles[muscle]?.label?.split(' \u2014')[0] || muscle)
+    .map(([muscle]) => state.plan.muscles[muscle]?.label?.split(' —')[0] || muscle)
     .slice(0, 3)
     .join(', ');
   return `<button data-act="${act}"${slotIndex == null ? '' : ` data-si="${slotIndex}"`} data-id="${escape(
     id
-  )}" data-name="${escape(exercise.name.toLowerCase())}">
+  )}" data-search="${escape(searchKey(exercise, { muscles: state.plan.muscles }))}">
       ${escape(exercise.name)}${badge ? `<i class="tag">${escape(badge)}</i>` : ''}
       <span>${escape(share || 'no counted stimulus')}${exercise.custom ? ' · added by you' : ''}</span></button>`;
 }
@@ -2012,21 +2040,62 @@ export const actions = {
     ctx.render();
   },
 
+  /**
+   * Add an exercise to today's session — or to the blank custom one, where it
+   * is the only way anything gets in.
+   *
+   * There is nothing being replaced, so there is nothing to rank by
+   * similarity: the plan's own exercises come first, then the library, each
+   * alphabetical, and the search filters that order without changing it. The
+   * last row is "Other", which creates what you typed, counted like the
+   * closest exercise its name matches.
+   */
   'open-add'(ctx) {
     const { state } = ctx;
-    const entries = Object.entries(state.plan.exercises)
-      .filter(([, x]) => !x.retired && !/\(retired/i.test(x.name))
-      .sort((a, b) => a[1].name.localeCompare(b[1].name));
+    const inPlan = new Set((state.plan.sessions || []).flatMap((s) => (s.slots || []).flatMap((slot) => [slot.ex, ...(slot.options || [])])));
+    const entries = rankSwaps(null, state.plan.exercises, { floor: -Infinity }).sort(
+      (a, b) => inPlan.has(b.id) - inPlan.has(a.id) || a.exercise.name.localeCompare(b.exercise.name)
+    );
     openSheet(`<div class="ttl">Add an exercise</div>
-      <input class="mt" type="search" placeholder="Search by name…" autocomplete="off"
+      <input class="mt" type="search" placeholder="Search by name, machine or muscle…" autocomplete="off"
         data-act-input="exercise-filter" aria-label="Search exercises">
       <div data-filter-group="all">
         <div class="picklist mt" style="max-height:56vh;overflow:auto">${entries
-          .map(([id, x]) => exerciseButton(state, id, x, { act: 'do-add' }))
-          .join('')}</div>
-        <p class="hint" data-filter-empty hidden style="margin:10px 2px">Nothing by that name.</p>
+          .map((entry) => exerciseButton(state, entry.id, entry.exercise, { act: 'do-add' }))
+          .join('')}
+          ${quickCreateRow({})}</div>
+        <p class="hint" data-filter-empty hidden style="margin:10px 2px">Nothing by that name. Add it with Other above.</p>
       </div>
       <button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
+  },
+
+  /**
+   * "Other: …" from either sheet: create the exercise you typed and use it now.
+   *
+   * From Swap it is counted like the exercise it replaces — one tap, and the
+   * volume is right. From Add there is nothing being replaced, so it is
+   * counted like the closest exercise its name matches ("Machine curl X" →
+   * Machine curl), or not counted at all when nothing does. The row says
+   * which before you tap it.
+   */
+  async 'quick-exercise'(ctx, data) {
+    const { state } = ctx;
+    const typed = data.quickName ?? globalThis.document?.querySelector('.sheet input[type="search"]')?.value ?? '';
+    const name = String(typed).replace(/\s+/g, ' ').trim();
+    if (!name) return undefined;
+    const exercises = state.plan.exercises;
+
+    if (data.si != null && data.si !== '') {
+      const slot = slotsFor(state)[Number(data.si)];
+      if (!slot) return undefined;
+      const current = exercises[slot.ex];
+      const basedOn = current?.custom && exercises[current.basedOn] ? current.basedOn : slot.ex;
+      const id = await ctx.addCustomExercise({ name, basedOn });
+      return actions['do-swap'](ctx, { si: data.si, id });
+    }
+
+    const id = await ctx.addCustomExercise({ name, basedOn: guessBasedOn(name, exercises) });
+    return actions['do-add'](ctx, { id });
   },
 
   async 'do-add'(ctx, data) {
@@ -2488,14 +2557,17 @@ async function changeSetCount(ctx, slotIndex, delta) {
 
 export const inputs = {
   /**
-   * Filter the exercise list in the open sheet by name.
+   * Filter the exercise list in the open sheet.
    *
    * Works on the rows already on the page — no re-render, so the box keeps its
-   * focus. In the swap sheet an empty box shows the suggestions and a typed
-   * one shows every matching exercise in the app.
+   * focus — and only ever hides rows, so whatever order they were rendered in
+   * (closest first, in the swap sheet) is the order the matches stay in. In
+   * the swap sheet an empty box shows the suggestions and a typed one shows
+   * every matching exercise in the app. The "Other" row follows what you type.
    */
-  'exercise-filter'(_ctx, value) {
-    const query = String(value || '').trim().toLowerCase();
+  'exercise-filter'(ctx, value) {
+    const raw = String(value || '').replace(/\s+/g, ' ').trim();
+    const query = normalize(raw);
     const sheet = document.querySelector('.sheet') || document;
     const suggested = sheet.querySelector('[data-filter-group="suggested"]');
     const all = sheet.querySelector('[data-filter-group="all"]');
@@ -2504,13 +2576,30 @@ export const inputs = {
       if (all) all.hidden = !query;
     }
     let shown = 0;
-    for (const button of all?.querySelectorAll('[data-name]') || []) {
-      const match = !query || button.dataset.name.includes(query);
+    for (const button of all?.querySelectorAll('[data-search]') || []) {
+      const match = !query || matchesQuery(button.dataset.search, query);
       button.hidden = !match;
       if (match) shown += 1;
     }
+
+    // Offered unless what you typed is already an exercise, by name.
+    const quick = all?.querySelector('[data-quick-create]');
+    if (quick) {
+      const exercises = ctx?.state?.plan?.exercises || {};
+      const exists = Object.values(exercises).some((exercise) => normalize(exercise?.name) === query);
+      quick.hidden = !query || exists;
+      quick.dataset.quickName = raw;
+      const label = quick.querySelector('[data-quick-label]');
+      if (label) label.textContent = raw;
+      if (quick.dataset.si == null) {
+        const basis = quick.querySelector('[data-quick-basis]');
+        const guess = exercises[guessBasedOn(raw, exercises)];
+        if (basis) basis.textContent = guess ? `Added as your own exercise \u00b7 counted like ${guess.name}` : 'Added as your own exercise \u00b7 muscles not counted';
+      }
+    }
+
     const empty = all?.querySelector('[data-filter-empty]');
-    if (empty) empty.hidden = shown > 0;
+    if (empty) empty.hidden = shown > 0 || !query;
   },
 
   'field-load'(ctx, value) {
