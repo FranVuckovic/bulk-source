@@ -1836,6 +1836,9 @@ function onSheetOpen() {
 }
 
 function onSheetClose({ fromBack }) {
+  // Backdrop, back button or anything else: a set half-typed in the editor is
+  // kept for when that row is opened again. See `keepStepDraft`.
+  train.keepStepDraft(state);
   if (!sheetEntry) return;
   sheetEntry = false;
   if (fromBack) return;

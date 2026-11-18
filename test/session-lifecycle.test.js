@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 
 import { withSharedLibrary } from '../js/plans.js';
 import { newCycle, cycleProgress } from '../js/cycle.js';
-import { actions, slotsFor, resetSessionState, defaultPause, setStamps } from '../js/ui/train.js';
+import { actions, inputs, slotsFor, resetSessionState, defaultPause, setStamps, keepStepDraft } from '../js/ui/train.js';
 import { stopRest } from '../js/ui/components.js';
 import { createFakeEnv } from './helpers/fake-indexeddb.js';
 import { openDatabase, getAll, putSetIdempotent, logicalSetKey } from '../js/db.js';
@@ -440,6 +440,59 @@ test('UI-08: a bodyweight lift still logs as bodyweight with nothing added', asy
     await actions['save-step'](ctx);
     assert.equal(ctx.saved[0].load, 0);
   });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   UI-26 · A stray tap does not throw away a half-edited set
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('UI-26: closing the editor by the backdrop keeps what you typed for that set', async () => {
+  // With the keyboard up, the strip above the editor is the backdrop. One stray
+  // tap closed it and the typed load, reps, RPE and note were gone.
+  const state = trainState(FLOPIP, 'B', { sequence: 4 });
+  await withFakeDocument(async () => {
+    const ctx = recordingCtx(state);
+    actions['open-step'](ctx, { si: '0', i: '1', field: 'load' });
+    inputs['field-load'](ctx, '102.5');
+    inputs['field-reps'](ctx, '7');
+    inputs.note(ctx, 'grip slipped');
+
+    keepStepDraft(state); // what any close does, before the sheet goes
+    state.sheetCtx = null;
+
+    actions['open-step'](ctx, { si: '0', i: '2', field: 'load' });
+    assert.notEqual(state.sheetCtx.load, 102.5, 'another set opened with this one\'s draft');
+    keepStepDraft(state);
+
+    actions['open-step'](ctx, { si: '0', i: '1', field: 'load' });
+    assert.equal(state.sheetCtx.load, 102.5);
+    assert.equal(state.sheetCtx.reps, 7);
+    assert.equal(state.sheetCtx.note, 'grip slipped');
+  });
+});
+
+test('UI-26: Cancel and a saved set both end the draft', async () => {
+  const state = trainState(FLOPIP, 'B', { sequence: 4 });
+  await withFakeDocument(async () => {
+    const ctx = recordingCtx(state);
+    actions['open-step'](ctx, { si: '0', i: '0', field: 'load' });
+    inputs['field-load'](ctx, '102.5');
+    actions['step-cancel'](ctx);
+    actions['open-step'](ctx, { si: '0', i: '0', field: 'load' });
+    assert.notEqual(state.sheetCtx.load, 102.5, 'Cancel kept the draft');
+
+    inputs['field-load'](ctx, '97.5');
+    await actions['save-step'](ctx);
+    keepStepDraft(state); // the close that follows a save must not stash it
+    assert.equal(state.stepDrafts?.['0:0'], undefined);
+  });
+});
+
+test('UI-26: every way a sheet closes keeps the editor draft, and Cancel is its own action', () => {
+  assert.match(appBody('function onSheetClose('), /train\.keepStepDraft\(state\)/);
+  const train = readFileSync(new URL('../js/ui/train.js', import.meta.url), 'utf8');
+  const sheet = train.slice(train.indexOf('function drawStepSheet('), train.indexOf('function stepReadout('));
+  assert.match(sheet, /data-act="step-cancel">Cancel</);
 });
 
 test('UI-03: a new civil date with no session open starts at normal readiness', () => {

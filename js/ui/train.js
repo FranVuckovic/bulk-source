@@ -98,7 +98,7 @@ export function resetSessionState(state) {
   state.cleared = new Set();
   state.exOpen = new Set(['0']);
   state.readiness = 'normal';
-  state.stepDraft = null;
+  state.stepDrafts = {};
   state.startAnswer = null;
   state.pendingSet = null;
   state.pendingTick = null;
@@ -1654,6 +1654,43 @@ function setRow(state, slot, slotIndex, i) {
  * "Log this set" being hidden behind the keyboard means scrolling to save every
  * single set of every session.
  */
+/**
+ * Keep the set being edited, if the editor is closing without a save.
+ *
+ * Called on every sheet close. With the keyboard up, the visible strip above
+ * the editor is the backdrop, and one stray tap there threw away the typed
+ * load, reps, RPE and note. The draft is kept against its row and comes back
+ * when that row's editor is opened again. A save, "Remove this set" and Cancel
+ * end the editing first, so they leave nothing behind.
+ */
+export function keepStepDraft(state) {
+  const c = state.sheetCtx;
+  if (c?.kind !== 'step' || !c.editing) return;
+  c.editing = false;
+  // Only what was actually changed is a draft. An editor opened and closed
+  // untouched keeps nothing, so a prescription that moves later — back-offs
+  // follow the day's single — is never replaced by a stale copy of itself.
+  if (stepFields(c) === c.opened) return;
+  const key = setKey(c.si, c.i);
+  state.stepDrafts = {
+    ...(state.stepDrafts || {}),
+    [key]: { ...c, exerciseId: c.slot.ex, loggedId: state.loggedSets.get(key)?.id ?? null },
+  };
+}
+
+/** What the editor lets you change, as one comparable string. */
+const stepFields = (c) =>
+  JSON.stringify([c.load, c.reps, c.rpe, c.toFailure, c.isAmrap, c.formBreakdown, c.attemptResult, c.isMyoRep,
+    c.isIndexSet, c.velocity, c.note, c.pauseStyle]);
+
+/** End the editing without keeping a draft: the set was saved, removed or cancelled. */
+function endStepEdit(state) {
+  const c = state.sheetCtx;
+  if (c?.kind !== 'step') return;
+  c.editing = false;
+  if (state.stepDrafts) delete state.stepDrafts[setKey(c.si, c.i)];
+}
+
 /** The load box's text: blank for no load, never a 0 nobody typed. */
 const loadBox = (kg, unit) => (Number.isFinite(kg) ? Math.round(toDisplay(kg, unit) * 10) / 10 : '');
 
@@ -1664,6 +1701,7 @@ function drawStepSheet(ctx) {
   const unit = state.settings.unit;
   const workingMax = prescriptionMax(state, c.slot).value;
   const bodyweight = bodyweightFor(state, c.slot.ex);
+  c.editing = true;
 
   const field = (key, label, value, step) => `<div class="fcol">
     <label for="in-${key}">${escape(label)}</label>
@@ -1739,7 +1777,7 @@ function drawStepSheet(ctx) {
           ? '<button class="big ghost mt" data-act="unlog-step">Remove this set</button><p class="hint" style="text-align:center;margin:6px 0 0">Recoverable from Log → Bin.</p>'
           : ''
       }
-      <button class="big ghost mt" data-act="sheet-close">Cancel</button>
+      <button class="big ghost mt" data-act="step-cancel">Cancel</button>
     </div>`);
 }
 
@@ -1969,7 +2007,27 @@ export const actions = {
       gripWidth: values.logged?.gripWidth ?? defaultGrip(state, slot, slotIndex),
       prescribed: values.prescribed,
     };
+
+    state.sheetCtx.opened = stepFields(state.sheetCtx);
+
+    // A draft kept for this very row — same set, same exercise, and the logged
+    // row it was editing (if any) still the one there — comes back as it was.
+    const key = setKey(slotIndex, i);
+    const draft = state.stepDrafts?.[key];
+    if (draft) {
+      if (draft.exerciseId === slot.ex && draft.loggedId === (values.logged?.id ?? null)) {
+        state.sheetCtx = { ...draft, slot, field: data.field, logged: !!values.logged, prescribed: values.prescribed };
+      }
+      delete state.stepDrafts[key];
+    }
     drawStepSheet(ctx);
+  },
+
+  /** Cancel means it: the draft goes with the sheet. */
+  'step-cancel'(ctx) {
+    endStepEdit(ctx.state);
+    closeSheet();
+    ctx.render();
   },
 
   /** Steppers now say which of the three fields they move. */
@@ -2139,6 +2197,7 @@ export const actions = {
       wasPrescribed: c.load != null && c.load === c.prescribed,
       prescribedLoad: c.prescribed,
     });
+    endStepEdit(ctx.state);
     startRest(c.slot.restSec || ctx.state.plan.exercises[c.slot.ex].defaultRestSec);
     closeSheet();
     ctx.render();
@@ -2149,6 +2208,7 @@ export const actions = {
   async 'unlog-step'(ctx) {
     const c = ctx.state.sheetCtx;
     await ctx.removeSet(c.si, c.i);
+    endStepEdit(ctx.state);
     closeSheet();
   },
 
