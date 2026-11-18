@@ -103,6 +103,7 @@ import * as history from './ui/history.js';
 import * as calculator from './ui/calculator.js';
 import { demoModeOn, setDemoMode, openDemoDatabase, seedDemoData, DEMO_ROTATIONS } from './demo.js';
 import { DEFAULT_PLAN_ID, PLAN_FILES, belongsTo, planIdOf, cycleSettingKeys, withSharedLibrary } from './plans.js';
+import { LIBRARY_URL, withExerciseLibrary } from './library.js';
 
 const TABS = { train: 'Bulk', body: 'Body', prog: 'Progress', plan: 'Plan', log: 'Log', set: 'Settings' };
 
@@ -2445,7 +2446,22 @@ async function boot() {
     if (!response.ok) throw new Error(`Could not load the plan ${file.id} (${response.status} ${response.statusText}).`);
     loaded.push(await response.json());
   }
-  const shared = withSharedLibrary(loaded);
+  /*
+   * The exercise library goes into every plan, after the plans have shared
+   * theirs: a plan's own definition of an id always wins, so nothing already
+   * logged changes meaning. A library that will not load costs the extra
+   * exercises, not the app — it is in the offline shell, so this is a broken
+   * deploy rather than a gym with no signal.
+   */
+  let library = null;
+  try {
+    const response = await fetch(LIBRARY_URL);
+    if (response.ok) library = await response.json();
+    else console.warn(`Could not load the exercise library (${response.status} ${response.statusText}).`);
+  } catch (error) {
+    console.warn('Could not load the exercise library.', error);
+  }
+  const shared = withSharedLibrary(loaded).map((plan) => withExerciseLibrary(plan, library));
   // The demo seeds whichever plan is active, so it needs one before settings
   // are readable. The real choice is made below, once the database is open.
   state.plan = shared.find((p) => p.meta.id === DEFAULT_PLAN_ID) || shared[0];
