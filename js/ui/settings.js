@@ -154,7 +154,7 @@ export function view(ctx) {
         : 'Nothing is waiting in the recovery list. Deleted entries land there first and can be put back until this is used.'
     }</p>
     <button class="big danger mt" data-act="erase">Erase all data</button>
-    <p class="hint">Requires typing ERASE. Everything logged goes: sessions, sets, weigh-ins, measurements, photos and maxes. The plan file is untouched.</p>
+    <p class="hint">Requires typing ERASE. Everything logged goes: sessions, sets, weigh-ins, measurements, photos and maxes, and your settings, including where you are in each plan. The app starts again as a fresh install; the plan files are untouched.</p>
   </div></details>
 
   <details class="card settings-group"><summary><span>About this build<small>${escape(
@@ -600,7 +600,7 @@ export const actions = {
     openSheet(`<div class="ttl">Erase everything</div>
       <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">This deletes <b>${
         ctx.state.logs.length
-      } sessions</b>, <b>${ctx.state.sets.length} sets</b> and every weigh-in, measurement, niggle and photo.</p>
+      } sessions</b>, <b>${ctx.state.sets.length} sets</b> and every weigh-in, measurement, niggle and photo, and resets your settings and both plans to rotation 1.</p>
       <p style="text-align:center;font-size:13px">It cannot be undone, and unlike deleting an entry it does not go to
       the bin — it is gone. Take the backup first; it is one tap and it costs nothing.</p>
       <button class="big mt" data-act="history-backup">Export a backup first</button>

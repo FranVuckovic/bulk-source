@@ -28,7 +28,11 @@ import {
   restoreSession,
   deletedRecords,
   startSessionAtomic,
+  clearStore,
+  readSettings,
+  ALL_STORES,
 } from '../js/db.js';
+import { cycleSettingKeys } from '../js/plans.js';
 import { toCsv, CSV_COLUMNS, buildExport, parseImport, validateImport, applyImport, verifyAgainst } from '../js/export.js';
 import { exportRangeDefaults } from '../js/ui/settings.js';
 
@@ -361,4 +365,68 @@ test('L2: the bin passes today to the restore and picks up a reopened session', 
   const restoreEntry = body.slice(0, body.indexOf('\n  },'));
   assert.match(restoreEntry, /restoreSession\(state\.db, key, \{ today: todayISO\(\) \}\)/);
   assert.match(restoreEntry, /reopened[\s\S]*restoreActiveSession\(\)/, 'a reopened session is put back on the Train screen');
+});
+
+/* ── C1: after a restore, the app kept running the plan it had before ── */
+
+/** The body of one method or function in app.js, up to its closing brace. */
+function bodyOf(app, signature, end = '\n  },') {
+  const start = app.indexOf(signature);
+  assert.ok(start > -1, `app.js no longer has ${signature}`);
+  const rest = app.slice(start);
+  return rest.slice(0, rest.indexOf(end));
+}
+
+test('C1: importing a backup re-reads the restored plan choice, rotation and settings before anything else runs', () => {
+  // Restoring his FLOPIP 2 backup onto a fresh install left the app on FOPIP:
+  // the next session was filed as FOPIP rotation 8, and that open session then
+  // kept FOPIP active even across a reload. `loadEverything` reads the
+  // rotation pointer for `state.plan`, and nothing re-read which plan that is.
+  const app = source('../js/app.js');
+  const adopt = bodyOf(app, 'async function adoptStoredState(', '\n}\n');
+  assert.match(adopt, /readSettings\(state\.db\)/, 'it reads the settings the restore just wrote');
+  assert.match(adopt, /state\.activePlanId = /, 'including which plan is active');
+  assert.match(adopt, /state\.plan = state\.plans\[state\.activePlanId\]/);
+  assert.match(adopt, /customExercises/, 'and the exercises you added, which every plan is merged with');
+  assert.ok(adopt.indexOf('state.plan = ') < adopt.indexOf('loadEverything()'), 'before the rotation is worked out from it');
+  assert.match(adopt, /state\.activeLog = null/, 'the open session held in memory belongs to the old data');
+  assert.match(adopt, /restoreActiveSession\(\)/);
+
+  const apply = bodyOf(app, 'async applyStagedImport(');
+  assert.match(apply, /await adoptStoredState\(\)/, 'the import runs it');
+  assert.doesNotMatch(apply, /await loadEverything\(\)/, 'rather than a partial reload that keeps the old plan');
+
+  const boot = bodyOf(app, 'async function boot(', '\n}\n');
+  assert.match(boot, /await adoptStoredState\(\)/, 'boot uses the same path, so the two cannot drift apart');
+});
+
+/* ── L5: "Erase all data" kept the rotation pointers ──────────────────── */
+
+test('L5 and C1: erasing resets everything stored, the rotation pointers of both plans included', () => {
+  // Settings were skipped, so after an erase the plan resumed at rotation N
+  // with no history behind it, on whichever plan was last active.
+  const app = source('../js/app.js');
+  const erase = bodyOf(app, 'async eraseEverything(');
+  assert.match(erase, /withTransaction\(state\.db, \[\.\.\.ALL_STORES\]/, 'every store, in one transaction');
+  assert.doesNotMatch(erase, /settings/, 'settings are not spared');
+  assert.match(erase, /await adoptStoredState\(\)/, 'and the app is left on the erased state, not the old plan');
+});
+
+test('L5: erasing a database leaves no rotation pointer for either plan', async () => {
+  const db = await freshDb();
+  for (const planId of ['fopip-v2', 'flopip-2']) {
+    const keys = cycleSettingKeys(planId);
+    await put(db, 'settings', { key: keys.sequence, value: 8 });
+    await put(db, 'settings', { key: keys.startedDate, value: '2026-08-01' });
+  }
+  await put(db, 'settings', { key: 'activePlanId', value: 'flopip-2' });
+
+  for (const store of ALL_STORES) await clearStore(db, store);
+
+  const settings = await readSettings(db);
+  for (const planId of ['fopip-v2', 'flopip-2']) {
+    assert.equal(settings[cycleSettingKeys(planId).sequence], undefined, `${planId} starts again at rotation 1`);
+  }
+  assert.equal(settings.activePlanId, undefined, 'and the plan choice falls back to the default');
+  assert.equal(settings.unit, 'kg', 'defaults still apply to what was erased');
 });
