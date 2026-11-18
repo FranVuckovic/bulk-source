@@ -315,75 +315,50 @@ export function weeklyLoads(logs) {
 
 /** Thresholds the plan already specifies, in one place so they are auditable. */
 export const FLAG_RULES = Object.freeze({
-  gainRateEarly: { lo: 0.4, hi: 0.5, throughWeek: 12 },
-  gainRateLate: { lo: 0.2, hi: 0.25 },
-  // The plan names two different numbers and v1 used one of them for both
-  // jobs. The band is where the rate should sit; these are the rates at which
-  // the plan says to actually change what you eat. Between the two, the answer
-  // is to wait — a slope from three weeks of scale readings is mostly noise.
-  gainRateActLow: 0.1,
-  gainRateActHigh: 0.6,
   sleepFloor: 7,
   nigglesPerBlock: 2,
   topSetDropPct: 0.05,
-  stalledWeeks: 4,
 });
 
 /**
  * The decision flags. Each one exists because the plan names a specific action
  * for it — a flag with no action attached is just anxiety.
+ *
+ * The gain-rate and strength flags used to run a second pipeline of their own:
+ * a slope over the last 21 *points* (not days) with a minimum of two, so two
+ * weigh-ins three days apart said "cut about 300 kcal" while the tile beside it
+ * said it needed more weigh-ins. They now restate the verdicts `analytics.js`
+ * already computed — `gain` from `gainRateVerdict`, `strength` from `trend` —
+ * with those functions' minimum sample rules, so the screen has one answer.
  */
-export function decisionFlags({ bodyweight = [], e1rmWeekly = [], sleep = [], niggles = [], calendarWeek = 1 } = {}) {
+export function decisionFlags({ gain = null, strength = null, sleep = [], niggles = [], calendarWeek = 1 } = {}) {
   const flags = [];
 
-  const gainRate = weeklySlope(rollingAverage(bodyweight, 7).slice(-21));
-  const target = calendarWeek <= FLAG_RULES.gainRateEarly.throughWeek ? FLAG_RULES.gainRateEarly : FLAG_RULES.gainRateLate;
-
-  if (gainRate != null) {
-    const band = `${target.lo}–${target.hi} kg/week band for week ${calendarWeek}`;
-    if (gainRate < FLAG_RULES.gainRateActLow) {
-      flags.push({
-        kind: 'warn',
-        title: 'Gaining under target',
-        detail: `${gainRate.toFixed(2)} kg/week, below the ${band}. At this rate the plan says add about 250 kcal — one extra meal-sized snack.`,
-      });
-    } else if (gainRate > FLAG_RULES.gainRateActHigh) {
-      flags.push({
-        kind: 'warn',
-        title: 'Gaining faster than target',
-        detail: `${gainRate.toFixed(2)} kg/week, above the ${band}. At this rate the plan says cut about 300 kcal.`,
-      });
-    } else if (gainRate < target.lo) {
-      flags.push({
-        kind: 'info',
-        title: 'Gain rate a little under the band',
-        detail: `${gainRate.toFixed(2)} kg/week against the ${band}. Not far enough off to change anything on — re-read in two weeks.`,
-      });
-    } else if (gainRate > target.hi) {
-      flags.push({
-        kind: 'info',
-        title: 'Gain rate a little over the band',
-        detail: `${gainRate.toFixed(2)} kg/week against the ${band}. Watch the waist trend rather than the scale, and re-read in two weeks.`,
-      });
-    } else {
-      flags.push({
-        kind: 'ok',
-        title: 'Gain rate on target',
-        detail: `${gainRate.toFixed(2)} kg/week, inside the ${band}.`,
-      });
-    }
+  if (gain?.ok) {
+    const band = `${gain.target.lo}–${gain.target.hi} kg/week band for week ${calendarWeek}`;
+    const acting = /kcal/.test(gain.action);
+    const title =
+      gain.status === 'in'
+        ? 'Gain rate on target'
+        : gain.status === 'under'
+          ? acting ? 'Gaining under target' : 'Gain rate a little under the band'
+          : acting ? 'Gaining faster than target' : 'Gain rate a little over the band';
+    flags.push({
+      kind: gain.status === 'in' ? 'ok' : acting ? 'warn' : 'info',
+      metric: 'gain',
+      status: gain.status,
+      title,
+      detail: `${gain.perWeek.toFixed(2)} kg/week against the ${band}. ${gain.action}`,
+    });
   }
 
-  const recent = e1rmWeekly.slice(-FLAG_RULES.stalledWeeks);
-  if (recent.length === FLAG_RULES.stalledWeeks && gainRate != null && gainRate > 0) {
-    const strengthSlope = weeklySlope(recent.map((p) => ({ dateISO: p.weekISO, value: p.value })));
-    if (strengthSlope != null && strengthSlope <= 0) {
-      flags.push({
-        kind: 'bad',
-        title: 'e1RM flat while bodyweight rises',
-        detail: `No strength trend across ${FLAG_RULES.stalledWeeks} weeks while gaining ${gainRate.toFixed(2)} kg/week. That is a recovery or programming problem, not a food problem — send the export.`,
-      });
-    }
+  if (strength?.ok && strength.perWeek <= 0 && gain?.ok && gain.perWeek > 0) {
+    flags.push({
+      kind: 'bad',
+      metric: 'strength',
+      title: 'e1RM flat while bodyweight rises',
+      detail: `No strength trend across ${strength.sampleCount} rotations while gaining ${gain.perWeek.toFixed(2)} kg/week. That is a recovery or programming problem, not a food problem — send the export.`,
+    });
   }
 
   const recentSleep = sleep.filter((s) => Number.isFinite(s.value)).slice(-7);

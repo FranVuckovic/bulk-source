@@ -488,8 +488,8 @@ function tiles(state, m, unit) {
 
 function flagsSection(state, m) {
   const flags = decisionFlags({
-    bodyweight: m.bodyweight,
-    e1rmWeekly: m.perCycle.map((p) => ({ weekISO: p.dateISO, value: p.value })),
+    gain: m.gain,
+    strength: m.strength,
     sleep: state.daily.filter((d) => Number.isFinite(d.sleepHours)).map((d) => ({ dateISO: d.dateISO, value: d.sleepHours })),
     niggles: state.niggles.filter((n) => daysBetween(state.cycle.localStartDate || state.todayISO, n.dateISO) >= 0),
     calendarWeek: m.calendarWeek,

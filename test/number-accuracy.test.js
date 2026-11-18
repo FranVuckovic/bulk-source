@@ -297,3 +297,65 @@ test('M2: the working-max review reads only the active plan’s rotations', () =
     'September FOPIP sets entered a FLOPIP block review'
   );
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   M4 · one gain-rate verdict, with its minimum sample rules
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const weighIns = (values, from = '2026-11-01', stepDays = 1) =>
+  values.map((value, i) => {
+    const d = new Date(`${from}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + i * stepDays);
+    return { dateISO: d.toISOString().slice(0, 10), value };
+  });
+
+test('M4: two weigh-ins raise no gain-rate flag (the verdict says it needs more)', async () => {
+  // 91.0 then 91.6 three days later: the tile read "needs a few weigh-ins"
+  // while the flag beside it said "Gaining faster than target — cut 300 kcal".
+  const { decisionFlags } = await import('../js/progress.js');
+  const { gainRateVerdict } = await import('../js/analytics.js');
+  const bodyweight = weighIns([91.0, 91.6], '2026-11-01', 3);
+  const gain = gainRateVerdict(bodyweight, { calendarWeek: 6 });
+  assert.equal(gain.ok, false);
+  const flags = decisionFlags({ gain, strength: { ok: false }, calendarWeek: 6 });
+  assert.ok(!flags.some((f) => /gain/i.test(f.title)), JSON.stringify(flags));
+});
+
+test('M4: the gain flag says what the verdict says, never something else', async () => {
+  const { decisionFlags } = await import('../js/progress.js');
+  const { gainRateVerdict } = await import('../js/analytics.js');
+  for (const perDay of [0, 0.03, 0.065, 0.2]) {
+    const bodyweight = weighIns(Array.from({ length: 21 }, (_, i) => 90 + perDay * i));
+    const gain = gainRateVerdict(bodyweight, { calendarWeek: 6 });
+    assert.ok(gain.ok);
+    const flag = decisionFlags({ gain, strength: { ok: false }, calendarWeek: 6 }).find((f) => f.metric === 'gain');
+    assert.ok(flag, `no gain flag at ${perDay} kg/day`);
+    assert.equal(flag.status, gain.status);
+    assert.ok(flag.detail.includes(gain.action), 'the flag gave different advice from the verdict');
+  }
+});
+
+test('M4: "e1RM flat while gaining" needs a real strength trend, not four points', async () => {
+  const { decisionFlags } = await import('../js/progress.js');
+  const { gainRateVerdict } = await import('../js/analytics.js');
+  const gain = gainRateVerdict(weighIns(Array.from({ length: 21 }, (_, i) => 90 + 0.06 * i)), { calendarWeek: 6 });
+  const tooFew = decisionFlags({ gain, strength: { ok: false, reason: 'needs at least 3 points' }, calendarWeek: 6 });
+  assert.ok(!tooFew.some((f) => /flat/.test(f.title)));
+  const flat = decisionFlags({ gain, strength: { ok: true, perWeek: -0.2, sampleCount: 6 }, calendarWeek: 6 });
+  assert.ok(flat.some((f) => /flat/.test(f.title)));
+});
+
+test('M4: the Body screen’s rate is the same verdict, not a slope from two readings', async () => {
+  const { view } = await import('../js/ui/body.js');
+  const state = {
+    settings: { unit: 'kg' },
+    bodyDraft: { dateISO: '2026-11-04' },
+    daily: [
+      { id: 1, dateISO: '2026-11-01', bodyweight: 91.0 },
+      { id: 2, dateISO: '2026-11-04', bodyweight: 91.6 },
+    ],
+    measurements: [], niggles: [], media: [], shut: new Set(), todayISO: '2026-11-04',
+  };
+  const html = view({ state });
+  assert.ok(!/kg\/week/.test(html), 'Body printed a weekly rate from two weigh-ins');
+});

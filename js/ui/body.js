@@ -6,7 +6,7 @@
  * information; a zero is a lie that drags an average down.
  */
 
-import { rollingAverage, weeklySlope } from '../progress.js';
+import { rollingMean, gainRateVerdict } from '../analytics.js';
 import { preparePhoto, imageUrl, releaseImageUrl, formatBytes } from '../photos.js';
 import { escape, fmtLoad, fmtNum, toDisplay, section, openSheet, closeSheet, parseNumber } from './components.js';
 
@@ -278,9 +278,13 @@ export function view(ctx) {
   const weights = state.daily
     .filter((d) => Number.isFinite(d.bodyweight))
     .map((d) => ({ dateISO: d.dateISO, value: d.bodyweight }));
-  const averaged = rollingAverage(weights, 7);
+  // The same average and the same verdict Progress shows, with its minimum
+  // sample rules. This screen fitted its own slope to as few as two readings
+  // and printed it as a weekly rate.
+  const averaged = rollingMean(weights, 7);
   const latestAverage = averaged.length ? averaged[averaged.length - 1].value : null;
-  const rate = weeklySlope(averaged.slice(-21));
+  const verdict = gainRateVerdict(weights);
+  const rate = verdict.ok ? verdict.perWeek : null;
 
   const photos = state.media.filter((m) => m.kind === 'physique');
   const videos = state.media.filter((m) => m.kind === 'formcheck');
