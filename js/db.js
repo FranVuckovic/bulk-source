@@ -798,6 +798,30 @@ export function finishSessionAtomic(db, sessionLogId, patch) {
 }
 
 /**
+ * Change some fields of a stored session log, and nothing else.
+ *
+ * The open session used to be saved by writing `state.activeLog` back whole.
+ * That copy is whatever the Train screen loaded, so anything changed since —
+ * the session moved to another rotation from the Log, or finished or binned in
+ * another tab — was undone by the next draft save. Here the stored row is read
+ * and only the named fields are changed, in one transaction, and the caller
+ * gets back what is now stored.
+ *
+ * A deleted session is refused rather than written: a stale copy must not be
+ * able to put a session back that was deleted elsewhere.
+ */
+export function patchSessionLog(db, sessionLogId, patch) {
+  return withTransaction(db, ['sessionLogs'], 'readwrite', async (logs) => {
+    const log = await request(logs.get(sessionLogId));
+    if (!log) throw new Error('that session no longer exists');
+    if (log.deletedAtISO) throw new Error('that session has been deleted');
+    const next = { ...log, ...patch, id: log.id };
+    await request(logs.put(next));
+    return next;
+  });
+}
+
+/**
  * Soft delete: the row stays, marked, until it is purged.
  *
  * Deleting is the only irreversible thing the app does, and a mis-tap in a

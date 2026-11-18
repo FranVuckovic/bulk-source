@@ -31,6 +31,7 @@ import {
   clearStore,
   readSettings,
   ALL_STORES,
+  patchSessionLog,
 } from '../js/db.js';
 import { cycleSettingKeys } from '../js/plans.js';
 import { planCorrection } from '../js/cycle.js';
@@ -467,4 +468,48 @@ test('L8: advancing reuses a rotation that a correction or a moved session alrea
   const lookup = advance.indexOf('state.cycles.find((c) => c.sequence === to)');
   assert.ok(lookup > -1, 'it looks for an existing cycle at the target sequence');
   assert.ok(lookup < advance.indexOf('newCycle('), 'before it creates one');
+});
+
+/* ── M10: whole-object writes of a stale session log ─────────────────── */
+
+test('M10: saving the open session\'s draft does not undo a rotation move made since', async () => {
+  // persistDraft wrote the whole in-memory log back. Moving the open session
+  // into rotation N+1 was therefore reverted by the next draft save or Finish,
+  // which wrote back the old cycleId and cycleSequence.
+  const db = await freshDb();
+  const { log } = await startSessionAtomic(
+    db,
+    { dateISO: '2026-08-18', sessionId: 'A', endedAt: null, cycleId: 'cycle-4', cycleSequence: 4, note: null },
+    { operationId: 'start' }
+  );
+  const inMemory = { ...log };
+
+  // Elsewhere — the repair sheet, or another tab — the session moves.
+  await patchSessionLog(db, log.id, { cycleId: 'cycle-5', cycleSequence: 5 });
+
+  // The Train screen saves its draft from its own, older copy.
+  const saved = await patchSessionLog(db, inMemory.id, { note: 'left shoulder tight', sessionRpe: 8 });
+  const stored = (await getAll(db, 'sessionLogs')).find((row) => row.id === log.id);
+  assert.equal(stored.cycleSequence, 5, 'the move stands');
+  assert.equal(stored.cycleId, 'cycle-5');
+  assert.equal(stored.note, 'left shoulder tight', 'and the draft is saved');
+  assert.deepEqual(saved, stored, 'the caller gets back what is stored, not what it sent');
+});
+
+test('M10: a stale copy cannot bring back a session deleted elsewhere', async () => {
+  const db = await freshDb();
+  const { log } = await startSessionAtomic(db, { dateISO: '2026-08-18', sessionId: 'A', endedAt: null }, { operationId: 's' });
+  await softDeleteSession(db, log.id);
+  await assert.rejects(patchSessionLog(db, log.id, { note: 'x' }), /deleted/);
+  const stored = (await getAll(db, 'sessionLogs')).find((row) => row.id === log.id);
+  assert.ok(stored.deletedAtISO, 'it is still in the bin');
+});
+
+test('M10: the app never writes a whole session log from memory', () => {
+  const app = source('../js/app.js');
+  assert.doesNotMatch(app, /put\(state\.db, 'sessionLogs', state\.activeLog\)/, 'the open session is patched, not overwritten');
+  assert.doesNotMatch(app, /put\(state\.db, 'sessionLogs', \{ \.\.\.log/, 'nor is a log copied out of state.logs');
+
+  const move = bodyOf(app, 'async moveSessionToCycle(');
+  assert.match(move, /state\.activeLog\?\.id === logId\) state\.activeLog = moved/, 'moving the open session refreshes the copy the Train screen holds');
 });

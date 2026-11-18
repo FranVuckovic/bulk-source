@@ -21,6 +21,7 @@ import {
   putSetIdempotent,
   startSessionAtomic,
   finishSessionAtomic,
+  patchSessionLog,
   softDeleteSession,
   restoreSession,
   logicalSetKey,
@@ -660,8 +661,8 @@ async function removeSet(slotIndex, setIndex) {
 /** Swaps, added exercises and grips belong to the session that used them. */
 async function saveDeviations() {
   if (!state.activeLog) await ensureActiveLog();
-  state.activeLog = { ...state.activeLog, deviations: state.deviations, grips: state.grips };
-  await put(state.db, 'sessionLogs', state.activeLog);
+  // Patched, not written whole: see patchSessionLog.
+  state.activeLog = await patchSessionLog(state.db, state.activeLog.id, { deviations: state.deviations, grips: state.grips });
 }
 
 async function persistDraft() {
@@ -670,13 +671,14 @@ async function persistDraft() {
   const bodyweight = parseNumber(state.draft.bodyweight);
   const sessionRpe = parseNumber(state.draft.sessionRpe);
 
-  state.activeLog = {
-    ...state.activeLog,
+  // Only the draft's own fields. Writing the whole in-memory log reverted
+  // anything changed since it was loaded — a move to another rotation from
+  // the Log was undone by the next keystroke here.
+  state.activeLog = await patchSessionLog(state.db, state.activeLog.id, {
     note: state.draft.note || null,
     bodyweight: bodyweight == null ? null : fromDisplay(bodyweight, unit),
     sessionRpe,
-  };
-  await put(state.db, 'sessionLogs', state.activeLog);
+  });
 }
 
 async function finishSession() {
@@ -1327,12 +1329,16 @@ const ctx = {
       await put(state.db, 'cycles', cycle);
     }
 
-    await put(state.db, 'sessionLogs', { ...log, cycleId: cycle.id, cycleSequence: to, blockId: blockFor(state.plan, to).id });
+    const moved = await patchSessionLog(state.db, logId, { cycleId: cycle.id, cycleSequence: to, blockId: blockFor(state.plan, to).id });
     await put(state.db, 'auditLog', {
       atISO: nowISO(), entity: 'sessionLogs', entityId: logId, action: 'edit',
       fields: ['cycleSequence'], previous: { cycleSequence: from },
       reason: 'moved to another rotation', restorable: false,
     });
+    // The repair sheet offers this for the open session too. The Train screen's
+    // copy takes the new rotation, so nothing it does next can file the work
+    // under the old one.
+    if (state.activeLog?.id === logId) state.activeLog = moved;
 
     await loadEverything();
     buildHistory();
@@ -1444,8 +1450,7 @@ const ctx = {
   async setTimingReliable(reliable) {
     if (!state.activeLog) return;
     const from = state.activeLog.timingReliable !== false;
-    state.activeLog = { ...state.activeLog, timingReliable: !!reliable };
-    await put(state.db, 'sessionLogs', state.activeLog);
+    state.activeLog = await patchSessionLog(state.db, state.activeLog.id, { timingReliable: !!reliable });
     await put(state.db, 'auditLog', {
       atISO: nowISO(), entity: 'sessionLog', entityId: state.activeLog.id, action: 'edit',
       field: 'timingReliable', from, to: !!reliable,
@@ -1481,7 +1486,7 @@ const ctx = {
     // session moved without them would sit on one day while its work sat on
     // another, and nothing would look wrong until a chart disagreed with a list.
     const sets = state.sets.filter((set) => set.sessionLogId === logId);
-    await put(state.db, 'sessionLogs', { ...log, dateISO, localDate: dateISO });
+    await patchSessionLog(state.db, logId, { dateISO, localDate: dateISO });
     for (const set of sets) await put(state.db, 'sets', { ...set, localDate: dateISO });
     await put(state.db, 'auditLog', {
       atISO: nowISO(), entity: 'sessionLog', entityId: logId, action: 'edit',
@@ -1515,7 +1520,7 @@ const ctx = {
     const to = stamps[0];
     const end = log.endedAt || stamps[stamps.length - 1];
 
-    await put(state.db, 'sessionLogs', { ...log, startedAt: to });
+    await patchSessionLog(state.db, logId, { startedAt: to });
     await put(state.db, 'auditLog', {
       atISO: nowISO(), entity: 'sessionLog', entityId: logId, action: 'edit', field: 'startedAt', from, to,
     });
@@ -1545,9 +1550,7 @@ const ctx = {
     const log = state.logs.find((row) => row.id === logId);
     if (!log) return { ok: false, reason: 'that session no longer exists' };
 
-    await put(state.db, 'sessionLogs', {
-      ...log, endedAt: null, localEndDate: null, status: 'active', isPartial: false,
-    });
+    await patchSessionLog(state.db, logId, { endedAt: null, localEndDate: null, status: 'active', isPartial: false });
     await writeSetting(state.db, 'activeSessionLogId', logId);
     await put(state.db, 'auditLog', {
       atISO: nowISO(), entity: 'sessionLog', entityId: logId, action: 'reopen', from: log.endedAt, to: null,
@@ -1632,8 +1635,7 @@ const ctx = {
 
     state.readiness = value;
     if (state.activeLog) {
-      state.activeLog = { ...state.activeLog, readiness: value };
-      await put(state.db, 'sessionLogs', state.activeLog);
+      state.activeLog = await patchSessionLog(state.db, state.activeLog.id, { readiness: value });
       await put(state.db, 'auditLog', {
         atISO: nowISO(), entity: 'sessionLog', action: 'readiness', id: state.activeLog.id, from, to: value,
       });
