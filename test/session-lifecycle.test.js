@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 
 import { withSharedLibrary } from '../js/plans.js';
 import { newCycle, cycleProgress } from '../js/cycle.js';
-import { actions, slotsFor } from '../js/ui/train.js';
+import { actions, slotsFor, resetSessionState } from '../js/ui/train.js';
 import { stopRest } from '../js/ui/components.js';
 
 const load = (path) => JSON.parse(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'));
@@ -161,4 +161,66 @@ test('UI-01: "same as last time" stores the grip and pause the row shows, like a
       assert.equal(set.gripWidth, FLOPIP.exercises.benchComp.grips[0]);
     }
   });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   UI-02, UI-03 · One reset for everything a session leaves behind
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('UI-02: a discarded session leaves no swap, extra, grip, note or readiness behind', () => {
+  // Discard nulled only the log and its sets. Swaps, extras and notes are keyed
+  // by slot index, so the next session drew slot 2 as the discarded session's
+  // swap, and the first tick stored the swapped exercise.
+  const state = trainState(FLOPIP, 'A');
+  state.deviations.swaps[2] = 'legPress';
+  state.deviations.extras.push({ ex: 'lateral', sets: 3, reps: 15, rpe: 9, added: true });
+  state.deviations.exerciseNotes['1'] = 'seat 4';
+  state.grips['A-0'] = 'Inside rings (narrow)';
+  state.draft = { note: 'bad day', bodyweight: '91', sessionRpe: '8' };
+  state.readiness = 'yellow';
+  state.swapConfirmed.add(2);
+  state.cleared.add('3');
+  state.loggedSets.set('0:0', { id: 1 });
+
+  resetSessionState(state);
+  state.trainSessionId = 'B';
+
+  assert.equal(state.activeLog, null);
+  assert.equal(state.loggedSets.size, 0);
+  assert.deepEqual(state.deviations, { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {}, phaseSwaps: {} });
+  assert.deepEqual(state.grips, {});
+  assert.deepEqual(state.draft, { note: '', bodyweight: '', sessionRpe: '' });
+  assert.equal(state.swapConfirmed.size, 0);
+  assert.equal(state.cleared.size, 0);
+  const slots = slotsFor(state);
+  assert.ok(slots.every((slot) => !slot.swappedFrom && !slot.added), 'B shows something the discarded A chose');
+});
+
+test('UI-03: readiness goes back to normal once a session is over', () => {
+  // A yellow or red day carried into the next session: the set was trimmed and
+  // the new log stamped yellow, until the app was cold-started.
+  const state = trainState(FLOPIP, 'A');
+  state.readiness = 'red';
+  resetSessionState(state);
+  assert.equal(state.readiness, 'normal');
+});
+
+test('UI-02/03: finish, discard, plan switch and erase all go through the one reset', () => {
+  // Four hand-written reset lists had drifted apart; discard had almost none.
+  assert.match(appBody('async function finishSession('), /resetSessionState\(state\)/);
+  const del = appBody('async deleteEntry(kind, id');
+  assert.match(del, /resetSessionState\(state\)/, 'discarding the open session does not reset it');
+  assert.match(appBody('async switchPlan(planId)'), /resetSessionState\(state\)/);
+  assert.match(appBody('async eraseEverything()'), /resetSessionState\(state\)/);
+  // Discard goes through deleteEntry and must not set state on its own.
+  const discard = appBody("async 'confirm-discard-session'");
+  assert.match(discard, /deleteEntry\('session'/);
+  assert.doesNotMatch(discard, /state\.deviations\s*=/);
+});
+
+test('UI-03: a new civil date with no session open starts at normal readiness', () => {
+  // An installed PWA resumes rather than reloads, so yesterday's red day was
+  // still selected the next morning.
+  const roll = appBody('async function rollOverIfNeeded()');
+  assert.match(roll, /if \(!state\.activeLog\) state\.readiness = 'normal'/);
 });

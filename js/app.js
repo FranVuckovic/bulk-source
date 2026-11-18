@@ -711,14 +711,9 @@ async function finishSession() {
     (Date.parse(finishedLog.endedAt) - Date.parse(finishedLog.startedAt)) / 60000
   );
 
-  state.activeLog = null;
-  state.loggedSets = new Map();
-  state.cleared = new Set();
-  state.grips = {};
-  state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {}, phaseSwaps: {} };
-  state.swapConfirmed = new Set();
-  state.draft = { note: '', bodyweight: '', sessionRpe: '' };
-  state.exOpen = new Set(['0']);
+  // Everything the session left on screen goes, readiness included: a red day
+  // is about today, not about the next session.
+  train.resetSessionState(state);
   stopRest();
 
   await loadEverything();
@@ -785,6 +780,9 @@ function refreshToday() {
  */
 async function rollOverIfNeeded() {
   if (!state.db || !refreshToday()) return;
+  // Readiness is about the day. With nothing open, yesterday's answer is not
+  // today's; an open session keeps its own, restored from its log.
+  if (!state.activeLog) state.readiness = 'normal';
   await loadEverything();
   buildHistory();
   resetBodyDraft();
@@ -1176,8 +1174,10 @@ const ctx = {
     if (kind === 'session') {
       await softDeleteSession(state.db, id, { reason });
       if (state.activeLog?.id === id) {
-        state.activeLog = null;
-        state.loggedSets = new Map();
+        // The same reset as Finish. Clearing only the log and its sets left the
+        // discarded session's swaps, extras, grips, note and readiness to be
+        // applied to whatever was opened next.
+        train.resetSessionState(state);
         await writeSetting(state.db, 'activeSessionLogId', null);
       }
     } else {
@@ -1390,12 +1390,7 @@ const ctx = {
     state.activePlanId = planId;
     state.plan = target;
     state.trainSessionId = null;
-    state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {}, phaseSwaps: {} };
-    state.swapConfirmed = new Set();
-    state.grips = {};
-    state.loggedSets = new Map();
-    state.cleared = new Set();
-    state.exOpen = new Set(['0']);
+    train.resetSessionState(state);
     state.planOpenSession = undefined;
 
     await loadEverything();
@@ -1692,12 +1687,7 @@ const ctx = {
       await clearStore(state.db, store);
     }
     await writeSetting(state.db, 'activeSessionLogId', null);
-    state.activeLog = null;
-    state.loggedSets = new Map();
-    state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {}, phaseSwaps: {} };
-    state.swapConfirmed = new Set();
-    state.grips = {};
-    state.draft = { note: '', bodyweight: '', sessionRpe: '' };
+    train.resetSessionState(state);
     await loadEverything();
   },
 

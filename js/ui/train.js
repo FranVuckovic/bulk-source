@@ -75,6 +75,36 @@ export const CUSTOM_SESSION_ID = 'custom';
 export const customWorkoutById = (state, id) =>
   (state?.plan?.customWorkouts || []).find((w) => w.id === id) || null;
 
+/** A session's departures from the plan, before it has any. */
+export const freshDeviations = () => ({ swaps: {}, extras: [], addedSets: {}, exerciseNotes: {}, phaseSwaps: {} });
+
+/**
+ * Forget everything the last session left on the Train screen.
+ *
+ * One list, used by finish, discard, plan switch and erase. There used to be a
+ * hand-written list in each, and they had drifted: discard cleared only the
+ * log and its sets, so the next session inherited the discarded one's swaps,
+ * added exercises, grips, note — all keyed by slot index, so they landed on
+ * whatever the next session had in that position — and none of them reset
+ * readiness, so a red day stayed red until the app was cold-started.
+ */
+export function resetSessionState(state) {
+  state.activeLog = null;
+  state.loggedSets = new Map();
+  state.deviations = freshDeviations();
+  state.grips = {};
+  state.swapConfirmed = new Set();
+  state.draft = { note: '', bodyweight: '', sessionRpe: '' };
+  state.cleared = new Set();
+  state.exOpen = new Set(['0']);
+  state.readiness = 'normal';
+  state.stepDraft = null;
+  state.startAnswer = null;
+  state.pendingSet = null;
+  state.pendingTick = null;
+  state.staleAnswered = null;
+}
+
 /** True for the blank ad-hoc session and for any saved custom workout. */
 export const isOutsideRotation = (state, id = state.trainSessionId) =>
   id === CUSTOM_SESSION_ID || customWorkoutById(state, id) != null;
