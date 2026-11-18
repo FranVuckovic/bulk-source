@@ -945,7 +945,8 @@ function recordsCard(state, m, unit, { onlyExerciseId = null, excludeExerciseId 
   const setLine = (r) => {
     const exercise = state.plan.exercises[r.exerciseId];
     if (!exercise?.bodyweightLoaded) return `${fmtLoad(r.load, unit)} ${unit} × ${r.reps} rep${r.reps === 1 ? '' : 's'}`;
-    const bodyweight = state.settings.bodyweight;
+    // The bodyweight that set was estimated on, not today's setting.
+    const bodyweight = r.bodyweightUsed ?? state.settings.bodyweight;
     return `+${fmtLoad(r.load, unit)} ${unit} × ${r.reps} rep${r.reps === 1 ? '' : 's'} · ${fmtLoad(
       systemLoad(r.load, bodyweight),
       unit

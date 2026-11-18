@@ -643,3 +643,35 @@ test('M9: every path that un-makes or deletes a set goes through the attempt rul
   assert.match(body('deleteEntry'), /applyAttemptMax\(/, 'deleting the whole session');
   assert.doesNotMatch(app, /if \(written\.attemptResult === 'made'/, 'the unconditional write is back');
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   M5 · the bodyweight on a pull-up is his weight that week
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('M5: bodyweight lifts use the 7-day average nearest the set, not a frozen setting', async () => {
+  // All 116 chin-up, pull-up and dip sets stored 90 kg while he went from 86
+  // to 93 — a 4.6 kg drift built into every one of those estimates.
+  const { bodyweightOn } = await import('../js/analytics.js');
+  const daily = [
+    ...weighIns([86.0, 86.2, 86.1, 86.3], '2026-08-20'),
+    ...weighIns([92.8, 93.0, 93.1, 92.9], '2026-11-14'),
+  ].map((p, i) => ({ id: i, dateISO: p.dateISO, bodyweight: p.value }));
+  assert.ok(Math.abs(bodyweightOn(daily, '2026-08-23', 90) - 86.15) < 0.01, 'August used 90');
+  assert.ok(Math.abs(bodyweightOn(daily, '2026-11-18', 90) - 92.95) < 0.01, 'November used 90');
+  assert.equal(bodyweightOn(daily, '2026-10-01', 90), 90, 'no weigh-in within a week: the setting, not a guess');
+  assert.equal(bodyweightOn([], '2026-10-01', 90), 90);
+  const withTypo = [...daily, { id: 99, dateISO: '2026-11-18', bodyweight: 9.3 }];
+  assert.ok(bodyweightOn(withTypo, '2026-11-18', 90) > 90, 'a stored typo became the bodyweight on a set');
+});
+
+test('M5: saving a set reads the weigh-ins, not only the setting (wiring)', () => {
+  const app = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+  assert.match(app, /bodyweightUsed: [^\n]*bodyweightLoaded \? bodyweightOn\(state\.daily/, 'saveSet still stamps the setting');
+});
+
+test('M5: a record on a dip says the bodyweight that set used, not today’s setting', () => {
+  const dipLogs = [log(50, '2026-08-25')];
+  const dip = { id: 50, sessionLogId: 50, exerciseId: 'dip', isIndexSet: true, load: 20, reps: 5, rpe: 8, bodyweightUsed: 86 };
+  const row = records([dip], { exercises, logs: dipLogs }).estimated.find((r) => r.exerciseId === 'dip');
+  assert.equal(row.bodyweightUsed, 86);
+});

@@ -49,7 +49,7 @@ import {
 } from './progress.js';
 import { systemLoad, estimateForSet, isHighConfidence, attemptMaxEffect, maxBeforeAttempt } from './calc.js';
 import { checkWorkingMax } from './plausibility.js';
-import { personalBestBefore } from './analytics.js';
+import { personalBestBefore, bodyweightOn } from './analytics.js';
 import { localDate, nowISO, timeZone, utcOffsetMinutes, daysBetween } from './dates.js';
 import {
   blockFor,
@@ -541,8 +541,9 @@ async function saveSet(slotIndex, setIndex, values) {
      */
     gripWidth: values.gripWidth ?? state.grips[`${state.trainSessionId}-${slotIndex}`] ?? null,
     // Stored per set: without it, a pull-up log stops being interpretable the
-    // moment your bodyweight changes.
-    bodyweightUsed: state.plan.exercises[slot.ex].bodyweightLoaded ? state.settings.bodyweight : null,
+    // moment your bodyweight changes. His weigh-ins, not the Settings figure —
+    // that stayed at 90 kg on every set while he went from 86 to 93.
+    bodyweightUsed: state.plan.exercises[slot.ex].bodyweightLoaded ? bodyweightOn(state.daily, todayISO(), state.settings.bodyweight) : null,
     variantUsed: slot.swappedFrom ? slot.ex : null,
     pauseStyle: values.pauseStyle ?? existing?.pauseStyle ?? null,
   };

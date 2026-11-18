@@ -398,6 +398,35 @@ export function bodyweightSeries(daily) {
   return { points, excluded, sampleCount: points.length };
 }
 
+/** A weigh-in further than this from a set's date says nothing about it. */
+export const BODYWEIGHT_NEAREST_DAYS = 7;
+
+/**
+ * His bodyweight on a given day: the 7-day average at the weigh-in nearest it.
+ *
+ * Pull-ups, chin-ups and dips are estimated on bodyweight + added, and every
+ * one of the 116 he logged stored the Settings value, 90 kg, while his weight
+ * went from 86 to 93. That built a 4.6 kg downward drift into each of those
+ * estimates. The average rather than the single reading, so one heavy morning
+ * does not land on a set; typos are already out of the series. With no
+ * weigh-in within a week of the date, the setting — not a guess.
+ */
+export function bodyweightOn(daily, dateISO, fallback = null) {
+  if (!dateISO) return fallback;
+  const averaged = rollingMean(bodyweightSeries(daily).points, 7);
+  let best = null;
+  let bestGap = Infinity;
+  for (const point of averaged) {
+    const gap = Math.abs(daysBetween(point.dateISO, dateISO.slice(0, 10)) ?? Infinity);
+    // On a tie, the earlier reading: a set is logged after the morning weigh-in.
+    if (gap < bestGap || (gap === bestGap && point.dateISO <= dateISO)) {
+      best = point;
+      bestGap = gap;
+    }
+  }
+  return best && bestGap <= BODYWEIGHT_NEAREST_DAYS ? best.value : fallback;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    Trends
    ═══════════════════════════════════════════════════════════════════════ */
@@ -1074,6 +1103,7 @@ export function records(sets, { exercises, logs }) {
         bestEstimate.set(exerciseId, {
           exerciseId, name: exercise.name, value, measured,
           load: set.load, reps: set.reps, rpe: set.rpe ?? null, dateISO,
+          bodyweightUsed: set.bodyweightUsed ?? null,
         });
       }
     }
