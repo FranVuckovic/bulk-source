@@ -340,3 +340,12 @@ test('the bubble remembers where it was put, and being told is opt-in', () => {
   assert.match(drag, /moved < 4/, 'a small movement is a tap, not a drag');
   assert.match(drag, /Math\.min\(Math\.max/, 'and it is clamped inside the viewport');
 });
+
+test('N8: the record history wraps inside its card instead of scrolling the page sideways', () => {
+  // `.set` is a full-width line, and in a row that could not wrap it sat beside
+  // the date, value and gain: 582 px of content on a 412 px screen.
+  const css = readFileSync(new URL('../css/app.css', import.meta.url), 'utf8');
+  const rule = css.match(/\.rec-step\{[^}]*\}/)?.[0] || '';
+  assert.match(rule, /flex-wrap:wrap/, '.rec-step does not wrap');
+  assert.match(css, /\.rec-step \.set\{[^}]*flex:0 0 100%/, 'the set line no longer takes its own row');
+});

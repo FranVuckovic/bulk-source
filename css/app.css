@@ -89,12 +89,15 @@ body:has(.rest.on) .tmr{background:var(--s1);color:#fff}
 .rec-wrap > summary::-webkit-details-marker{display:none}
 .rec-wrap[open] > summary{border-bottom:0}
 .rec-hist{padding:2px 0 11px}
-.rec-step{display:flex;align-items:baseline;gap:9px;font-size:12px;padding:4px 0;color:var(--ink2);
+/* Wraps so the set line takes its own full row under date, value and gain.
+   Without it the 100%-wide set line sat on the first row, ran past the card
+   and scrolled the whole page sideways. */
+.rec-step{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 9px;font-size:12px;padding:4px 0;color:var(--ink2);
   font-variant-numeric:tabular-nums;border-top:1px dashed var(--grid)}
 .rec-step .d{color:var(--muted);flex:0 0 auto;min-width:74px}
 .rec-step .v{font-weight:700;color:var(--ink);flex:0 0 auto;min-width:62px}
-.rec-step .g{color:var(--muted);flex:1;text-align:right}
-.rec-step .set{flex:0 0 100%;padding-left:83px;color:var(--muted);font-size:10.5px}
+.rec-step .g{color:var(--muted);flex:1;min-width:0;text-align:right}
+.rec-step .set{flex:0 0 100%;box-sizing:border-box;padding-left:83px;color:var(--muted);font-size:10.5px}
 .rec-step.now .v{color:var(--s1)}
 .rec-step.now .g{color:var(--goodtx);font-weight:650}
 
