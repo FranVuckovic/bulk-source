@@ -915,3 +915,11 @@ test('N6: Train reads bodyweight through bodyweightOn, never the setting alone (
   const progress = readFileSync(new URL('../js/ui/progress.js', import.meta.url), 'utf8');
   assert.doesNotMatch(progress, /bodyweightUsed \?\? state\.settings\.bodyweight/, 'a record falls back to the setting, not the weigh-ins');
 });
+
+test('N9: discarding the open session stops its rest timer, as Finish does (wiring)', () => {
+  // The orange "2:59" bubble kept counting over the fresh session's Start
+  // button after Discard → Move to Recently deleted.
+  const deleteEntry = APP.slice(APP.indexOf('async deleteEntry('), APP.indexOf('async emptyBin('));
+  const active = deleteEntry.slice(deleteEntry.indexOf('if (state.activeLog?.id === id)'));
+  assert.match(active.slice(0, active.indexOf('}')), /stopRest\(\)/, 'the active-session branch of deleteEntry does not stop the rest timer');
+});

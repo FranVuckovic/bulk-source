@@ -1284,8 +1284,11 @@ const ctx = {
       if (state.activeLog?.id === id) {
         // The same reset as Finish. Clearing only the log and its sets left the
         // discarded session's swaps, extras, grips, note and readiness to be
-        // applied to whatever was opened next.
+        // applied to whatever was opened next. And the rest timer, as Finish
+        // stops it: left running, the discarded session's "2:59" kept counting
+        // over the Start button of the next one.
         train.resetSessionState(state);
+        stopRest();
         await writeSetting(state.db, 'activeSessionLogId', null);
       }
     } else {
