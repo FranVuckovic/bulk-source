@@ -34,7 +34,9 @@ import {
   patchSessionLog,
 } from '../js/db.js';
 import { cycleSettingKeys } from '../js/plans.js';
-import { planCorrection } from '../js/cycle.js';
+import { planCorrection, newCycle, cycleProgress } from '../js/cycle.js';
+import { blockFor } from '../js/plan.js';
+import { view as historyView } from '../js/ui/history.js';
 import { toCsv, CSV_COLUMNS, buildExport, parseImport, validateImport, applyImport, verifyAgainst } from '../js/export.js';
 import { exportRangeDefaults } from '../js/ui/settings.js';
 
@@ -512,4 +514,38 @@ test('M10: the app never writes a whole session log from memory', () => {
 
   const move = bodyOf(app, 'async moveSessionToCycle(');
   assert.match(move, /state\.activeLog\?\.id === logId\) state\.activeLog = moved/, 'moving the open session refreshes the copy the Train screen holds');
+});
+
+/* ── UI-09: deleted sets showed in the Bin as "Form check" ───────────── */
+
+test('UI-09: a deleted set is named in the Bin as a set, with its exercise and numbers', () => {
+  // The Bin's labeller had no case for `sets`, so every removed set fell
+  // through to the media label and read "Form check", with nothing to say
+  // which set it was.
+  const plan = JSON.parse(source('../data/plan-fopip-v2.json'));
+  const cycle = newCycle(plan, { sequence: 1, startedAtISO: null, localStartDate: null });
+  const block = blockFor(plan, 1);
+  const state = {
+    plan, cycle, cycles: [cycle],
+    logs: [], sets: [], daily: [], measurements: [], niggles: [], media: [],
+    maxes: new Map(),
+    deleted: [
+      {
+        store: 'sets', id: 7, deletedAtISO: '2026-08-19T10:00:00.000Z',
+        row: { id: 7, sessionLogId: 1, exerciseId: 'benchComp', load: 100, reps: 5, localDate: '2026-08-18', deletedAtISO: '2026-08-19T10:00:00.000Z' },
+      },
+    ],
+    settings: { unit: 'kg', increment: 2.5, bodyweight: 90, barKg: 20 },
+    storage: { persisted: true, supported: true, usage: 0, quota: 1 },
+    integrity: { ok: true, problems: [], formatVersion: 4 },
+    todayISO: '2026-08-19', shut: new Set(), bodyDraft: { dateISO: '2026-08-19' }, historyFilter: 'all',
+    cycleProgress: cycleProgress(plan, cycle, []),
+    block: { idx: block.id, label: String(block.id), ...block },
+    position: { nextSessionId: 'A' },
+    logSection: 'bin',
+  };
+  const html = historyView({ state, render() {} });
+  assert.doesNotMatch(html, /Form check/, 'a set is not a form check');
+  assert.match(html, new RegExp(`Set · ${plan.exercises.benchComp.name}`));
+  assert.match(html, /100(\.0)? kg × 5/);
 });

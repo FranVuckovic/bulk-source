@@ -400,6 +400,14 @@ function recoveryList(state) {
     if (entry.store === 'daily') return `Weigh-in${Number.isFinite(row.bodyweight) ? ` · ${fmtNum(row.bodyweight, 1)} kg` : ''}`;
     if (entry.store === 'measurements') return 'Tape measurements';
     if (entry.store === 'niggles') return `Niggle · ${row.site ?? ''}`;
+    // A set used to fall through to the media label below and read "Form
+    // check", with nothing to say which set it was.
+    if (entry.store === 'sets') {
+      const unit = state.settings.unit;
+      const name = state.plan.exercises[row.exerciseId]?.name || row.exerciseId || '—';
+      const load = row.load == null ? '—' : `${row.bodyweightUsed ? '+' : ''}${fmtLoad(row.load, unit)} ${unit}`;
+      return `Set · ${name} · ${load} × ${row.reps ?? '—'}`;
+    }
     return `${row.kind === 'physique' ? 'Physique photo' : 'Form check'}`;
   };
 
