@@ -829,9 +829,15 @@ function volumeCard(state, m) {
 }
 
 function sessionLoadChart(state) {
-  const loads = weeklyLoads(alive(state.logs));
+  const { weeks: loads, excluded } = weeklyLoads(alive(state.logs), alive(state.sets));
+  const leftOutNote = excluded.length
+    ? `<p class="hint" style="margin-top:8px"><b>${excluded.length} session${excluded.length === 1 ? '' : 's'} left out</b>
+       because the minutes are not real: ${escape(
+         [...new Set(excluded.map((row) => row.reason))].join(', ')
+       )}. Mark the timing as real in the Log, or fix the finish time, and it counts.</p>`
+    : '';
   if (!loads.length) {
-    return emptyChart('Needs a session RPE and a finish time — both come free once you finish a session.');
+    return emptyChart('Needs a session RPE and a finish time — both come free once you finish a session.') + leftOutNote;
   }
   const items = loads.map((l) => ({ label: l.weekISO.slice(5), value: Math.round(l.value) }));
   const latest = items[items.length - 1];
@@ -846,7 +852,7 @@ function sessionLoadChart(state) {
          }.</p>`
       : '';
 
-  return `${barChart(items, { color: 'var(--s1)', unit: 'sRPE × min', average: true })}${change}`;
+  return `${barChart(items, { color: 'var(--s1)', unit: 'sRPE × min', average: true })}${change}${leftOutNote}`;
 }
 
 /**

@@ -773,3 +773,30 @@ test('UI-11: the record sheet converts its gain too (wiring)', () => {
   const app = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
   assert.doesNotMatch(app, /\+\$\{fmtNum\(pr\.gain/, 'the PR sheet labels a kg gain with the display unit');
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Session load · minutes are only multiplied when they are real
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('session load leaves out sessions whose timing is not reliable, and says why', async () => {
+  // One forgotten Finish (388 min) was 3494 of the 3494 in a week's load, the
+  // figure the app calls the earliest warning there is.
+  const { weeklyLoads } = await import('../js/progress.js');
+  const real = {
+    id: 1, dateISO: '2026-11-10', sessionRpe: 7, timingReliable: true,
+    startedAt: '2026-11-10T17:00:00.000Z', endedAt: '2026-11-10T18:00:00.000Z',
+  };
+  const stated = { ...real, id: 2, dateISO: '2026-11-11', timingReliable: false,
+    startedAt: '2026-11-11T09:00:00.000Z', endedAt: '2026-11-11T15:00:00.000Z' };
+  const typedUp = { ...real, id: 3, dateISO: '2026-11-12', startedAt: '2026-11-12T17:00:00.000Z', endedAt: '2026-11-12T23:00:00.000Z' };
+  const sets = [
+    ...[0, 3, 6, 9].map((m, i) => ({ id: 10 + i, sessionLogId: 1, timestampISO: `2026-11-10T17:${String(10 + m).padStart(2, '0')}:00.000Z` })),
+    ...[0, 1, 2, 3, 4].map((s, i) => ({ id: 20 + i, sessionLogId: 3, timestampISO: `2026-11-12T22:59:0${s}.000Z` })),
+  ];
+
+  const result = weeklyLoads([real, stated, typedUp], sets);
+  assert.equal(result.weeks.length, 1);
+  assert.equal(result.weeks[0].value, 7 * 60, 'an unreliable session was multiplied into the week');
+  assert.deepEqual(result.excluded.map((row) => row.logId).sort(), [2, 3]);
+  assert.ok(result.excluded.every((row) => row.reason), 'a session was dropped without a reason');
+});

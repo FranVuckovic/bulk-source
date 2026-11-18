@@ -18,6 +18,8 @@
  *   target is a real date.
  */
 
+import { sessionTiming } from './analytics.js';
+
 /** Drift past this means the calendar is getting away from you. */
 export const DRIFT_WARN = -0.12;
 
@@ -300,17 +302,47 @@ export function sessionLoad(log) {
   return log.sessionRpe * minutes;
 }
 
-export function weeklyLoads(logs) {
+/**
+ * Session load per week, from sessions whose minutes are real.
+ *
+ * The minutes are start to finish, and a forgotten Finish makes that hours: one
+ * 388-minute session was 3494 of the 3494 in its week. A session whose timing
+ * `sessionTiming` does not call reliable — marked so by him, typed up
+ * afterwards, or anything else that function learns to notice — is left out
+ * and listed in `excluded` with the reason, rather than multiplied in.
+ */
+export function weeklyLoads(logs, sets = []) {
+  const setsByLog = new Map();
+  for (const set of sets || []) {
+    if (!setsByLog.has(set.sessionLogId)) setsByLog.set(set.sessionLogId, []);
+    setsByLog.get(set.sessionLogId).push(set);
+  }
+
   const byWeek = new Map();
+  const excluded = [];
   for (const log of logs || []) {
     const load = sessionLoad(log);
     if (load == null) continue;
+    const timing = sessionTiming(log, setsByLog.get(log.id) || []);
+    if (!timing.reliable) {
+      excluded.push({
+        logId: log.id,
+        dateISO: (log.localDate || log.dateISO || '').slice(0, 10),
+        reason: timing.statedUnreliable
+          ? 'timing marked as not real'
+          : timing.looksBulkEntered
+            ? 'sets entered together afterwards'
+            : 'timing not reliable',
+      });
+      continue;
+    }
     const week = weekStartISO(log.dateISO);
     byWeek.set(week, (byWeek.get(week) || 0) + load);
   }
-  return [...byWeek.entries()]
+  const weeks = [...byWeek.entries()]
     .map(([weekISO, value]) => ({ weekISO, value }))
     .sort((a, b) => a.weekISO.localeCompare(b.weekISO));
+  return { weeks, excluded };
 }
 
 /** Thresholds the plan already specifies, in one place so they are auditable. */
