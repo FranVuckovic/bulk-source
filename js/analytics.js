@@ -17,7 +17,7 @@
 
 import { planIdOf, DEFAULT_PLAN_ID } from './plans.js';
 import { estimateForSet, isHighConfidence, systemLoad, setDifficulty, noEstimateReason } from './calc.js';
-import { daysBetween, weekStart } from './dates.js';
+import { daysBetween, weekStart, addDays } from './dates.js';
 import { TAPE_RANGES_CM, BODYWEIGHT_RANGE_KG, WEIGH_IN_DEVIATION_KG, outlierReason } from './plausibility.js';
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -655,6 +655,125 @@ export function goalProgress(points, { goalKg = 140 } = {}) {
     confidence: result.confidence,
     sampleCount: result.sampleCount,
     projection: { lowWeeks: Math.max(1, Math.round(optimistic)), highWeeks: Math.round(pessimistic) },
+  };
+}
+
+/**
+ * Estimated max over bodyweight, at each strength point that has a 7-day
+ * average within `maxGapDays` of it. Joined on dates, never on positions.
+ */
+export function relativeStrengthSeries(strengthPoints, bodyweightPoints, maxGapDays = 3) {
+  const weights = new Map(bodyweightPoints.map((point) => [point.dateISO, point.value]));
+  return strengthPoints
+    .map((point) => {
+      let bodyweight = weights.get(point.dateISO) ?? null;
+      for (let offset = 1; bodyweight == null && offset <= maxGapDays; offset++) {
+        bodyweight = weights.get(addDays(point.dateISO, -offset)) ?? weights.get(addDays(point.dateISO, offset)) ?? null;
+      }
+      return bodyweight > 0 ? { dateISO: point.dateISO, value: point.value / bodyweight, strength: point.value, bodyweight } : null;
+    })
+    .filter(Boolean);
+}
+
+/** The ratio series, with its latest value and its first-to-last change. */
+export function relativeStrengthSnapshot(strengthPoints, bodyweightPoints) {
+  const ratios = relativeStrengthSeries(strengthPoints, bodyweightPoints);
+  const first = ratios[0];
+  const latest = ratios[ratios.length - 1];
+  return {
+    points: ratios,
+    sampleCount: ratios.length,
+    latest: latest?.value ?? null,
+    change: ratios.length > 1 ? latest.value - first.value : null,
+    fromDateISO: first?.dateISO ?? null,
+    toDateISO: latest?.dateISO ?? null,
+  };
+}
+
+/** Below this, a four-week change is "no change", and gets no tick. */
+export const FLAT_CHANGE_KG = 0.25;
+
+/**
+ * Where one lift stands: every figure Summary shows about it, from one series
+ * and one bodyweight.
+ *
+ * Summary used to work these out separately and contradicted itself on the
+ * bench: the tile divided the best estimate by today's 7-day average (1.43×),
+ * a card two rows down divided the last rotation's best by a weigh-in near it
+ * (1.32×), and the goal line took the last point of the raw series as "now"
+ * (120 kg, so "20 kg to go" beside a 130 kg 1RM) and fitted its own slope
+ * (0.47 kg/week, two lines under "about 0.52").
+ *
+ * Now there is one of each:
+ *   max        — the best point of `series` (the bench-max pipeline: measured
+ *                singles outrank estimates, typos and missed attempts are out)
+ *   bodyweight — the latest 7-day average
+ *   perKg      — max / bodyweight, compared with the first matched point
+ *   trend      — the strength slope (per rotation once there are three)
+ *   change     — four weeks, measured at real index sets on both ends
+ *   goal       — goalKg minus that same max, at that same slope
+ *
+ * `series` is a `strengthSeries` result; `averaged` is the rolling 7-day
+ * bodyweight series.
+ */
+export function liftStanding(series, averaged, { goalKg = null } = {}) {
+  const points = series?.points || [];
+  const perCycle = bestPerCycle(points);
+  const strength = trend(perCycle.length >= 3 ? perCycle : points, { label: 'strength' });
+  const change = changeOver(points, { weeks: 4 });
+
+  const top = points.reduce((best, point) => (!best || point.value > best.value ? point : best), null);
+  const max = top ? { value: top.value, dateISO: top.dateISO, sampleCount: series.sampleCount ?? points.length } : null;
+  const latest = averaged?.length ? averaged[averaged.length - 1] : null;
+  const bodyweight = latest ? { value: latest.value, dateISO: latest.dateISO } : null;
+
+  const ratios = relativeStrengthSeries(perCycle.length ? perCycle : points, averaged || []);
+  const now = max && bodyweight?.value > 0 ? max.value / bodyweight.value : null;
+  const first = ratios[0] ?? null;
+  const perKg = {
+    points: ratios,
+    sampleCount: ratios.length,
+    latest: now,
+    change: now != null && ratios.length > 1 ? now - first.value : null,
+    fromDateISO: first?.dateISO ?? null,
+    toDateISO: bodyweight?.dateISO ?? null,
+  };
+
+  let goal = null;
+  if (goalKg != null) {
+    if (!max) goal = { ok: false, reason: 'no index sets yet', goalKg };
+    else {
+      const remaining = goalKg - max.value;
+      const rising = strength.ok && strength.perWeek > 0;
+      goal = {
+        ok: true,
+        goalKg,
+        current: max.value,
+        remaining,
+        perWeek: rising ? strength.perWeek : null,
+        confidence: strength.confidence ?? null,
+        sampleCount: strength.sampleCount ?? points.length,
+        // A range, not a date: a slope from a handful of noisy weeks is not a promise.
+        projection:
+          rising && remaining > 0
+            ? {
+                lowWeeks: Math.max(1, Math.round(remaining / (strength.perWeek * 1.3))),
+                highWeeks: Math.round(remaining / (strength.perWeek * 0.7)),
+              }
+            : null,
+        reason: rising ? null : strength.reason ?? 'not currently rising',
+      };
+    }
+  }
+
+  return {
+    max,
+    bodyweight,
+    perKg,
+    perCycle,
+    strength,
+    change: change.ok ? { ...change, flat: Math.abs(change.change) < FLAT_CHANGE_KG } : change,
+    goal,
   };
 }
 

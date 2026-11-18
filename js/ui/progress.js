@@ -25,13 +25,13 @@ import { belongsTo, planIdOf } from '../plans.js';
 import { pct, systemLoad, proposeBlockBoundaryMax, proposeMidBlockBump } from '../calc.js';
 import {
   strengthSeries,
-  bestPerCycle,
   alignByDate,
   trend,
   rollingMean,
-  changeOver,
   gainRateVerdict,
-  goalProgress,
+  liftStanding,
+  relativeStrengthSeries,
+  relativeStrengthSnapshot,
   blockComparison as blockChanges,
   records as recordsFor,
   recordHistory,
@@ -140,25 +140,23 @@ function metrics(state) {
   const focus = state.progressLift || 'benchComp';
 
   const series = strengthSeries(sets, { exercises, logs, exerciseId: focus });
-  const perCycle = bestPerCycle(series.points);
-  const strength = trend(perCycle.length >= 3 ? perCycle : series.points, { label: 'strength' });
-  const change = changeOver(series.points, { weeks: 4 });
-  const best = series.points.length ? Math.max(...series.points.map((p) => p.value)) : null;
 
   const bodyweightClean = bodyweightSeries(state);
   const bodyweight = bodyweightClean.points;
   const averaged = rollingMean(bodyweight, 7);
-  const latestAverage = averaged.length ? averaged[averaged.length - 1].value : null;
   const calendarWeek = state.planProgress.calendarWeek ?? 1;
   const gain = gainRateVerdict(bodyweight, { calendarWeek, targets: gainTargets(state) });
 
   const waistClean = measurementSeries(state.measurements, 'waist');
   const waist = waistClean.points;
 
-  const relative = relativeStrengthSnapshot(
-    perCycle.length ? perCycle : series.points,
-    averaged
-  );
+  // Every figure about the lift — the max, its ratio to bodyweight, the slope,
+  // the four-week change, the goal — from one series and one bodyweight.
+  const standing = liftStanding(series, averaged, { goalKg: focus === 'benchComp' ? GOAL_BENCH_KG : null });
+  const { perCycle, strength, change } = standing;
+  const best = standing.max?.value ?? null;
+  const latestAverage = standing.bodyweight?.value ?? null;
+  const relative = standing.perKg;
 
   return {
     focus,
@@ -180,7 +178,7 @@ function metrics(state) {
     waist,
     waistExcluded: waistClean.excluded,
     waistTrend: trend(waist, { label: 'waist' }),
-    goal: focus === 'benchComp' ? goalProgress(series.points, { goalKg: GOAL_BENCH_KG }) : null,
+    goal: standing.goal,
   };
 }
 
@@ -390,9 +388,12 @@ function verdict(state, m, unit) {
 
   // 4 · the four-week change, measured at both ends
   if (m.change.ok) {
+    // No tick for standing still: "✓ Up 0.0 kg in 4 weeks" read as progress.
     push('strength', [
-      m.change.change >= 0 ? 'ok' : 'warn',
-      `${m.change.change >= 0 ? 'Up' : 'Down'} ${fmtLoad(Math.abs(m.change.change), unit)} ${unit} in ${Math.round(m.change.actualDays / 7)} weeks`,
+      m.change.flat ? 'info' : m.change.change > 0 ? 'ok' : 'warn',
+      m.change.flat
+        ? `No change in ${Math.round(m.change.actualDays / 7)} weeks`
+        : `${m.change.change > 0 ? 'Up' : 'Down'} ${fmtLoad(Math.abs(m.change.change), unit)} ${unit} in ${Math.round(m.change.actualDays / 7)} weeks`,
       `From ${fmtLoad(m.change.from, unit)} on ${escape(m.change.fromDateISO)} to ${fmtLoad(m.change.to, unit)} on ${escape(m.change.toDateISO)} — both ends are real index sets, not a best-ever compared against a recent one.`,
       {},
     ]);
@@ -471,7 +472,7 @@ function verdict(state, m, unit) {
 }
 
 function tiles(state, m, unit) {
-  const strengthPerKg = m.best != null && m.latestAverage ? m.best / m.latestAverage : null;
+  const strengthPerKg = m.relative.latest;
   const change = m.change.ok ? m.change.change : null;
 
   return `<div class="tiles">
@@ -668,32 +669,8 @@ function waistCard(m, len = 'cm') {
     }${leftOut(m.waistExcluded, (row) => `${fmtLength(row.value, len)} ${lu}`)}</p></div>`;
 }
 
-export function relativeStrengthSeries(strengthPoints, bodyweightPoints, maxGapDays = 3) {
-  const weights = new Map(bodyweightPoints.map((point) => [point.dateISO, point.value]));
-  return strengthPoints
-    .map((point) => {
-      let bodyweight = weights.get(point.dateISO) ?? null;
-      for (let offset = 1; bodyweight == null && offset <= maxGapDays; offset++) {
-        bodyweight = weights.get(addDays(point.dateISO, -offset)) ?? weights.get(addDays(point.dateISO, offset)) ?? null;
-      }
-      return bodyweight > 0 ? { dateISO: point.dateISO, value: point.value / bodyweight, strength: point.value, bodyweight } : null;
-    })
-    .filter(Boolean);
-}
-
-export function relativeStrengthSnapshot(strengthPoints, bodyweightPoints) {
-  const ratios = relativeStrengthSeries(strengthPoints, bodyweightPoints);
-  const first = ratios[0];
-  const latest = ratios[ratios.length - 1];
-  return {
-    points: ratios,
-    sampleCount: ratios.length,
-    latest: latest?.value ?? null,
-    change: ratios.length > 1 ? latest.value - first.value : null,
-    fromDateISO: first?.dateISO ?? null,
-    toDateISO: latest?.dateISO ?? null,
-  };
-}
+/** Kept for callers that read them from here; the arithmetic lives in analytics.js. */
+export { relativeStrengthSeries, relativeStrengthSnapshot };
 
 function strengthVsBodyweight(m) {
   const strengthPoints = m.perCycle.length ? m.perCycle : m.series.points;

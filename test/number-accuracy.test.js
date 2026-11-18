@@ -832,3 +832,65 @@ test('L7: app.js imports nothing it does not use (grep evidence for the removals
     assert.doesNotMatch(app, new RegExp(`^\\s*${name},$|[{,]\\s*${name}\\s*[,}]`, 'm'), `${name} is still imported`);
   }
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   N7 · Summary says one thing about the bench
+   ═══════════════════════════════════════════════════════════════════════ */
+
+// His shape: a 130 single in October, then rotations whose best is lower.
+const n7Logs = [
+  log(1, '2026-09-04', { cycleSequence: 1 }),
+  log(2, '2026-09-18', { cycleSequence: 2 }),
+  log(3, '2026-10-02', { cycleSequence: 3 }),
+  log(4, '2026-10-23', { cycleSequence: 4 }),
+  log(5, '2026-11-06', { cycleSequence: 5 }),
+  log(6, '2026-11-14', { cycleSequence: 6 }),
+];
+const n7Sets = [
+  bench(1, 1, { load: 100, reps: 5, rpe: 8 }),
+  bench(2, 2, { load: 105, reps: 5, rpe: 8 }),
+  bench(3, 3, { load: 110, reps: 5, rpe: 8 }),
+  bench(4, 4, { load: 130, reps: 1, rpe: 10 }),
+  bench(5, 5, { load: 112.5, reps: 5, rpe: 8 }),
+  bench(6, 6, { load: 120, reps: 1, rpe: 10 }),
+];
+const n7Averaged = ['2026-09-04', '2026-09-18', '2026-10-02', '2026-10-23', '2026-11-06', '2026-11-14'].map((dateISO, i) => ({
+  dateISO,
+  value: 88 + i * 0.6,
+}));
+
+test('N7: the max, its ratio to bodyweight and the goal all use the one bench max', async () => {
+  // The tile said 1.43×BW, a card two rows down 1.32×, and the goal "20 kg to
+  // go" (from the last point, 120) beside an estimated 1RM of 130.
+  const { liftStanding } = await import('../js/analytics.js');
+  const series = strengthSeries(n7Sets, { exercises, logs: n7Logs, exerciseId: 'benchComp' });
+  const standing = liftStanding(series, n7Averaged, { goalKg: 140 });
+  const best = Math.max(...series.points.map((p) => p.value));
+
+  assert.equal(standing.max.value, best);
+  assert.equal(standing.bodyweight.value, n7Averaged[n7Averaged.length - 1].value);
+  assert.ok(Math.abs(standing.perKg.latest - best / standing.bodyweight.value) < 1e-9, 'the ratio uses another max or another bodyweight');
+  assert.equal(standing.goal.current, best, 'the goal measures from another max');
+  assert.ok(Math.abs(standing.goal.remaining - (140 - best)) < 1e-9);
+  if (standing.goal.perWeek != null) assert.equal(standing.goal.perWeek, standing.strength.perWeek, 'the goal fits its own slope');
+});
+
+test('N7: a four-week change of nothing gets no tick', async () => {
+  const { liftStanding } = await import('../js/analytics.js');
+  const points = [
+    { dateISO: '2026-10-10', value: 120, cycleSequence: 1 },
+    { dateISO: '2026-11-14', value: 120, cycleSequence: 2 },
+  ];
+  const standing = liftStanding({ points, sampleCount: 2 }, []);
+  assert.equal(standing.change.ok, true);
+  assert.equal(standing.change.flat, true, '"✓ Up 0.0 kg in 4 weeks" read as progress');
+});
+
+test('N7: Summary draws every bench figure from liftStanding (wiring)', () => {
+  const progress = readFileSync(new URL('../js/ui/progress.js', import.meta.url), 'utf8');
+  const metrics = progress.slice(progress.indexOf('function metrics('), progress.indexOf('function summaryView('));
+  assert.match(metrics, /liftStanding\(/);
+  assert.doesNotMatch(metrics, /goalProgress\(|relativeStrengthSnapshot\(|changeOver\(/, 'a second pipeline for a bench figure');
+  const tiles = progress.slice(progress.indexOf('function tiles('), progress.indexOf('function flagsSection('));
+  assert.doesNotMatch(tiles, /m\.best \/ /, 'the tile divides by its own bodyweight');
+});
