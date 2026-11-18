@@ -594,7 +594,14 @@ async function saveSet(slotIndex, setIndex, values) {
 
   render();
 
-  if (beaten) celebrate(beaten);
+  /*
+   * The record is reported, not shown from here. Opening the sheet at the end
+   * of a save put it under whoever called: the set editor closed "the sheet"
+   * straight afterwards, which was the record sheet, so a record logged in the
+   * editor — every AMRAP, attempt and edited set — was never seen. The caller
+   * celebrates once its own sheet is out of the way.
+   */
+  return { set: written, beaten };
 }
 
 /**
@@ -1016,6 +1023,7 @@ const ctx = {
   removeSet,
   saveDeviations,
   finishSession,
+  celebrate,
 
   openSession(id) {
     if (state.activeLog && state.activeLog.sessionId !== id) {

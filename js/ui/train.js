@@ -1654,6 +1654,9 @@ function setRow(state, slot, slotIndex, i) {
  * "Log this set" being hidden behind the keyboard means scrolling to save every
  * single set of every session.
  */
+/** The load box's text: blank for no load, never a 0 nobody typed. */
+const loadBox = (kg, unit) => (Number.isFinite(kg) ? Math.round(toDisplay(kg, unit) * 10) / 10 : '');
+
 function drawStepSheet(ctx) {
   const { state } = ctx;
   const c = state.sheetCtx;
@@ -1674,11 +1677,16 @@ function drawStepSheet(ctx) {
   openSheet(`<div class="ttl">${escape(exercise.name)} \u00b7 set ${c.i + 1}</div>
 
     <div class="fields">
-      ${field('load', bodyweight ? `Added (${unit})` : `Load (${unit})`, Math.round(toDisplay(c.load ?? 0, unit) * 10) / 10, stepFor(unit, state.settings.increment))}
+      ${field('load', bodyweight ? `Added (${unit})` : `Load (${unit})`, loadBox(c.load, unit), stepFor(unit, state.settings.increment))}
       ${field('reps', 'Reps', c.reps ?? '', 1)}
       ${field('rpe', 'RPE', c.rpe ?? '', 0.5)}
     </div>
 
+    ${
+      c.needsLoad
+        ? `<p class="hint" style="margin:-4px 2px 10px;color:var(--s2)"><b>Enter the load to log this set.</b> A weighted set with no load counts as done but carries no weight and no estimate.</p>`
+        : ''
+    }
     <div class="eff" id="stepEff">${stepReadout(state, c, workingMax)}</div>
     <div id="stepOver">${overshootNote(state, c)}</div>
     ${variationNote(state, c.slot.ex)}
@@ -1817,7 +1825,20 @@ export const actions = {
     }
 
     const { load, reps, rpe, toFailure, prescribed } = rowValues(state, slot, slotIndex, i);
-    await ctx.saveSet(slotIndex, i, {
+
+    /*
+     * A weighted set with no load is not a set anyone can use: no tonnage, no
+     * estimate, and it still counts as logged. That is what one tap stored for
+     * an exercise with no max and no history, or after "Clear prescribed". The
+     * editor opens on the load instead. A bodyweight lift with nothing added is
+     * a real set and is logged as one.
+     */
+    if (load == null && !bodyweightFor(state, slot.ex)) {
+      actions['open-step'](ctx, { si: String(slotIndex), i: String(i), field: 'load' });
+      return;
+    }
+
+    const result = await ctx.saveSet(slotIndex, i, {
       load,
       reps,
       rpe,
@@ -1833,6 +1854,7 @@ export const actions = {
       prescribedLoad: prescribed,
     });
     startRest(slot.restSec || state.plan.exercises[slot.ex].defaultRestSec);
+    if (result?.beaten) ctx.celebrate?.(result.beaten);
   },
 
   'open-ex-note'(ctx, data) {
@@ -1926,7 +1948,10 @@ export const actions = {
       field: data.field,
       slot,
       logged: !!values.logged,
-      load: values.load ?? 0,
+      // Blank stays blank. It used to open on 0, so a row showing "—" was
+      // logged as 0 kg by anyone who only changed the reps. Zero added is
+      // still the right start for a bodyweight lift.
+      load: values.load ?? (bodyweightFor(state, slot.ex) ? 0 : null),
       reps: values.reps ?? slot.reps,
       rpe: values.rpe,
       toFailure: values.logged ? !!values.logged.toFailure : values.toFailure,
@@ -2087,8 +2112,14 @@ export const actions = {
 
   async 'save-step'(ctx) {
     const c = ctx.state.sheetCtx;
+    if (!Number.isFinite(c.load) && !bodyweightFor(ctx.state, c.slot.ex)) {
+      c.needsLoad = true;
+      drawStepSheet(ctx);
+      globalThis.requestAnimationFrame?.(() => document.getElementById('in-load')?.focus?.());
+      return;
+    }
     ctx.state.exOpen.add(String(c.si));
-    await ctx.saveSet(c.si, c.i, {
+    const result = await ctx.saveSet(c.si, c.i, {
       // Zero is a real added load on a pull-up, chin-up or dip. v1's `|| null`
       // turned an unweighted set into a blank that produced no e1RM and no
       // tonnage.
@@ -2111,6 +2142,8 @@ export const actions = {
     startRest(c.slot.restSec || ctx.state.plan.exercises[c.slot.ex].defaultRestSec);
     closeSheet();
     ctx.render();
+    // After the editor is gone, or closing it would close this too.
+    if (result?.beaten) ctx.celebrate?.(result.beaten);
   },
 
   async 'unlog-step'(ctx) {
@@ -2532,7 +2565,7 @@ function repaintFields(ctx) {
     const el = document.getElementById(id);
     if (el) el.value = value;
   };
-  set('in-load', Math.round(toDisplay(c.load ?? 0, unit) * 10) / 10);
+  set('in-load', loadBox(c.load, unit));
   set('in-reps', c.reps ?? '');
   set('in-rpe', c.rpe ?? '');
 }

@@ -28,7 +28,9 @@ function appBody(opening) {
   const start = APP.indexOf(opening);
   assert.ok(start > -1, `app.js no longer has ${opening}`);
   const rest = APP.slice(start);
-  const end = rest.search(/\n(\}|  \},?)\n/);
+  // A top-level function ends at a closing brace in column 0; a method of
+  // `ctx` or `globalActions` at "  }," — inner blocks are indented further.
+  const end = rest.search(/function /.test(opening) ? /\n\}\n/ : /\n  \},\n/);
   return rest.slice(0, end === -1 ? undefined : end);
 }
 
@@ -351,6 +353,93 @@ test('Tracking #1: saveSet stamps through setStamps and builds its operation id 
   assert.match(save, /train\.setStamps\(existing, nowISO\(\)\)/);
   assert.doesNotMatch(save, /timestampISO: nowISO\(\)/, 'saveSet still re-stamps every save');
   assert.match(save, /operationId: values\.operationId \?\? `\$\{record\.logicalKey\}-\$\{stamps\.stamp\}`/);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   UI-07 · The record celebration survives the set editor
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('UI-07: a record logged through the set editor is still celebrated', async () => {
+  // saveSet opened the record sheet, and save-step closed "the sheet" straight
+  // after — the record sheet. AMRAPs, attempts and every edited set go through
+  // the editor, so a record there was never shown.
+  const state = trainState(FLOPIP, 'E', { sequence: 4 });
+  const si = slotsFor(state).findIndex((s) => s.role === 'top_single');
+  await withFakeDocument(async (nodes) => {
+    const events = [];
+    const remove = nodes.sheet.classList.remove;
+    nodes.sheet.classList.remove = function () { events.push('close'); return remove.call(this); };
+    const ctx = recordingCtx(state);
+    ctx.saveSet = async () => ({ set: { id: 1 }, beaten: { name: 'Competition bench press', value: 130, previous: 127, gain: 3 } });
+    ctx.celebrate = (pr) => events.push(`celebrate ${pr.value}`);
+
+    actions['open-step'](ctx, { si: String(si), i: '0', field: 'load' });
+    await actions['save-step'](ctx);
+    assert.deepEqual(events.slice(-2), ['close', 'celebrate 130'], 'the editor closed after the record sheet opened');
+  });
+});
+
+test('UI-07: saveSet reports a record rather than opening the sheet itself', () => {
+  const save = appBody('async function saveSet(');
+  assert.doesNotMatch(save, /celebrate\(/, 'saveSet still opens the record sheet under whatever called it');
+  assert.match(save, /return \{ set: written, beaten \}/);
+  assert.match(APP, /\n  celebrate,\n/, 'ctx does not expose celebrate');
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   UI-08 / H4 · A weighted set is never logged without a load
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const blankRowState = () => {
+  // An exercise added today with no max and no history: the row shows "—".
+  const state = trainState(FLOPIP, CUSTOM, {
+    extras: [{ ex: 'ohpMachine', sets: 3, reps: 10, rpe: 8, added: true }],
+  });
+  return state;
+};
+const CUSTOM = 'custom';
+
+test('UI-08: one tap on a row with no load opens the editor on the load', async () => {
+  // ✓ saved `load: null` with the slot's reps and RPE: a logged set with no
+  // tonnage and no estimate.
+  const state = blankRowState();
+  await withFakeDocument(async () => {
+    const ctx = recordingCtx(state);
+    await actions.tick(ctx, { si: '0', i: '0' }, { stopPropagation() {} });
+    assert.equal(ctx.saved.length, 0, 'a weighted set was logged with no load');
+    assert.equal(state.sheetCtx?.kind, 'step');
+    assert.equal(state.sheetCtx.field, 'load');
+  });
+});
+
+test('H4: the editor shows a blank load as blank, and will not log it as 0 kg', async () => {
+  // The editor's load box read 0 for a row showing "—", and changing only the
+  // reps logged 0 kg. Tick and editor now agree: no load, no weighted set.
+  const state = blankRowState();
+  await withFakeDocument(async (nodes) => {
+    const ctx = recordingCtx(state);
+    actions['open-step'](ctx, { si: '0', i: '0', field: 'reps' });
+    assert.equal(state.sheetCtx.load, null);
+    assert.match(nodes.pan.innerHTML, /id="in-load"[^>]*value=""/, 'the load box is not empty');
+    await actions['save-step'](ctx);
+    assert.equal(ctx.saved.length, 0, 'a blank load was saved');
+    assert.match(nodes.pan.innerHTML, /Enter the load/);
+    assert.ok(nodes.sheet.classList.contains(), 'the editor closed and lost the set');
+  });
+});
+
+test('UI-08: a bodyweight lift still logs as bodyweight with nothing added', async () => {
+  // Zero added is a real pull-up. Only weighted lifts need a load.
+  const state = trainState(FLOPIP, CUSTOM, { extras: [{ ex: 'pullupNorm', sets: 3, reps: 8, rpe: 8, added: true }] });
+  // "Clear prescribed" is the other way a row ends up with no load.
+  state.cleared.add('0');
+  await withFakeDocument(async () => {
+    const ctx = recordingCtx(state);
+    actions['open-step'](ctx, { si: '0', i: '0', field: 'reps' });
+    assert.equal(state.sheetCtx.load, 0);
+    await actions['save-step'](ctx);
+    assert.equal(ctx.saved[0].load, 0);
+  });
 });
 
 test('UI-03: a new civil date with no session open starts at normal readiness', () => {
