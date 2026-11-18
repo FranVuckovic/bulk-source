@@ -376,12 +376,25 @@ async function restoreActiveSession() {
     sessionRpe: active.sessionRpe == null ? '' : String(active.sessionRpe),
   };
 
-  state.loggedSets = new Map(
-    state.sets
-      .filter((set) => set.sessionLogId === active.id)
-      .map((set) => [`${set.slotIndex}:${set.setIndex}`, set])
-  );
+  state.loggedSets = train.loggedSetsFor(state.sets, active.id);
   for (const key of state.loggedSets.keys()) state.exOpen.add(key.split(':')[0]);
+}
+
+/**
+ * Re-read the open session after something else changed its records.
+ *
+ * Correcting, deleting or restoring a set in the Log, or moving the session to
+ * another rotation, reloaded the stores and left the Train screen holding the
+ * old log and the old sets: a set deleted in the Log stayed ticked, a restored
+ * one stayed unticked, Finish counted from the stale map, and the next draft
+ * save wrote the stale log back over the move.
+ */
+function rebuildActiveSession() {
+  if (!state.activeLog) return;
+  const stored = state.logs.find((log) => log.id === state.activeLog.id);
+  if (!stored) return;
+  state.activeLog = stored;
+  state.loggedSets = train.loggedSetsFor(state.sets, stored.id);
 }
 
 /**
@@ -1230,6 +1243,7 @@ const ctx = {
     if (store === 'sessionLogs') await restoreSession(state.db, key);
     else await restoreRow(state.db, store, key);
     await loadEverything();
+    rebuildActiveSession();
     buildHistory();
   },
 
@@ -1335,6 +1349,7 @@ const ctx = {
     });
 
     await loadEverything();
+    rebuildActiveSession();
     buildHistory();
     render();
     return { moved: true, from, to, sessionId: log.sessionId };
@@ -1575,6 +1590,7 @@ const ctx = {
     }
 
     await loadEverything();
+    rebuildActiveSession();
     buildHistory();
     render();
     return { changed: changed.length };
@@ -1584,6 +1600,7 @@ const ctx = {
   async deleteSet(setId, { reason = null } = {}) {
     await softDeleteRow(state.db, 'sets', setId, { reason });
     await loadEverything();
+    rebuildActiveSession();
     buildHistory();
     render();
   },

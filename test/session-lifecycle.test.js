@@ -14,7 +14,16 @@ import { readFileSync } from 'node:fs';
 
 import { withSharedLibrary } from '../js/plans.js';
 import { newCycle, cycleProgress } from '../js/cycle.js';
-import { actions, inputs, slotsFor, resetSessionState, defaultPause, setStamps, keepStepDraft } from '../js/ui/train.js';
+import {
+  actions,
+  inputs,
+  slotsFor,
+  resetSessionState,
+  defaultPause,
+  setStamps,
+  keepStepDraft,
+  loggedSetsFor,
+} from '../js/ui/train.js';
 import { stopRest } from '../js/ui/components.js';
 import { createFakeEnv } from './helpers/fake-indexeddb.js';
 import { openDatabase, getAll, putSetIdempotent, logicalSetKey } from '../js/db.js';
@@ -493,6 +502,38 @@ test('UI-26: every way a sheet closes keeps the editor draft, and Cancel is its 
   const train = readFileSync(new URL('../js/ui/train.js', import.meta.url), 'utf8');
   const sheet = train.slice(train.indexOf('function drawStepSheet('), train.indexOf('function stepReadout('));
   assert.match(sheet, /data-act="step-cancel">Cancel</);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   UI-05 · A change made in the Log reaches the open session's Train screen
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('UI-05: the open session\'s logged sets are rebuilt from what is stored', () => {
+  const sets = [
+    { id: 1, sessionLogId: 7, slotIndex: 0, setIndex: 0, load: 100 },
+    { id: 2, sessionLogId: 7, slotIndex: 0, setIndex: 1, load: 100 },
+    { id: 3, sessionLogId: 6, slotIndex: 0, setIndex: 0, load: 90 },
+  ];
+  const logged = loggedSetsFor(sets, 7);
+  assert.deepEqual([...logged.keys()], ['0:0', '0:1']);
+  assert.equal(logged.get('0:1').id, 2);
+});
+
+test('UI-05: correcting, deleting or restoring in the Log rebuilds the open session', () => {
+  // Each reloaded the stores and left `state.loggedSets` alone. A set deleted
+  // in the Log stayed ticked on Train; one restored from the bin stayed
+  // unticked, and Finish counted from the stale map and could mark the
+  // session partial. Moving the open session to another rotation was undone
+  // by the next draft save, which wrote back the stale in-memory log.
+  for (const opening of [
+    'async repairSet(setId, patch)',
+    'async deleteSet(setId,',
+    'async restoreEntry(store, rawKey)',
+    'async moveSessionToCycle(logId, toSequence)',
+  ]) {
+    assert.match(appBody(opening), /rebuildActiveSession\(\)/, `${opening} leaves the Train screen stale`);
+  }
+  assert.match(appBody('async function restoreActiveSession('), /train\.loggedSetsFor\(state\.sets, active\.id\)/);
 });
 
 test('UI-03: a new civil date with no session open starts at normal readiness', () => {

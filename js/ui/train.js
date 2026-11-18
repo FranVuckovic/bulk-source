@@ -123,6 +123,15 @@ export function setStamps(existing, now) {
   return { timestampISO: existing.timestampISO, editedAtISO: now, stamp: now };
 }
 
+/** One session's stored sets, keyed the way the Train screen reads them. */
+export function loggedSetsFor(sets, sessionLogId) {
+  return new Map(
+    (sets || [])
+      .filter((set) => set.sessionLogId === sessionLogId && !set.deletedAtISO)
+      .map((set) => [setKey(set.slotIndex, set.setIndex), set])
+  );
+}
+
 /** True for the blank ad-hoc session and for any saved custom workout. */
 export const isOutsideRotation = (state, id = state.trainSessionId) =>
   id === CUSTOM_SESSION_ID || customWorkoutById(state, id) != null;
