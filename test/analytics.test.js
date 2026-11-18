@@ -50,7 +50,7 @@ test('only standardised index sets on trustworthy lifts count as evidence', () =
   assert.match(reasons[3], /indicative only/);
   assert.match(reasons[4], /outside the table/);
   assert.match(reasons[5], /no RPE recorded/);
-  assert.match(reasons[6], /deload/);
+  assert.match(reasons[6], /reduced-volume rotation/);
   assert.match(reasons[7], /deleted/);
   assert.match(reasons[8], /substitute/);
 });

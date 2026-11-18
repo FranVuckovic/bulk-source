@@ -192,11 +192,22 @@ export function eligibleForStrength(sets, { exercises, logs = [] }) {
     if (!gate.ok) { reject(gate.reason); continue; }
     if (!log) { reject('its session record is gone'); continue; }
     if (log.deletedAtISO) { reject('the session was deleted'); continue; }
-    if (log.isDeload || log.effortMode === 'none') { reject('deload rotation'); continue; }
+    /*
+     * Taper, test, recovery and bridge rotations have no failure wave, which is
+     * what effortMode 'none' says. Their ordinary sets are lighter on purpose
+     * and are not comparable training — but the single in them is the test,
+     * the most important measurement of the block. This used to reject every
+     * set in them as "deload rotation", the test single included.
+     */
+    const reducedVolume = !!(log.isDeload || log.effortMode === 'none');
+    if (reducedVolume && set.reps !== 1) {
+      reject('reduced-volume rotation (taper, test, recovery or bridge) — only its singles count');
+      continue;
+    }
     if (set.substitutionReason || set.variantUsed) { reject('a substitute was used'); continue; }
 
     candidates.push({
-      set, estimate: gate.estimate, log, measured: gate.measured,
+      set, estimate: gate.estimate, log, measured: gate.measured, reducedVolume,
       value: gate.estimate.value, dateISO: dateOfSet(set, byLog),
     });
   }
@@ -221,7 +232,7 @@ export function eligibleForStrength(sets, { exercises, logs = [] }) {
 
   const included = candidates
     .filter((candidate) => !outrankedIds.has(candidate.set.id))
-    .map(({ set, estimate, log, measured }) => ({ set, estimate, log, measured }));
+    .map(({ set, estimate, log, measured, reducedVolume }) => ({ set, estimate, log, measured, reducedVolume }));
 
   return { included, excluded, disagreements };
 }
@@ -238,7 +249,7 @@ export function strengthSeries(sets, { exercises, logs, exerciseId }) {
   );
 
   const points = included
-    .map(({ set, estimate, log, measured }) => ({
+    .map(({ set, estimate, log, measured, reducedVolume }) => ({
       dateISO: (log?.localDate || log?.dateISO || set.localDate || '').slice(0, 10),
       cycleSequence: log?.cycleSequence ?? null,
       blockId: log?.blockId ?? null,
@@ -249,6 +260,7 @@ export function strengthSeries(sets, { exercises, logs, exerciseId }) {
       load: set.load,
       rpe: set.rpe,
       measured: !!measured,
+      reducedVolume: !!reducedVolume,
     }))
     .filter((point) => point.dateISO)
     .sort((a, b) => a.dateISO.localeCompare(b.dateISO));

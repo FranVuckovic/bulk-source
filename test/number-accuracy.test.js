@@ -188,3 +188,33 @@ test('H1: back-offs are not worked out from a missed single', () => {
   });
   assert.equal(rowValues(state, slotsFor(state)[b], b, 0).prescribed, before);
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   H3 · the test single is the measurement, not a "deload" set
+   ═══════════════════════════════════════════════════════════════════════ */
+
+// FLOPIP rotation 3 is "Taper and test": no failure wave, so effortMode 'none'.
+// Every set in it was rejected as "deload rotation" — including the test
+// single, the most important measurement of the block.
+const testWeek = log(10, '2026-10-23', { cycleSequence: 3, blockId: 2, effortMode: 'none' });
+const testSingle = bench(10, 10, { load: 130, reps: 1, rpe: 10 });
+
+test('H3: a test-week single reaches the strength series', () => {
+  const series = strengthSeries([testSingle], { exercises, logs: [testWeek], exerciseId: 'benchComp' });
+  assert.deepEqual(series.points.map((p) => p.value), [130], 'the test single was dropped as a deload set');
+  assert.equal(series.points[0].reducedVolume, true, 'the point should still say it came from a reduced-volume week');
+});
+
+test('H3: a made attempt in a reduced-volume rotation counts even without an index flag', () => {
+  const madeAttempt = { ...testSingle, isIndexSet: false, rpe: 9.5, attemptResult: 'made' };
+  const { included } = eligibleForStrength([madeAttempt], { exercises, logs: [testWeek] });
+  assert.equal(included.length, 1);
+});
+
+test('H3: an ordinary triple in a recovery rotation is still set aside, with an honest reason', () => {
+  const recovery = log(11, '2026-08-05', { planId: 'fopip-v2', cycleSequence: 15, blockId: 3, effortMode: 'none' });
+  const triple = bench(11, 11, { load: 95, reps: 3, rpe: 6 });
+  const { included, excluded } = eligibleForStrength([triple], { exercises, logs: [recovery] });
+  assert.equal(included.length, 0);
+  assert.match(excluded[0].reason, /reduced-volume rotation/);
+});
