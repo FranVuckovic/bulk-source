@@ -1273,8 +1273,14 @@ const ctx = {
       localEndDate: todayISO(),
     });
 
-    const next = newCycle(state.plan, { sequence: to, startedAtISO: nowISO(), localStartDate: todayISO() });
-    await put(state.db, 'cycles', next);
+    // Reused if it is already there. Moving a session into the next rotation,
+    // or correcting the rotation number, creates its cycle; writing another
+    // left two cycles at one sequence and loadEverything picked whichever
+    // sorted first, with the moved session attached to the other.
+    const existing = state.cycles.find((c) => c.sequence === to);
+    if (!existing) {
+      await put(state.db, 'cycles', newCycle(state.plan, { sequence: to, startedAtISO: nowISO(), localStartDate: todayISO() }));
+    }
     await writeSetting(state.db, cycleSettingKeys(state.plan.meta.id).sequence, to);
     await put(state.db, 'auditLog', {
       atISO: nowISO(), entity: 'cycle', action: 'advance', from, to, reason,

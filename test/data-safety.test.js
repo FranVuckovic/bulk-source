@@ -455,3 +455,16 @@ test('L1: the app passes the plan length to the correction, and moving a session
   assert.match(move, /Number\.isInteger\(to\)/, 'a fraction is refused rather than clamped');
   assert.doesNotMatch(move, /Math\.max\(1, Number\(toSequence\)\)/, 'and 0 is refused rather than silently becoming 1');
 });
+
+/* ── L8: advancing could create a second cycle at the same sequence ──── */
+
+test('L8: advancing reuses a rotation that a correction or a moved session already created', () => {
+  // `moveSessionToCycle` and `correctCycle` both create the target cycle when
+  // it does not exist. `advanceCycle` always wrote a new one, leaving two
+  // cycles at one sequence, and loadEverything picked whichever sorted first.
+  const app = source('../js/app.js');
+  const advance = bodyOf(app, 'async advanceCycle(');
+  const lookup = advance.indexOf('state.cycles.find((c) => c.sequence === to)');
+  assert.ok(lookup > -1, 'it looks for an existing cycle at the target sequence');
+  assert.ok(lookup < advance.indexOf('newCycle('), 'before it creates one');
+});
