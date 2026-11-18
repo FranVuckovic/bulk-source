@@ -76,7 +76,8 @@ test('the worker repairs a shell the browser has evicted', () => {
 
   const repair = source.slice(source.indexOf('async function repairShell('), source.indexOf("self.addEventListener('message'"));
   assert.ok(repair.includes('SHELL.filter'), 'it works out what is missing rather than re-adding everything');
-  assert.ok(repair.includes("cache: 'reload'"), 'and refetches rather than trusting the HTTP cache');
+  // fetchShell refetches past the HTTP cache and the CDN; see the L6 test.
+  assert.ok(repair.includes('fetchShell(cache, missing)'), 'and refetches rather than trusting the HTTP cache');
 
   // The app has to actually send it, or the pass never runs.
   const app = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
@@ -89,4 +90,52 @@ test('a failed repair cannot stop the app', () => {
   const handler = source.slice(source.indexOf("event.data === 'verify-shell'"));
   assert.ok(handler.includes('.catch('), 'the repair is caught');
   assert.ok(handler.includes('offline: true'), 'and reports the offline case rather than throwing');
+});
+
+test('L6: the shell is fetched for this version, so a CDN-stale copy cannot be cached under it', async () => {
+  // `cache: 'reload'` skips the browser's HTTP cache but not GitHub Pages' CDN,
+  // which serves for about ten minutes after a publish. A new sw.js arriving
+  // before the CDN had refreshed the modules installed the OLD modules under
+  // the NEW version, and they stayed until the next bump. A per-version query
+  // is a URL the CDN has never cached; the copy is stored under the plain path
+  // the app asks for.
+  const start = source.indexOf('function withVersion(');
+  const end = source.indexOf('\n}', source.indexOf('async function fetchShell(')) + 2;
+  assert.ok(start > -1 && end > start, 'sw.js defines withVersion and fetchShell');
+  const build = (fakeFetch) =>
+    // eslint-disable-next-line no-new-func
+    new Function('VERSION', 'fetch', 'Request', `${source.slice(start, end)}; return fetchShell;`)(
+      'v9.9.9',
+      fakeFetch,
+      class {
+        constructor(url, init) {
+          this.url = url;
+          this.cache = init?.cache;
+        }
+      }
+    );
+
+  const fetched = [];
+  const stored = [];
+  const fetchShell = build(async (request) => {
+    fetched.push(request);
+    return { ok: true, status: 200 };
+  });
+  await fetchShell({ put: async (key) => stored.push(key) }, ['./js/app.js', './']);
+
+  assert.deepEqual(fetched.map((r) => r.url), ['./js/app.js?v=v9.9.9', './?v=v9.9.9']);
+  assert.ok(fetched.every((r) => r.cache === 'reload'), 'and still past the HTTP cache');
+  assert.deepEqual(stored, ['./js/app.js', './'], 'stored under the path the app requests');
+
+  // Nothing is stored unless everything arrived: a half shell is a half app.
+  const none = [];
+  const failing = build(async (request) => ({ ok: !request.url.includes('app.js'), status: 404 }));
+  await assert.rejects(failing({ put: async (key) => none.push(key) }, ['./js/app.js', './']));
+  assert.deepEqual(none, []);
+
+  const install = source.slice(source.indexOf("addEventListener('install'"), source.indexOf("addEventListener('activate'"));
+  assert.match(install, /fetchShell\(cache, SHELL\)/, 'install uses it');
+  assert.doesNotMatch(source, /cache\.addAll\(/, 'and nothing fills the cache with unversioned fetches');
+  const shellBranch = source.slice(source.indexOf('shellPaths.has('));
+  assert.match(shellBranch, /fetch\(withVersion\(/, 'nor does the miss repair in the fetch handler');
 });

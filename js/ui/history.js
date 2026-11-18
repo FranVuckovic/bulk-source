@@ -360,12 +360,14 @@ function backupsView(state) {
     <button class="big ghost mt" data-act="history-backup">Download a plain JSON backup</button>
     <button class="big ghost mt" data-act="pick-import">Import from a zip</button>
     <button class="big ghost mt" data-act="pick-verify">Verify a backup restores</button>
-    <input type="file" id="import-file" accept=".zip,application/zip" hidden data-act-file="import">
-    <input type="file" id="verify-file" accept=".zip,application/zip" hidden data-act-file="verify">
+    <input type="file" id="import-file" accept=".zip,application/zip,.json,application/json" hidden data-act-file="import">
+    <input type="file" id="verify-file" accept=".zip,application/zip,.json,application/json" hidden data-act-file="verify">
     <p class="hint">The zip holds CSVs you can open in anything, a lossless <b>data.json</b> for restoring, your plan,
     and your photos as real files.</p>
-    <p class="hint"><b>Importing replaces.</b> Every store the backup carries is emptied and refilled from it \u2014 it is a
-    restore, not a merge. A safety export of what is here downloads first, automatically.</p>
+    <p class="hint"><b>Importing replaces</b> what a full backup carries: each of those stores is emptied and refilled from
+    it. A backup cut to a date range is <b>merged</b> instead, so nothing outside its range is touched, and anything you
+    left unticked when exporting is left alone. The plain JSON backup can be imported too. A safety copy of what is here
+    downloads first, automatically.</p>
     <p class="hint">Verify reads a backup and checks it against what is stored, without touching your data \u2014 so you
     find out a backup is broken <b>before</b> you need it, not after.</p>
   </div>`;
@@ -398,6 +400,14 @@ function recoveryList(state) {
     if (entry.store === 'daily') return `Weigh-in${Number.isFinite(row.bodyweight) ? ` · ${fmtNum(row.bodyweight, 1)} kg` : ''}`;
     if (entry.store === 'measurements') return 'Tape measurements';
     if (entry.store === 'niggles') return `Niggle · ${row.site ?? ''}`;
+    // A set used to fall through to the media label below and read "Form
+    // check", with nothing to say which set it was.
+    if (entry.store === 'sets') {
+      const unit = state.settings.unit;
+      const name = state.plan.exercises[row.exerciseId]?.name || row.exerciseId || '—';
+      const load = row.load == null ? '—' : `${row.bodyweightUsed ? '+' : ''}${fmtLoad(row.load, unit)} ${unit}`;
+      return `Set · ${name} · ${load} × ${row.reps ?? '—'}`;
+    }
     return `${row.kind === 'physique' ? 'Physique photo' : 'Form check'}`;
   };
 

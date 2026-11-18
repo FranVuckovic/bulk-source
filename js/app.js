@@ -15,13 +15,13 @@ import {
   getAll,
   put,
   remove,
-  clearStore,
   withTransaction,
   request,
   alive,
   putSetIdempotent,
   startSessionAtomic,
   finishSessionAtomic,
+  patchSessionLog,
   softDeleteSession,
   restoreSession,
   logicalSetKey,
@@ -662,8 +662,8 @@ async function removeSet(slotIndex, setIndex) {
 /** Swaps, added exercises and grips belong to the session that used them. */
 async function saveDeviations() {
   if (!state.activeLog) await ensureActiveLog();
-  state.activeLog = { ...state.activeLog, deviations: state.deviations, grips: state.grips };
-  await put(state.db, 'sessionLogs', state.activeLog);
+  // Patched, not written whole: see patchSessionLog.
+  state.activeLog = await patchSessionLog(state.db, state.activeLog.id, { deviations: state.deviations, grips: state.grips });
 }
 
 async function persistDraft() {
@@ -672,13 +672,14 @@ async function persistDraft() {
   const bodyweight = parseNumber(state.draft.bodyweight);
   const sessionRpe = parseNumber(state.draft.sessionRpe);
 
-  state.activeLog = {
-    ...state.activeLog,
+  // Only the draft's own fields. Writing the whole in-memory log reverted
+  // anything changed since it was loaded — a move to another rotation from
+  // the Log was undone by the next keystroke here.
+  state.activeLog = await patchSessionLog(state.db, state.activeLog.id, {
     note: state.draft.note || null,
     bodyweight: bodyweight == null ? null : fromDisplay(bodyweight, unit),
     sessionRpe,
-  };
-  await put(state.db, 'sessionLogs', state.activeLog);
+  });
 }
 
 async function finishSession() {
@@ -1214,9 +1215,13 @@ const ctx = {
     // keyed by its date and a session by a number, so it has to be put back
     // into its own type before IndexedDB will find it.
     const key = parseStoreKey(store, rawKey);
-    if (store === 'sessionLogs') await restoreSession(state.db, key);
-    else await restoreRow(state.db, store, key);
+    const result =
+      store === 'sessionLogs' ? await restoreSession(state.db, key, { today: todayISO() }) : await restoreRow(state.db, store, key);
     await loadEverything();
+    // A session discarded by mistake today comes back as the open one. Only
+    // then is the Train screen rebuilt, so restoring anything else leaves a
+    // half-typed note alone.
+    if (result?.reopened && !state.activeLog) await restoreActiveSession();
     buildHistory();
   },
 
@@ -1271,8 +1276,14 @@ const ctx = {
       localEndDate: todayISO(),
     });
 
-    const next = newCycle(state.plan, { sequence: to, startedAtISO: nowISO(), localStartDate: todayISO() });
-    await put(state.db, 'cycles', next);
+    // Reused if it is already there. Moving a session into the next rotation,
+    // or correcting the rotation number, creates its cycle; writing another
+    // left two cycles at one sequence and loadEverything picked whichever
+    // sorted first, with the moved session attached to the other.
+    const existing = state.cycles.find((c) => c.sequence === to);
+    if (!existing) {
+      await put(state.db, 'cycles', newCycle(state.plan, { sequence: to, startedAtISO: nowISO(), localStartDate: todayISO() }));
+    }
     await writeSetting(state.db, cycleSettingKeys(state.plan.meta.id).sequence, to);
     await put(state.db, 'auditLog', {
       atISO: nowISO(), entity: 'cycle', action: 'advance', from, to, reason,
@@ -1304,7 +1315,12 @@ const ctx = {
       return { moved: false, reason: 'that session was trained under a different plan — switch to it in Settings to move it' };
     }
 
-    const to = Math.min(Math.max(1, Number(toSequence)), state.plan.meta.rotations);
+    // Refused rather than clamped: a blank became 0 and then rotation 1, and
+    // 7.5 became a rotation with no effort mode.
+    const to = Number(toSequence);
+    if (!Number.isInteger(to) || to < 1 || to > state.plan.meta.rotations) {
+      return { moved: false, reason: `a rotation is a whole number from 1 to ${state.plan.meta.rotations}` };
+    }
     const from = log.cycleSequence ?? null;
     if (to === from) return { moved: false, reason: 'it is already in that rotation' };
 
@@ -1314,12 +1330,16 @@ const ctx = {
       await put(state.db, 'cycles', cycle);
     }
 
-    await put(state.db, 'sessionLogs', { ...log, cycleId: cycle.id, cycleSequence: to, blockId: blockFor(state.plan, to).id });
+    const moved = await patchSessionLog(state.db, logId, { cycleId: cycle.id, cycleSequence: to, blockId: blockFor(state.plan, to).id });
     await put(state.db, 'auditLog', {
       atISO: nowISO(), entity: 'sessionLogs', entityId: logId, action: 'edit',
       fields: ['cycleSequence'], previous: { cycleSequence: from },
       reason: 'moved to another rotation', restorable: false,
     });
+    // The repair sheet offers this for the open session too. The Train screen's
+    // copy takes the new rotation, so nothing it does next can file the work
+    // under the old one.
+    if (state.activeLog?.id === logId) state.activeLog = moved;
 
     await loadEverything();
     buildHistory();
@@ -1335,7 +1355,7 @@ const ctx = {
    */
   async correctCycle(to, reason) {
     const correction = planCorrection({
-      field: 'cycleSequence', from: state.cycle.sequence, to, reason, atISO: nowISO(),
+      field: 'cycleSequence', from: state.cycle.sequence, to, reason, atISO: nowISO(), max: state.plan.meta.rotations,
     });
     if (!correction.ok) return correction;
 
@@ -1431,8 +1451,7 @@ const ctx = {
   async setTimingReliable(reliable) {
     if (!state.activeLog) return;
     const from = state.activeLog.timingReliable !== false;
-    state.activeLog = { ...state.activeLog, timingReliable: !!reliable };
-    await put(state.db, 'sessionLogs', state.activeLog);
+    state.activeLog = await patchSessionLog(state.db, state.activeLog.id, { timingReliable: !!reliable });
     await put(state.db, 'auditLog', {
       atISO: nowISO(), entity: 'sessionLog', entityId: state.activeLog.id, action: 'edit',
       field: 'timingReliable', from, to: !!reliable,
@@ -1468,7 +1487,7 @@ const ctx = {
     // session moved without them would sit on one day while its work sat on
     // another, and nothing would look wrong until a chart disagreed with a list.
     const sets = state.sets.filter((set) => set.sessionLogId === logId);
-    await put(state.db, 'sessionLogs', { ...log, dateISO, localDate: dateISO });
+    await patchSessionLog(state.db, logId, { dateISO, localDate: dateISO });
     for (const set of sets) await put(state.db, 'sets', { ...set, localDate: dateISO });
     await put(state.db, 'auditLog', {
       atISO: nowISO(), entity: 'sessionLog', entityId: logId, action: 'edit',
@@ -1502,7 +1521,7 @@ const ctx = {
     const to = stamps[0];
     const end = log.endedAt || stamps[stamps.length - 1];
 
-    await put(state.db, 'sessionLogs', { ...log, startedAt: to });
+    await patchSessionLog(state.db, logId, { startedAt: to });
     await put(state.db, 'auditLog', {
       atISO: nowISO(), entity: 'sessionLog', entityId: logId, action: 'edit', field: 'startedAt', from, to,
     });
@@ -1532,9 +1551,7 @@ const ctx = {
     const log = state.logs.find((row) => row.id === logId);
     if (!log) return { ok: false, reason: 'that session no longer exists' };
 
-    await put(state.db, 'sessionLogs', {
-      ...log, endedAt: null, localEndDate: null, status: 'active', isPartial: false,
-    });
+    await patchSessionLog(state.db, logId, { endedAt: null, localEndDate: null, status: 'active', isPartial: false });
     await writeSetting(state.db, 'activeSessionLogId', logId);
     await put(state.db, 'auditLog', {
       atISO: nowISO(), entity: 'sessionLog', entityId: logId, action: 'reopen', from: log.endedAt, to: null,
@@ -1619,8 +1636,7 @@ const ctx = {
 
     state.readiness = value;
     if (state.activeLog) {
-      state.activeLog = { ...state.activeLog, readiness: value };
-      await put(state.db, 'sessionLogs', state.activeLog);
+      state.activeLog = await patchSessionLog(state.db, state.activeLog.id, { readiness: value });
       await put(state.db, 'auditLog', {
         atISO: nowISO(), entity: 'sessionLog', action: 'readiness', id: state.activeLog.id, from, to: value,
       });
@@ -1669,14 +1685,14 @@ const ctx = {
     await ctx.downloadBackup({ label: 'before-import' });
 
     const restored = await applyImport(state.db, staged.parsed, { withTransaction, request });
+    const modes = staged.report.modes || {};
     state.pendingImport = null;
 
-    await loadEverything();
-    await restoreActiveSession();
-    buildHistory();
-    resetBodyDraft();
+    // The backup's settings are now the settings: its active plan, each plan's
+    // rotation pointer, its units. Re-read all of them, not just the records.
+    await adoptStoredState();
     render();
-    return restored;
+    return { restored, modes };
   },
 
   /** Read a backup and compare its contents with what is stored. Writes nothing. */
@@ -1687,19 +1703,19 @@ const ctx = {
     return verifyAgainst(parsed, live);
   },
 
+  /**
+   * Everything the app stores, settings included, in one transaction.
+   *
+   * Settings used to be spared, and they hold where you are in each plan:
+   * `cycleSequence`, `cycleSequence@flopip-2`, the start dates and which plan
+   * is active. After an erase the plan resumed at rotation N with no history
+   * behind it. Erase means a fresh install now, for both plans.
+   */
   async eraseEverything() {
-    for (const store of ALL_STORES) {
-      if (store === 'settings') continue;
-      await clearStore(state.db, store);
-    }
-    await writeSetting(state.db, 'activeSessionLogId', null);
-    state.activeLog = null;
-    state.loggedSets = new Map();
-    state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {}, phaseSwaps: {} };
-    state.swapConfirmed = new Set();
-    state.grips = {};
-    state.draft = { note: '', bodyweight: '', sessionRpe: '' };
-    await loadEverything();
+    await withTransaction(state.db, [...ALL_STORES], 'readwrite', async (handles) => {
+      for (const handle of [].concat(handles)) await request(handle.clear());
+    });
+    await adoptStoredState();
   },
 
   showExercise(id) {
@@ -2431,6 +2447,76 @@ function wireEvents() {
    Boot
    ═══════════════════════════════════════════════════════════════════════ */
 
+/**
+ * Read everything the app keeps in settings — which plan is active, each plan's
+ * rotation pointer, units, the exercises you added — and rebuild the whole of
+ * state from the database.
+ *
+ * Boot does this once. A restore and an erase replace the settings underneath a
+ * running app, and they used to reload only the records: `loadEverything`
+ * worked out the rotation for whatever `state.plan` already was. Restoring a
+ * FLOPIP 2 backup onto a fresh install therefore kept running FOPIP, filed the
+ * next session as FOPIP rotation 8, and that open session then held FOPIP in
+ * place across a reload. One function for all three, so they cannot drift.
+ */
+async function adoptStoredState() {
+  const settings = await readSettings(state.db);
+  const fallbackPlan = state.basePlans.find((p) => p.meta.id === DEFAULT_PLAN_ID) || state.basePlans[0];
+  state.settings = {
+    unit: settings.unit,
+    increment: settings.increment,
+    // Used for pull-ups, chin-ups and dips, where bodyweight is part of the
+    // load. One number, edited in Settings — not read from the daily weigh-in,
+    // so a 0.4 kg morning fluctuation cannot move every prescription.
+    bodyweight: settings.bodyweight ?? fallbackPlan.meta.referenceBodyweightKg ?? 90,
+    barKg: settings.barKg ?? 20,
+    // Exercises you added. Kept in state so the Settings screen and the swap
+    // sheet can both read the list, and merged into the plan below.
+    customExercises: Array.isArray(settings.customExercises) ? settings.customExercises : [],
+    lengthUnit: settings.lengthUnit,
+    lastBackupISO: settings.lastBackupISO ?? null,
+  };
+
+  /*
+   * The plan the rest of the app sees includes what you added to it.
+   *
+   * Merged once, here, before anything renders — so prescriptions, volume
+   * counting, the Log, the similarity search and the phases view all read a
+   * custom exercise the same way as one of the plan's own. There is nothing
+   * downstream that needs to know the difference.
+   */
+  state.plans = Object.fromEntries(
+    state.basePlans.map((p) => [p.meta.id, withCustomExercises(p, state.settings.customExercises)])
+  );
+  // A stored choice naming a plan this build does not have falls back to the
+  // original rather than refusing to start.
+  state.activePlanId = state.plans[settings.activePlanId] ? settings.activePlanId : DEFAULT_PLAN_ID;
+  state.plan = state.plans[state.activePlanId];
+
+  // Whatever was open in memory belonged to the data that was just replaced.
+  // Left in place, the Train screen kept showing the old plan's session and
+  // the next tap filed a set against it.
+  state.activeLog = null;
+  state.loggedSets = new Map();
+  state.cleared = new Set();
+  state.grips = {};
+  state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {}, phaseSwaps: {} };
+  state.swapConfirmed = new Set();
+  state.draft = { note: '', bodyweight: '', sessionRpe: '' };
+  state.readiness = 'normal';
+  state.trainSessionId = null;
+  state.exOpen = new Set(['0']);
+
+  await loadEverything();
+  resetBodyDraft();
+  await restoreActiveSession();
+  // Rebuilt now that the active session is known, so today's own sets never
+  // become their own "last time".
+  buildHistory();
+
+  state.integrity = await checkIntegrity(state.db);
+}
+
 async function boot() {
   if (location.protocol === 'file:') {
     throw new Error(
@@ -2462,6 +2548,8 @@ async function boot() {
     console.warn('Could not load the exercise library.', error);
   }
   const shared = withSharedLibrary(loaded).map((plan) => withExerciseLibrary(plan, library));
+  // Kept without custom exercises merged in, so a restore can merge its own.
+  state.basePlans = shared;
   // The demo seeds whichever plan is active, so it needs one before settings
   // are readable. The real choice is made below, once the database is open.
   state.plan = shared.find((p) => p.meta.id === DEFAULT_PLAN_ID) || shared[0];
@@ -2491,44 +2579,7 @@ async function boot() {
     state.db = await openDatabase();
   }
 
-  const settings = await readSettings(state.db);
-  state.settings = {
-    unit: settings.unit,
-    increment: settings.increment,
-    // Used for pull-ups, chin-ups and dips, where bodyweight is part of the
-    // load. One number, edited in Settings — not read from the daily weigh-in,
-    // so a 0.4 kg morning fluctuation cannot move every prescription.
-    bodyweight: settings.bodyweight ?? state.plan.meta.referenceBodyweightKg ?? 90,
-    barKg: settings.barKg ?? 20,
-    // Exercises you added. Kept in state so the Settings screen and the swap
-    // sheet can both read the list, and merged into the plan below.
-    customExercises: Array.isArray(settings.customExercises) ? settings.customExercises : [],
-  };
-
-  /*
-   * The plan the rest of the app sees includes what you added to it.
-   *
-   * Merged once, here, before anything renders — so prescriptions, volume
-   * counting, the Log, the similarity search and the phases view all read a
-   * custom exercise the same way as one of the plan's own. There is nothing
-   * downstream that needs to know the difference.
-   */
-  state.plans = Object.fromEntries(
-    shared.map((p) => [p.meta.id, withCustomExercises(p, state.settings.customExercises)])
-  );
-  // A stored choice naming a plan this build does not have falls back to the
-  // original rather than refusing to start.
-  state.activePlanId = state.plans[settings.activePlanId] ? settings.activePlanId : DEFAULT_PLAN_ID;
-  state.plan = state.plans[state.activePlanId];
-
-  await loadEverything();
-  resetBodyDraft();
-  await restoreActiveSession();
-  // Rebuilt now that the active session is known, so today's own sets never
-  // become their own "last time".
-  buildHistory();
-
-  state.integrity = await checkIntegrity(state.db);
+  await adoptStoredState();
 
   // Another tab of the same app is a data-loss shape: two drafts, two ideas of
   // the active session, and the second write silently wins. The newest tab
