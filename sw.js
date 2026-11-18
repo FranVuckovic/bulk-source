@@ -74,6 +74,35 @@ function precedesVersionedCaches(cacheNames) {
   return cacheNames.some((name) => name.startsWith('bulk-') && !/^bulk-v\d+\.\d+\.\d+$/.test(name));
 }
 
+/** A shell path as this version asks for it. */
+function withVersion(path) {
+  return `${path}${path.includes('?') ? '&' : '?'}v=${encodeURIComponent(VERSION)}`;
+}
+
+/**
+ * Fetch shell files for THIS version and store them under their plain paths.
+ *
+ * `cache: 'reload'` gets past the browser's HTTP cache, but not GitHub Pages'
+ * CDN, which keeps serving a file for about ten minutes after a publish. A new
+ * sw.js that reached the phone before the CDN had caught up installed the old
+ * modules under the new version's cache, and they stayed there until the next
+ * bump. A URL carrying the version is one the CDN has never cached, so it goes
+ * to the origin. The copy is stored under the path the page actually requests.
+ *
+ * All or nothing: every response is in hand before any is stored, so a failed
+ * fetch leaves the cache as it was rather than holding half a build.
+ */
+async function fetchShell(cache, paths) {
+  const responses = await Promise.all(
+    paths.map(async (path) => {
+      const response = await fetch(new Request(withVersion(path), { cache: 'reload' }));
+      if (!response.ok) throw new Error(`${path} could not be fetched (${response.status})`);
+      return [path, response];
+    })
+  );
+  await Promise.all(responses.map(([path, response]) => cache.put(path, response)));
+}
+
 /**
  * Install fails loudly if any one file cannot be fetched.
  *
@@ -85,7 +114,7 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE);
-      await cache.addAll(SHELL.map((path) => new Request(path, { cache: 'reload' })));
+      await fetchShell(cache, SHELL);
 
       // Normally: no skipWaiting. The new build waits until the app says it is
       // safe, because losing a set to a reload mid-session is worse than
@@ -121,9 +150,7 @@ async function repairShell() {
   const present = new Set((await cache.keys()).map((request) => new URL(request.url).pathname));
   const missing = SHELL.filter((path) => !present.has(new URL(path, self.registration.scope).pathname));
 
-  if (missing.length) {
-    await cache.addAll(missing.map((path) => new Request(path, { cache: 'reload' })));
-  }
+  if (missing.length) await fetchShell(cache, missing);
   return { checked: SHELL.length, restored: missing.length };
 }
 
@@ -192,8 +219,10 @@ self.addEventListener('fetch', (event) => {
         // worker stayed active. Install only runs once, so without this the app
         // would quietly stop being offline-capable and only find out in a gym
         // with no signal. Put it back on the way past.
-        const response = await fetch(request);
-        if (response.ok) cache.put(request, response.clone()).catch(() => {});
+        // Asked for by this version, like install, so the CDN cannot hand back
+        // a stale copy to be stored under it.
+        const response = await fetch(withVersion(url.pathname), { cache: 'reload' });
+        if (response.ok) cache.put(url.pathname, response.clone()).catch(() => {});
         return response;
       })
     );
