@@ -429,6 +429,12 @@ const isFailureSet = (slot, i) => !!slot.failLast && i >= slot.sets - slot.failL
  */
 const isAmrapSet = (slot, i) => !!slot.amrap && i === 0;
 
+/**
+ * A row whose numbers are the measurement: the AMRAP, a test, the attempt.
+ * Nothing may fill these in for you — not a tick, not "same as last time".
+ */
+const isMeasurementRow = (slot, i) => isAmrapSet(slot, i) || !!slot.isTest || slot.role === 'attempt';
+
 /** What the row is displaying, so a one-tap set stores it rather than null. */
 const defaultGrip = (state, slot, slotIndex) => {
   const exercise = state.plan.exercises[slot.ex];
@@ -1707,7 +1713,7 @@ export const actions = {
      * measurement. v1 showed the slot's nominal six and one tap logged it,
      * fabricating the single most important data point in the plan.
      */
-    if (isAmrapSet(slot, i) || slot.isTest || slot.role === 'attempt') {
+    if (isMeasurementRow(slot, i)) {
       actions['open-step'](ctx, { si: String(slotIndex), i: String(i), field: 'reps' });
       return;
     }
@@ -1912,7 +1918,16 @@ export const actions = {
       <button class="big ghost mt" data-act="sheet-close">Close</button>`);
   },
 
-  /** One tap fills every set of an accessory with last session's numbers. */
+  /**
+   * One tap fills the unlogged sets of an exercise with last session's numbers.
+   *
+   * Only the unlogged ones. It used to save every row, so a set typed in by
+   * hand was replaced by last week's — and on an AMRAP or attempt row it copied
+   * last week's reps or outcome in as this week's measurement, the exact thing
+   * `tick` refuses to do. Those rows are left for the editor. Grip and pause
+   * come from the same defaults a tick stores, so the button used to log a set
+   * no longer decides what the set says about technique.
+   */
   async 'same-as-last'(ctx, data) {
     const { state } = ctx;
     const slotIndex = Number(data.si);
@@ -1921,20 +1936,31 @@ export const actions = {
     if (!previous?.sets?.length) return;
 
     state.exOpen.add(String(slotIndex));
+    let filled = 0;
+    let beaten = null;
     for (let i = 0; i < slot.sets; i++) {
+      if (state.loggedSets.has(setKey(slotIndex, i))) continue;
+      if (isMeasurementRow(slot, i)) continue;
       const source = previous.sets[i] ?? previous.sets[previous.sets.length - 1];
-      await ctx.saveSet(slotIndex, i, {
+      const result = await ctx.saveSet(slotIndex, i, {
         load: source.load,
         reps: source.reps,
         rpe: source.rpe ?? slot.rpe,
         toFailure: isFailureSet(slot, i),
-        isAmrap: isAmrapSet(slot, i),
+        isAmrap: false,
+        formBreakdown: false,
+        gripWidth: defaultGrip(state, slot, slotIndex),
+        pauseStyle: defaultPause(state, slot),
         isMyoRep: !!slot.myoReps && i === slot.sets - 1,
         wasPrescribed: false,
         prescribedLoad: prescriptionFor(state, slot),
       });
+      filled += 1;
+      if (result?.beaten && (!beaten || result.beaten.value > beaten.value)) beaten = result.beaten;
     }
+    if (!filled) return;
     startRest(slot.restSec || state.plan.exercises[slot.ex].defaultRestSec);
+    if (beaten) ctx.celebrate?.(beaten);
   },
 
   /** Made, missed, or tapped again to take it back to unanswered. */
