@@ -24,6 +24,16 @@ import { daysBetween, weekStart } from './dates.js';
    ═══════════════════════════════════════════════════════════════════════ */
 
 /**
+ * A weekly attempt marked "Missed it".
+ *
+ * The step sheet prefills an attempt slot with 1 rep at RPE 10, and marking it
+ * missed leaves those numbers in place — so the stored row reads exactly like
+ * a made 1RM. Every pipeline that claims a max has to ask this first, or a
+ * failed 135 becomes a record, a chart point and the basis for prescriptions.
+ */
+export const isMissedAttempt = (set) => set?.attemptResult === 'missed';
+
+/**
  * Which sets may be used as evidence about strength, and why the others cannot.
  *
  * The rules are the plan's own: index sets on high-confidence lifts, performed
@@ -45,6 +55,7 @@ export function eligibleForStrength(sets, { exercises, logs = [] }) {
     // breakdown cannot move a working max, and the exclusion is reported with
     // its reason like every other one here.
     if (set.formBreakdown) { reject('form breakdown'); continue; }
+    if (isMissedAttempt(set)) { reject('a missed attempt'); continue; }
     if (!exercise) { reject('unknown exercise'); continue; }
     if (!set.isIndexSet) { reject('not an index set'); continue; }
     if (!exercise.tracksMax || exercise.maxConf !== 'high') { reject('estimates on this lift are indicative only'); continue; }
@@ -429,7 +440,7 @@ export function sessionAnalysis(log, sets, { exercises = {}, logs = [], allSets 
     entry.reps += set.reps || 0;
     if (entry.topLoad == null || total > entry.topLoad) entry.topLoad = total;
 
-    const estimate = e1rm(total, set.reps, Math.min(10, set.rpe ?? 8));
+    const estimate = isMissedAttempt(set) ? null : e1rm(total, set.reps, Math.min(10, set.rpe ?? 8));
     if (estimate != null && (entry.bestEstimate == null || estimate > entry.bestEstimate)) {
       entry.bestEstimate = estimate;
     }
@@ -680,7 +691,7 @@ export function recordHistory(sets, { exercises, logs }) {
   const byLog = new Map(logs.map((log) => [log.id, log]));
 
   const dated = (sets || [])
-    .filter((set) => !set.deletedAtISO && set.load != null && set.reps)
+    .filter((set) => !set.deletedAtISO && set.load != null && set.reps && !isMissedAttempt(set))
     .map((set) => ({ set, dateISO: (byLog.get(set.sessionLogId)?.localDate || byLog.get(set.sessionLogId)?.dateISO || '').slice(0, 10) }))
     .filter((row) => row.dateISO)
     .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
@@ -747,6 +758,8 @@ export function records(sets, { exercises, logs }) {
     // stays in the Log — but it may not claim a record. A ground-out rep with a
     // bounce is not the same lift as the one the record would be compared with.
     if (set.formBreakdown) continue;
+    // A weight he failed is neither his heaviest nor his best.
+    if (isMissedAttempt(set)) continue;
     const exercise = exercises[set.exerciseId];
     if (!exercise) continue;
     const log = byLog.get(set.sessionLogId);
@@ -825,6 +838,10 @@ export function bestEstimates(sets, { exercises, logs, bodyweight = 0 } = {}) {
 
     if (set.formBreakdown) {
       if (!here.excluded.includes('form breakdown')) here.excluded.push('form breakdown');
+      continue;
+    }
+    if (isMissedAttempt(set)) {
+      if (!here.excluded.includes('a missed attempt')) here.excluded.push('a missed attempt');
       continue;
     }
 
@@ -932,7 +949,7 @@ export function recentEvidenceMax(
   const bestBySession = new Map();
 
   for (const set of sets || []) {
-    if (set.exerciseId !== exerciseId || set.deletedAtISO || set.formBreakdown) continue;
+    if (set.exerciseId !== exerciseId || set.deletedAtISO || set.formBreakdown || isMissedAttempt(set)) continue;
     if (excludeLogId != null && set.sessionLogId === excludeLogId) continue;
     const log = byLog.get(set.sessionLogId);
     if (!log || log.deletedAtISO) continue;
@@ -955,4 +972,34 @@ export function recentEvidenceMax(
   const mid = Math.floor(values.length / 2);
   const value = values.length % 2 ? values[mid] : (values[mid - 1] + values[mid]) / 2;
   return { value, sessions: rows.length, fromISO: rows[0].dateISO, toISO: rows[rows.length - 1].dateISO, rows };
+}
+
+/**
+ * The best e1RM this lift has shown before, and whether `record` beat it.
+ *
+ * Moved here from app.js so the "That is a record" sheet answers from the same
+ * module, and the same rules, as the Records card it announces. Only
+ * high-confidence tracked lifts qualify: a curl "record" from a formula known
+ * to fail on isolation work is not a record. Asked BEFORE the set is stored, or
+ * it beats itself.
+ */
+export function personalBestBefore(record, sets, { exercises = {} } = {}) {
+  const exercise = exercises[record?.exerciseId];
+  if (!exercise?.tracksMax || exercise.maxConf !== 'high') return null;
+  if (record.load == null || !record.reps) return null;
+  if (isMissedAttempt(record)) return null;
+
+  const value = e1rm(systemLoad(record.load, record.bodyweightUsed || 0), record.reps, record.rpe ?? 8);
+  if (value == null) return null;
+
+  let best = 0;
+  for (const set of sets || []) {
+    if (set.exerciseId !== record.exerciseId || set.id === record.id) continue;
+    if (set.load == null || !set.reps || isMissedAttempt(set)) continue;
+    const previous = e1rm(systemLoad(set.load, set.bodyweightUsed || 0), set.reps, set.rpe ?? 8);
+    if (previous != null && previous > best) best = previous;
+  }
+
+  if (!best || value <= best) return null;
+  return { name: exercise.name, value, previous: best, gain: value - best };
 }

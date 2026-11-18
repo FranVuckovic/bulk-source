@@ -47,7 +47,8 @@ import {
   isPartialSession,
   sortLogsByDate,
 } from './progress.js';
-import { e1rm, systemLoad, estimateForSet, isHighConfidence } from './calc.js';
+import { systemLoad, estimateForSet, isHighConfidence } from './calc.js';
+import { personalBestBefore } from './analytics.js';
 import { localDate, nowISO, timeZone, utcOffsetMinutes, daysBetween } from './dates.js';
 import {
   blockFor,
@@ -546,7 +547,7 @@ async function saveSet(slotIndex, setIndex, values) {
   };
 
   // Was this a record? Ask BEFORE the set is stored, or it beats itself.
-  const beaten = personalBestBefore(record);
+  const beaten = personalBestBefore(record, state.sets, { exercises: state.plan.exercises, logs: state.logs });
 
   // Idempotent: a double tap, or a retried save, resolves to one row because
   // the logical key is a unique index rather than a convention.
@@ -589,33 +590,6 @@ async function saveSet(slotIndex, setIndex, values) {
   render();
 
   if (beaten) celebrate(beaten);
-}
-
-/**
- * The best e1RM this lift has ever shown, and whether this set beat it.
- *
- * Only high-confidence tracked lifts qualify: a curl "record" from a formula
- * known to fail on isolation work is not a record. Existing sets are read from
- * state, which is why this has to run before the new one lands.
- */
-function personalBestBefore(record) {
-  const exercise = state.plan.exercises[record.exerciseId];
-  if (!exercise?.tracksMax || exercise.maxConf !== 'high') return null;
-  if (record.load == null || !record.reps) return null;
-
-  const value = e1rm(systemLoad(record.load, record.bodyweightUsed || 0), record.reps, record.rpe ?? 8);
-  if (value == null) return null;
-
-  let best = 0;
-  for (const set of state.sets) {
-    if (set.exerciseId !== record.exerciseId || set.id === record.id) continue;
-    if (set.load == null || !set.reps) continue;
-    const previous = e1rm(systemLoad(set.load, set.bodyweightUsed || 0), set.reps, set.rpe ?? 8);
-    if (previous != null && previous > best) best = previous;
-  }
-
-  if (!best || value <= best) return null;
-  return { name: exercise.name, value, previous: best, gain: value - best };
 }
 
 function celebrate(pr) {
