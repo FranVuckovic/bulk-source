@@ -39,6 +39,7 @@ const SHELL = [
   './js/photos.js',
   './js/plan.js',
   './js/plans.js',
+  './js/plausibility.js',
   './js/progress.js',
   './js/volume.js',
   './js/ui/body.js',

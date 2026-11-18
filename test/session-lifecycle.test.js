@@ -31,6 +31,7 @@ import {
   FINISH_REST_SECONDS,
 } from '../js/ui/train.js';
 import { sessionTiming, LONG_GAP_SECONDS } from '../js/analytics.js';
+import { checkSet } from '../js/plausibility.js';
 import { stopRest } from '../js/ui/components.js';
 import { createFakeEnv } from './helpers/fake-indexeddb.js';
 import { openDatabase, getAll, putSetIdempotent, logicalSetKey } from '../js/db.js';
@@ -814,6 +815,64 @@ test('H1 (QA): the Log can move a late end to the last set', () => {
   assert.match(history, /function endRepair\(ctx, log\)/);
   assert.match(history, /\$\{endRepair\(ctx, log\)\}/);
   assert.match(history, /data-act="repair-end"/);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   H2 (QA) · An impossible number is questioned, never silently saved
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const benchHistory = [
+  { id: 1, exerciseId: 'benchComp', load: 120, reps: 1 },
+  { id: 2, exerciseId: 'benchComp', load: 130, reps: 1 },
+  { id: 3, exerciseId: 'dip', load: 400, reps: 1 },
+];
+
+test('H2: checkSet questions a load far above the best on that lift', () => {
+  // 1025 typed for 102.5 saved, showed an e1RM of 1304 kg, and fed the charts.
+  assert.equal(checkSet({ exerciseId: 'benchComp', load: 1025, reps: 5 }, benchHistory), 'Save 1025 kg? Your best on this lift is 130 kg.');
+  assert.equal(checkSet({ exerciseId: 'benchComp', load: 135, reps: 1 }, benchHistory), null);
+  assert.equal(checkSet({ exerciseId: 'ohpMachine', load: 500, reps: 5 }, benchHistory), null, 'no history, nothing to compare');
+  assert.equal(checkSet({ exerciseId: 'benchComp', load: null, reps: 5 }, benchHistory), null);
+  // Editing the outlier itself compares against the rest, not against itself.
+  assert.match(checkSet({ id: 9, exerciseId: 'benchComp', load: 1025, reps: 5 }, [...benchHistory, { id: 9, exerciseId: 'benchComp', load: 1025 }]), /130 kg/);
+});
+
+test('H2: a one-tap set on an impossible prescription asks first, and Save still saves', async () => {
+  // A 1300 kg working max prescribed 1197.5 kg, and one tap logged it.
+  const state = trainState(FLOPIP, 'B', { sequence: 4, maxes: [['benchComp', 1300]] });
+  state.sets = benchHistory;
+  await withFakeDocument(async (nodes) => {
+    const ctx = recordingCtx(state);
+    await actions.tick(ctx, { si: '0', i: '0' }, { stopPropagation() {} });
+    assert.equal(ctx.saved.length, 0, 'saved without asking');
+    assert.match(nodes.pan.innerHTML, /Your best on this lift is 130 kg\./);
+    assert.match(nodes.pan.innerHTML, /data-act="plausible-save">Save</);
+    assert.match(nodes.pan.innerHTML, /data-act="plausible-fix">Fix</);
+
+    await actions['plausible-save'](ctx);
+    assert.equal(ctx.saved.length, 1, 'Save must never be blocked');
+    assert.ok(ctx.saved[0].load > 1000);
+  });
+});
+
+test('H2: Fix reopens the editor with what was typed', async () => {
+  const state = trainState(FLOPIP, 'B', { sequence: 4 });
+  state.sets = benchHistory;
+  await withFakeDocument(async (nodes) => {
+    const ctx = recordingCtx(state);
+    actions['open-step'](ctx, { si: '0', i: '0', field: 'load' });
+    inputs['field-load'](ctx, '1025');
+    await actions['save-step'](ctx);
+    assert.equal(ctx.saved.length, 0);
+    assert.match(nodes.pan.innerHTML, /Save 1025 kg\?/);
+
+    actions['plausible-fix'](ctx);
+    assert.match(nodes.pan.innerHTML, /id="in-load"[^>]*value="1025"/);
+    inputs['field-load'](ctx, '102.5');
+    await actions['save-step'](ctx);
+    assert.equal(ctx.saved.length, 1);
+    assert.equal(ctx.saved[0].load, 102.5);
+  });
 });
 
 test('UI-03: a new civil date with no session open starts at normal readiness', () => {

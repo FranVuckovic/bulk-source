@@ -21,10 +21,16 @@ import { readFileSync } from 'node:fs';
 const train = readFileSync(new URL('../js/ui/train.js', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
 
-/** The object literal passed to `ctx.saveSet(...)`, as its top-level keys. */
+/**
+ * The object literal passed to `ctx.saveSet(...)`, as its top-level keys.
+ *
+ * The tick and the set sheet build theirs as `const values = { … }` first,
+ * because a set that looks impossible is questioned before it is saved, so
+ * those literals are read too.
+ */
 function saveSetCallKeys(source) {
   const calls = [];
-  const re = /ctx\.saveSet\([^,]+,[^,]+,\s*\{/g;
+  const re = /(?:ctx\.saveSet\([^,]+,[^,]+,\s*|const values = )\{/g;
   let match;
   while ((match = re.exec(source))) {
     let depth = 1;

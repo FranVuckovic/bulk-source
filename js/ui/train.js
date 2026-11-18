@@ -45,6 +45,7 @@ import {
 } from '../plan.js';
 import { exerciseNoteHistory, recentEvidenceMax, LONG_GAP_SECONDS } from '../analytics.js';
 import { cycleProgress } from '../cycle.js';
+import { checkSet } from '../plausibility.js';
 import { daysBetween, localDate, localDateOf } from '../dates.js';
 import {
   escape,
@@ -349,6 +350,61 @@ function askAboutStaleSession(question) {
     }
     <button class="big ghost mt" data-act="keep-stale"${resume}>Keep it open and log here</button>
     <button class="big ghost mt" data-act="sheet-close">Go back</button>`);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   A number worth a second look
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Ask before saving a set that does not look like something that happened.
+ *
+ * Soft: "Save" saves exactly what was entered, "Fix" goes back to the editor
+ * with it. 1025 typed for 102.5 used to save without a word, and a typo in a
+ * working max prescribed 1197.5 kg for one tap to log. Returns true when it
+ * asked, and the save is waiting on the answer.
+ */
+function askIfImplausible(ctx, pending) {
+  const { state } = ctx;
+  const logged = state.loggedSets.get(setKey(pending.si, pending.i));
+  const warning = checkSet(
+    {
+      id: logged?.id,
+      exerciseId: pending.slot.ex,
+      load: pending.values.load,
+      reps: pending.values.reps,
+      bodyweightUsed: bodyweightFor(state, pending.slot.ex) || null,
+    },
+    state.sets
+  );
+  if (!warning) return false;
+  state.pendingSet = pending;
+  openSheet(`<div class="ttl">Check this set</div>
+    <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">${escape(warning)}</p>
+    <p style="text-align:center;font-size:13px">A typo here goes into every estimate and chart that uses this lift.</p>
+    <button class="big mt" data-act="plausible-save">Save</button>
+    <button class="big ghost mt" data-act="plausible-fix">Fix</button>`);
+  return true;
+}
+
+/** Log a one-tap set, start the rest, and celebrate a record. */
+async function commitTick(ctx, slotIndex, i, slot, values) {
+  const result = await saveAsking(ctx, slotIndex, i, values);
+  startRest(slot.restSec || ctx.state.plan.exercises[slot.ex].defaultRestSec);
+  if (result?.beaten) ctx.celebrate?.(result.beaten);
+}
+
+/** Log the set in the editor, close it, and celebrate a record once it is gone. */
+async function commitStep(ctx, values) {
+  const c = ctx.state.sheetCtx;
+  ctx.state.exOpen.add(String(c.si));
+  const result = await ctx.saveSet(c.si, c.i, values);
+  endStepEdit(ctx.state);
+  startRest(c.slot.restSec || ctx.state.plan.exercises[c.slot.ex].defaultRestSec);
+  closeSheet();
+  ctx.render();
+  // After the editor is gone, or closing it would close this too.
+  if (result?.beaten) ctx.celebrate?.(result.beaten);
 }
 
 /** saveSet, with the row attached to any question it raises. */
@@ -2141,7 +2197,7 @@ export const actions = {
       return;
     }
 
-    const result = await saveAsking(ctx, slotIndex, i, {
+    const values = {
       load,
       reps,
       rpe,
@@ -2155,9 +2211,35 @@ export const actions = {
       isMyoRep: !!slot.myoReps && i === slot.sets - 1,
       wasPrescribed: load != null && load === prescribed,
       prescribedLoad: prescribed,
-    });
-    startRest(slot.restSec || state.plan.exercises[slot.ex].defaultRestSec);
-    if (result?.beaten) ctx.celebrate?.(result.beaten);
+    };
+    if (askIfImplausible(ctx, { from: 'tick', si: slotIndex, i, slot, values })) return;
+    await commitTick(ctx, slotIndex, i, slot, values);
+  },
+
+  /** "Save" on the plausibility question: it was right. Never blocked. */
+  async 'plausible-save'(ctx) {
+    const pending = ctx.state.pendingSet;
+    ctx.state.pendingSet = null;
+    if (!pending) return;
+    if (pending.from === 'tick') {
+      closeSheet();
+      await commitTick(ctx, pending.si, pending.i, pending.slot, pending.values);
+      return;
+    }
+    await commitStep(ctx, pending.values);
+  },
+
+  /** "Fix" on the plausibility question: back to the editor, with what was typed. */
+  'plausible-fix'(ctx) {
+    const pending = ctx.state.pendingSet;
+    ctx.state.pendingSet = null;
+    if (!pending) return;
+    if (pending.from === 'tick') {
+      actions['open-step'](ctx, { si: String(pending.si), i: String(pending.i), field: 'load' });
+      return;
+    }
+    ctx.state.sheetCtx.field = 'load';
+    drawStepSheet(ctx);
   },
 
   'open-ex-note'(ctx, data) {
@@ -2441,8 +2523,7 @@ export const actions = {
       globalThis.requestAnimationFrame?.(() => document.getElementById('in-load')?.focus?.());
       return;
     }
-    ctx.state.exOpen.add(String(c.si));
-    const result = await ctx.saveSet(c.si, c.i, {
+    const values = {
       // Zero is a real added load on a pull-up, chin-up or dip. v1's `|| null`
       // turned an unweighted set into a blank that produced no e1RM and no
       // tonnage.
@@ -2461,13 +2542,9 @@ export const actions = {
       gripWidth: c.gripWidth ?? null,
       wasPrescribed: c.load != null && c.load === c.prescribed,
       prescribedLoad: c.prescribed,
-    });
-    endStepEdit(ctx.state);
-    startRest(c.slot.restSec || ctx.state.plan.exercises[c.slot.ex].defaultRestSec);
-    closeSheet();
-    ctx.render();
-    // After the editor is gone, or closing it would close this too.
-    if (result?.beaten) ctx.celebrate?.(result.beaten);
+    };
+    if (askIfImplausible(ctx, { from: 'step', si: c.si, i: c.i, slot: c.slot, values })) return;
+    await commitStep(ctx, values);
   },
 
   async 'unlog-step'(ctx) {
