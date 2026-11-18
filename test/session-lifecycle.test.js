@@ -536,6 +536,34 @@ test('UI-05: correcting, deleting or restoring in the Log rebuilds the open sess
   assert.match(appBody('async function restoreActiveSession('), /train\.loggedSetsFor\(state\.sets, active\.id\)/);
 });
 
+/* ═══════════════════════════════════════════════════════════════════════
+   M3 · An open session is resolved against its own rotation
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const shape = (slots) => slots.map((slot) => `${slot.ex}/${slot.role}`);
+
+test('M3: a reopened session shows its own rotation\'s exercises, not today\'s', () => {
+  // Slots are positional. FLOPIP E has an AMRAP in rotation 2 and none in 4, so
+  // reopening rotation 2's E while the plan sat at 4 drew the AMRAP's sets
+  // under the back-offs and the back-offs' under the dip.
+  const atTwo = trainState(FLOPIP, 'E', { sequence: 2 });
+  const reopened = trainState(FLOPIP, 'E', { sequence: 4, activeLog: { id: 9, sessionId: 'E', cycleSequence: 2 } });
+  assert.deepEqual(shape(slotsFor(reopened)), shape(slotsFor(atTwo)));
+  assert.ok(slotsFor(reopened).some((slot) => slot.amrap));
+});
+
+test('M3: advancing or correcting the rotation mid-session does not reshape the open session', () => {
+  // Advance and correct are one tap away on the rotation chip while a session
+  // is open, and both moved `state.cycle` under sets already logged by position.
+  const state = trainState(V2, 'A', { sequence: 10, activeLog: { id: 9, sessionId: 'A', cycleSequence: 10 } });
+  const before = shape(slotsFor(state));
+  state.cycle = newCycle(V2, { sequence: 11, startedAtISO: null, localStartDate: null });
+  assert.deepEqual(shape(slotsFor(state)), before, 'rotation 11 adds a static hold at index 0');
+  // With nothing open, the plan's rotation is what is shown.
+  state.activeLog = null;
+  assert.notDeepEqual(shape(slotsFor(state)), before);
+});
+
 test('UI-03: a new civil date with no session open starts at normal readiness', () => {
   // An installed PWA resumes rather than reloads, so yesterday's red day was
   // still selected the next morning.

@@ -132,6 +132,24 @@ export function loggedSetsFor(sets, sessionLogId) {
   );
 }
 
+/**
+ * The rotation the displayed session is resolved against.
+ *
+ * An open session's own, whatever the plan has moved on to. Logged sets are
+ * keyed by position (`slotIndex:setIndex`), and the shape of a session changes
+ * between rotations — FLOPIP's Friday has an AMRAP every other rotation, FOPIP
+ * A gains a static hold at the front from rotation 11. Reopening a past
+ * session, or advancing or correcting the rotation while one is open, used to
+ * re-resolve it against the plan's current rotation, so its sets were drawn
+ * under the wrong exercises and the next tick could displace them.
+ *
+ * This is the minimal safe fix rather than keying sets by slot id: it changes
+ * no stored data, and a session's slot list can no longer change under its
+ * own logged sets except through readiness, which is already refused when it
+ * would reindex.
+ */
+export const sessionRotation = (state) => state.activeLog?.cycleSequence ?? state.cycle.sequence;
+
 /** True for the blank ad-hoc session and for any saved custom workout. */
 export const isOutsideRotation = (state, id = state.trainSessionId) =>
   id === CUSTOM_SESSION_ID || customWorkoutById(state, id) != null;
@@ -177,7 +195,7 @@ export function slotsFor(state, readinessOverride) {
   // adjustment. The screen never decides what the session is.
   const resolved = toDisplaySession(
     resolveSession(state.plan, {
-      rotation: state.cycle.sequence,
+      rotation: sessionRotation(state),
       sessionId: state.trainSessionId,
       readiness: readinessOverride ?? state.readiness ?? 'normal',
     })
@@ -721,7 +739,7 @@ export function view(ctx) {
   const resolved = isCustom
     ? { effortMode: 'none', accessoryMultiplier: 1, blockType: 'custom' }
     : resolveSession(state.plan, {
-        rotation: state.cycle.sequence,
+        rotation: sessionRotation(state),
         sessionId: state.trainSessionId,
         readiness: state.readiness || 'normal',
       });
