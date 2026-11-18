@@ -20,6 +20,7 @@ import {
   closeSheet,
 } from './components.js';
 import { workingMaxInfo } from './train.js';
+import { checkWorkingMax } from '../plausibility.js';
 
 const bytes = (n) =>
   n == null ? '—' : n > 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n > 1e6 ? `${(n / 1e6).toFixed(0)} MB` : `${(n / 1e3).toFixed(0)} KB`;
@@ -444,6 +445,28 @@ export const actions = {
       return;
     }
     const kg = Math.round(fromDisplay(typed, state.settings.unit) * 100) / 100;
+    const unit = state.settings.unit;
+    const current = workingMaxInfo(state, data.id)?.value ?? null;
+    const name = state.plan.exercises[data.id]?.name?.split(' (')[0] || 'this lift';
+    const check = checkWorkingMax(kg, current, { name, fmt: (value) => `${Math.round(toDisplay(value, unit) * 10) / 10} ${unit}` });
+    if (!check.ok && !data.confirmed) {
+      // Every load on the lift, and on the bench variations, is worked out
+      // from this number: 1300 for 130 prescribed 1197.5 kg × 1. Asked once.
+      openSheet(`<div class="ttl">Check this number</div>
+        <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">${escape(check.message)}</p>
+        <button class="big mt" data-act="save-max-confirmed" data-id="${escape(data.id)}" data-value="${kg}">Save</button>
+        <button class="big ghost mt" data-act="open-max" data-id="${escape(data.id)}">Fix</button>`);
+      return;
+    }
+    await ctx.confirmMax(data.id, kg, 'set in Settings');
+    closeSheet();
+    ctx.render();
+  },
+
+  /** "Save" on the plausibility question: the number he typed, as typed. */
+  async 'save-max-confirmed'(ctx, data) {
+    const kg = Number(data.value);
+    if (!(kg > 0)) return;
     await ctx.confirmMax(data.id, kg, 'set in Settings');
     closeSheet();
     ctx.render();

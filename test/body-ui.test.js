@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 
 import { actions, DEFAULT_MEASUREMENT_TIME, MEASUREMENT_SITES } from '../js/ui/body.js';
 
+const REALISTIC_CM = { waist: 84, chest: 108, shoulders: 125, neck: 40, quadL: 60, quadR: 60, forearmL: 31, forearmR: 31 };
+
 const draft = () => ({
   dateISO: '2026-08-20',
   bodyweight: '90',
@@ -14,7 +16,9 @@ const draft = () => ({
   scale: 'home',
   note: '',
   measureTime: DEFAULT_MEASUREMENT_TIME,
-  ...Object.fromEntries(MEASUREMENT_SITES.map(([id], index) => [`m-${id}`, String(35 + index)])),
+  // Real circumferences: a waist of 35 cm is now (rightly) asked about before
+  // saving, which is not what these tests are testing.
+  ...Object.fromEntries(MEASUREMENT_SITES.map(([id]) => [`m-${id}`, String(REALISTIC_CM[id] ?? 40)])),
 });
 
 test('a failed daily save is returned to the central action error handler', async () => {

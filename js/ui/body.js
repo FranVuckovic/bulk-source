@@ -7,6 +7,7 @@
  */
 
 import { rollingMean, gainRateVerdict } from '../analytics.js';
+import { checkWeighIn, checkTape } from '../plausibility.js';
 import { preparePhoto, imageUrl, releaseImageUrl, formatBytes } from '../photos.js';
 import { escape, fmtLoad, fmtNum, toDisplay, section, openSheet, closeSheet, parseNumber } from './components.js';
 
@@ -531,7 +532,11 @@ export const actions = {
       note: draft.note || null,
     };
     const blanks = countBlanks([row.bodyweight, row.bodyfatPct, row.sleepHours]);
-    return confirmBlanks(ctx, blanks, 'daily', async () => {
+    const earlier = (ctx.state.daily || [])
+      .filter((d) => Number.isFinite(d.bodyweight) && d.dateISO <= row.dateISO)
+      .map((d) => ({ dateISO: d.dateISO, value: d.bodyweight }));
+    const weighIn = checkWeighIn(row.bodyweight, earlier, { dateISO: row.dateISO, fmt: (kg) => `${Math.round(toDisplay(kg, unit) * 10) / 10} ${unit}` });
+    return confirmPlausible(ctx, [weighIn], () => confirmBlanks(ctx, blanks, 'daily', async () => {
       await ctx.saveDaily(row);
       savedSheet('Weigh-in saved', [
         row.bodyweight != null ? `${fmtNum(toDisplay(row.bodyweight, unit), 1)} ${unit}` : null,
@@ -539,7 +544,7 @@ export const actions = {
         row.sleepHours != null ? `${row.sleepHours} h sleep` : null,
         scaleLabel(row),
       ]);
-    });
+    }));
   },
 
   /** How to take one measurement, or the rules that govern all of them. */
@@ -600,7 +605,14 @@ export const actions = {
     const blanks = countBlanks(MEASUREMENT_SITES.map(([id]) => row[id]));
     const recorded = MEASUREMENT_SITES.filter(([id]) => row[id] != null);
 
-    return confirmBlanks(ctx, blanks, 'measurements', async () => {
+    // Each site against its own last reading, before this date.
+    const earlier = [...(ctx.state.measurements || [])]
+      .filter((m) => m.dateISO <= row.dateISO)
+      .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+    const lastAt = (id) => [...earlier].reverse().find((m) => Number.isFinite(m[id]))?.[id] ?? null;
+    const tape = recorded.map(([id, label]) => checkTape(id, row[id], lastAt(id), { label }));
+
+    return confirmPlausible(ctx, tape, () => confirmBlanks(ctx, blanks, 'measurements', async () => {
       await ctx.saveMeasurements(row);
       savedSheet(
         'Measurements saved',
@@ -616,7 +628,7 @@ export const actions = {
               : '',
         }
       );
-    });
+    }));
   },
 
   async 'save-niggle'(ctx) {
@@ -785,6 +797,26 @@ function savedSheet(title, lines, { extra = '' } = {}) {
     ${extra}
     <p class="hint" style="text-align:center">Stored on this device. It is in the Log now, and in your next backup.</p>
     <button class="big mt" data-act="sheet-close">Done</button>`);
+}
+
+/**
+ * A number that looks like a typo is asked about before it is saved.
+ *
+ * Never a refusal — a real 6 kg swing is possible, and the scale outranks the
+ * app. But 97 among 91s, or a chest of 408.7, went in without a word and then
+ * moved the gain verdict and a chart's axis, so the question is asked once,
+ * in plain words, with Save and Fix.
+ */
+function confirmPlausible(ctx, checks, next) {
+  const problems = (checks || []).filter((check) => check && !check.ok);
+  if (!problems.length) return next();
+  ctx.state.pendingSave = next;
+  openSheet(`<div class="ttl">Check ${problems.length === 1 ? 'this number' : 'these numbers'}</div>
+    ${problems
+      .map((p) => `<p style="text-align:center;margin:12px 0 4px;font-size:14px;color:var(--ink)">${escape(p.message)}</p>`)
+      .join('')}
+    <button class="big mt" data-act="confirm-body-save">Save</button>
+    <button class="big ghost mt" data-act="sheet-close">Fix</button>`);
 }
 
 function confirmBlanks(ctx, blanks, what, save) {

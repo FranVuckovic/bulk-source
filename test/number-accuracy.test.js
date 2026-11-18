@@ -393,3 +393,161 @@ test('L10: the working-max review uses the same max as the prescriptions', async
     );
   }
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Plausibility · a typo is asked about, never refused
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('plausibility: a 97 kg weigh-in among 91s is asked about, in plain words', async () => {
+  // QA H2: 97 saved silently when yesterday was 91.05, and the rate moved.
+  const { checkWeighIn } = await import('../js/plausibility.js');
+  const earlier = weighIns([91.0, 91.2, 90.9, 91.05], '2026-11-14');
+  const result = checkWeighIn(97, earlier, { dateISO: '2026-11-18' });
+  assert.equal(result.ok, false);
+  assert.match(result.message, /^Save 97 kg\? That's 6 kg above your 7-day average of 91 kg\.$/);
+  assert.equal(checkWeighIn(91.6, earlier, { dateISO: '2026-11-18' }).ok, true, 'an ordinary day was questioned');
+  assert.equal(checkWeighIn(9.1, [], {}).ok, false, 'a missing decimal point with no history went through');
+  assert.equal(checkWeighIn(91.6, [], {}).ok, true, 'a first weigh-in has nothing to be compared with');
+});
+
+test('plausibility: the tape typos in his data would each have been asked about', async () => {
+  const { checkTape } = await import('../js/plausibility.js');
+  // Each of these is in the November export.
+  assert.equal(checkTape('chest', 408.7, 110).ok, false);
+  assert.equal(checkTape('armL', 3492, 38).ok, false);
+  assert.equal(checkTape('quadR', 26.5, 62).ok, false);
+  assert.equal(checkTape('armRFlex', 97.1, 41).ok, false);
+  assert.equal(checkTape('forearmL', 91, 31).ok, false);
+  // QA H2: chest 1095.
+  assert.equal(checkTape('chest', 1095, 110).ok, false);
+  // More than 10% from the last reading, inside the range.
+  const jump = checkTape('waist', 95, 84, { label: 'Waist' });
+  assert.equal(jump.ok, false);
+  assert.match(jump.message, /^Save Waist 95 cm\? That's 13% above your last reading of 84 cm\.$/);
+  assert.equal(checkTape('waist', 85, 84).ok, true);
+});
+
+test('plausibility: a working max far from the current one, or past any barbell, is asked about', async () => {
+  // QA H2: 1300 for 130 saved, and session E prescribed 1197.5 kg × 1.
+  const { checkWorkingMax } = await import('../js/plausibility.js');
+  assert.equal(checkWorkingMax(1300, 125).ok, false);
+  assert.equal(checkWorkingMax(1300, null).ok, false, 'no current max is no excuse for 1300');
+  const drop = checkWorkingMax(100, 125, { name: 'Competition bench' });
+  assert.equal(drop.ok, false);
+  assert.match(drop.message, /20% below the 125 kg every load uses now/);
+  assert.equal(checkWorkingMax(127.5, 125).ok, true, 'a normal 2.5 kg step was questioned');
+});
+
+test('plausibility: a set at 1025 for 102.5, or 80 reps on a bench, is asked about', async () => {
+  const { checkSet } = await import('../js/plausibility.js');
+  const benchComp = exercises.benchComp;
+  assert.equal(checkSet({ load: 1025, reps: 5, exercise: benchComp, bestKg: 130 }).ok, false);
+  assert.equal(checkSet({ load: 102.5, reps: 5, exercise: benchComp, bestKg: 130 }).ok, true);
+  assert.equal(checkSet({ load: 60, reps: 80, exercise: benchComp, bestKg: 130 }).ok, false);
+  assert.equal(checkSet({ load: 10, reps: 80, exercise: exercises.lateral, bestKg: 14 }).ok, true, 'isolation high reps are normal');
+  assert.equal(checkSet({ load: 100, reps: 5, exercise: benchComp, bestKg: null }).ok, true, 'no history, no comparison');
+});
+
+test('plausibility: every check takes a formatter, so pounds mode says pounds', async () => {
+  const { checkWeighIn } = await import('../js/plausibility.js');
+  const lb = (kg) => `${Math.round(kg * 2.20462)} lb`;
+  const result = checkWeighIn(97, weighIns([91, 91, 91], '2026-11-15'), { dateISO: '2026-11-18', fmt: lb });
+  assert.match(result.message, /^Save 214 lb\? That's 13 lb above your 7-day average of 201 lb\.$/);
+});
+
+/** Just enough of a page for a sheet to open and close, and for an input to be read. */
+function withFakeDocument(run, inputs = {}) {
+  const previous = globalThis.document;
+  const node = () => ({
+    innerHTML: '',
+    classList: { on: false, add() { this.on = true; }, remove() { this.on = false; }, contains() { return this.on; } },
+  });
+  const nodes = { pan: node(), sheet: node() };
+  globalThis.document = {
+    getElementById: (id) => nodes[id] || (id in inputs ? { value: inputs[id] } : null),
+    querySelector: () => null,
+  };
+  return Promise.resolve(run(nodes)).finally(() => {
+    globalThis.document = previous;
+  });
+}
+
+test('plausibility: a 97 kg weigh-in asks "Save / Fix" first, and Save still saves it', async () => {
+  const { actions } = await import('../js/ui/body.js');
+  const saved = [];
+  const ctx = {
+    state: {
+      bodyDraft: { dateISO: '2026-11-18', bodyweight: '97', bodyfatPct: '15', sleepHours: '8' },
+      settings: { unit: 'kg' },
+      daily: weighIns([91.0, 91.2, 90.9, 91.05], '2026-11-14').map((p, i) => ({ id: i, dateISO: p.dateISO, bodyweight: p.value })),
+    },
+    toKg: Number,
+    saveDaily: async (row) => saved.push(row),
+  };
+  await withFakeDocument(async (nodes) => {
+    await actions['save-daily'](ctx);
+    assert.equal(saved.length, 0, 'saved without asking');
+    assert.match(nodes.pan.innerHTML, /Save 97 kg\? That's 6 kg above your 7-day average/);
+    assert.match(nodes.pan.innerHTML, />Save</);
+    assert.match(nodes.pan.innerHTML, />Fix</);
+    await actions['confirm-body-save'](ctx);
+    assert.equal(saved.length, 1, 'Save did not save — the check must never block');
+    assert.equal(saved[0].bodyweight, 97);
+  });
+});
+
+test('plausibility: an ordinary weigh-in saves with no question', async () => {
+  const { actions } = await import('../js/ui/body.js');
+  const saved = [];
+  const ctx = {
+    state: {
+      bodyDraft: { dateISO: '2026-11-18', bodyweight: '91.4', bodyfatPct: '15', sleepHours: '8' },
+      settings: { unit: 'kg' },
+      daily: weighIns([91.0, 91.2], '2026-11-16').map((p, i) => ({ id: i, dateISO: p.dateISO, bodyweight: p.value })),
+    },
+    toKg: Number,
+    saveDaily: async (row) => saved.push(row),
+  };
+  await withFakeDocument(async () => {
+    await actions['save-daily'](ctx);
+    assert.equal(saved.length, 1);
+  });
+});
+
+test('plausibility: a tape typo asks before saving', async () => {
+  const { actions, MEASUREMENT_SITES } = await import('../js/ui/body.js');
+  const saved = [];
+  const draft = { dateISO: '2026-11-18', measureTime: 'morning' };
+  for (const [id] of MEASUREMENT_SITES) draft[`m-${id}`] = '40';
+  draft['m-chest'] = '1095';
+  const ctx = {
+    state: { bodyDraft: draft, settings: { unit: 'kg' }, measurements: [{ id: 1, dateISO: '2026-11-10', chest: 110 }] },
+    saveMeasurements: async (row) => saved.push(row),
+  };
+  await withFakeDocument(async (nodes) => {
+    await actions['save-measurements'](ctx);
+    assert.equal(saved.length, 0);
+    assert.match(nodes.pan.innerHTML, /Save Chest 1095 cm\?/);
+  });
+});
+
+test('plausibility: a 1300 kg working max asks first; Save keeps what he typed', async () => {
+  const { actions } = await import('../js/ui/settings.js');
+  const [, plan] = withSharedLibrary([FOPIP, FLOPIP]);
+  const written = [];
+  const ctx = {
+    state: {
+      plan, settings: { unit: 'kg' }, sets: [], logs: [], todayISO: '2026-11-18', activeLog: null,
+      maxes: new Map([['benchComp', { exerciseId: 'benchComp', workingMax: 125 }]]),
+    },
+    confirmMax: async (id, kg) => written.push([id, kg]),
+    render() {},
+  };
+  await withFakeDocument(async (nodes) => {
+    await actions['save-max'](ctx, { id: 'benchComp' });
+    assert.equal(written.length, 0, '1300 became the working max with no question');
+    assert.match(nodes.pan.innerHTML, /Set Competition bench press to 1300 kg\?/);
+    await actions['save-max-confirmed'](ctx, { id: 'benchComp', value: '1300' });
+    assert.deepEqual(written, [['benchComp', 1300]]);
+  }, { 'max-value': '1300' });
+});
