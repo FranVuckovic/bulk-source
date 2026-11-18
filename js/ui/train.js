@@ -394,6 +394,11 @@ function askIfImplausible(ctx, pending) {
   return true;
 }
 
+/** Put the caret in the editor's load box, once the sheet is drawn. */
+function focusLoadBox() {
+  globalThis.requestAnimationFrame?.(() => document.getElementById('in-load')?.focus?.());
+}
+
 /** Log a one-tap set, start the rest, and celebrate a record. */
 async function commitTick(ctx, slotIndex, i, slot, values) {
   const result = await saveAsking(ctx, slotIndex, i, values);
@@ -2238,6 +2243,9 @@ export const actions = {
      */
     if (load == null && !bodyweightFor(state, slot.ex)) {
       actions['open-step'](ctx, { si: String(slotIndex), i: String(i), field: 'load' });
+      // On the box, so the next thing typed is the load. It opened unfocused,
+      // and only a failed Save moved the focus there — a second tap every time.
+      focusLoadBox();
       return;
     }
 
@@ -2564,7 +2572,7 @@ export const actions = {
     if (!Number.isFinite(c.load) && !bodyweightFor(ctx.state, c.slot.ex)) {
       c.needsLoad = true;
       drawStepSheet(ctx);
-      globalThis.requestAnimationFrame?.(() => document.getElementById('in-load')?.focus?.());
+      focusLoadBox();
       return;
     }
     const values = {

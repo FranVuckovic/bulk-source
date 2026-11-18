@@ -923,3 +923,26 @@ test('N9: discarding the open session stops its rest timer, as Finish does (wiri
   const active = deleteEntry.slice(deleteEntry.indexOf('if (state.activeLog?.id === id)'));
   assert.match(active.slice(0, active.indexOf('}')), /stopRest\(\)/, 'the active-session branch of deleteEntry does not stop the rest timer');
 });
+
+test('N10: a tick on a row with no load puts the caret in the load box', async () => {
+  // The editor opened on the load, but unfocused: he had to tap the box again,
+  // and only a failed Save moved the focus there.
+  const state = blankRowState();
+  const previousFrame = globalThis.requestAnimationFrame;
+  const frames = [];
+  globalThis.requestAnimationFrame = (fn) => frames.push(fn);
+  try {
+    await withFakeDocument(async (nodes) => {
+      let focused = null;
+      const realGet = globalThis.document.getElementById;
+      globalThis.document.getElementById = (id) => (id === 'in-load' ? { focus: () => (focused = id) } : realGet(id));
+      const ctx = recordingCtx(state);
+      await actions.tick(ctx, { si: '0', i: '0' }, { stopPropagation() {} });
+      for (const fn of frames.splice(0)) fn();
+      assert.equal(focused, 'in-load', 'the load box was not focused');
+      assert.ok(nodes.sheet.classList.contains());
+    });
+  } finally {
+    globalThis.requestAnimationFrame = previousFrame;
+  }
+});
