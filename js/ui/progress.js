@@ -42,7 +42,7 @@ import { rollUpFromSets, plannedVsCompleted } from '../volume.js';
 import { resolveSession, toDisplaySession } from '../plan.js';
 import { alive } from '../db.js';
 import { addDays } from '../dates.js';
-import { escape, fmtLoad, fmtNum, toDisplay, flag, subnav, openSheet, closeSheet , fmtLength, toLength, lengthLabel } from './components.js';
+import { escape, fmtLoad, fmtNum, toDisplay, flag, subnav, openSheet, fmtLength, toLength, lengthLabel } from './components.js';
 import {
   barChart,
   heatmap,
@@ -1462,9 +1462,14 @@ export const actions = {
       <button class="big ghost mt" data-act="sheet-close">Close</button>`);
   },
 
+  /*
+   * The review is redrawn, not closed: confirming four lifts used to mean
+   * opening it four times. The confirmed row drops out of the list because it
+   * no longer needs confirming, and the rest stay where they were.
+   */
   async 'confirm-max'(ctx, data) {
     await ctx.confirmMax(data.id, Number(data.value), data.reason);
-    closeSheet();
     ctx.render();
+    actions['open-review'](ctx);
   },
 };

@@ -564,6 +564,29 @@ test('M3: advancing or correcting the rotation mid-session does not reshape the 
   assert.notDeepEqual(shape(slotsFor(state)), before);
 });
 
+/* ═══════════════════════════════════════════════════════════════════════
+   UI-14 · The block review stays open while you confirm
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('UI-14: confirming one max redraws the review instead of closing it', async () => {
+  // Confirming four lifts meant opening the review four times.
+  const { actions: progressActions } = await import('../js/ui/progress.js');
+  const calls = [];
+  const original = progressActions['open-review'];
+  progressActions['open-review'] = () => calls.push('review');
+  try {
+    await withFakeDocument(async (nodes) => {
+      nodes.sheet.classList.add();
+      const ctx = { state: {}, render: () => calls.push('render'), confirmMax: async () => calls.push('confirm') };
+      await progressActions['confirm-max'](ctx, { id: 'benchComp', value: '127.5', reason: 'r' });
+      assert.deepEqual(calls, ['confirm', 'render', 'review']);
+      assert.ok(nodes.sheet.classList.contains(), 'the review was closed');
+    });
+  } finally {
+    progressActions['open-review'] = original;
+  }
+});
+
 test('UI-03: a new civil date with no session open starts at normal readiness', () => {
   // An installed PWA resumes rather than reloads, so yesterday's red day was
   // still selected the next morning.
