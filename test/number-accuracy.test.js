@@ -675,3 +675,70 @@ test('M5: a record on a dip says the bodyweight that set used, not today’s set
   const row = records([dip], { exercises, logs: dipLogs }).estimated.find((r) => r.exerciseId === 'dip');
   assert.equal(row.bodyweightUsed, 86);
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   L9 / UI-06 · "Fix this set" corrects the set, not just one field of it
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('L9: moving a set to another exercise recomputes what belonged to the old one', async () => {
+  const { correctionFor } = await import('../js/analytics.js');
+  const daily = weighIns([92.8, 93.0, 93.1], '2026-11-14').map((p, i) => ({ id: i, dateISO: p.dateISO, bodyweight: p.value }));
+  const dip = {
+    id: 1, exerciseId: 'dip', load: 20, reps: 8, rpe: 8, rir: 2, bodyweightUsed: 90, localDate: '2026-11-16',
+    variantUsed: 'dip', pauseStyle: 'paused', gripWidth: 'wide', isIndexSet: true,
+  };
+  const toBench = correctionFor(dip, { exerciseId: 'benchClose' }, { exercises, daily, fallbackBodyweight: 90 });
+  assert.equal(toBench.bodyweightUsed, null, 'a close-grip bench set kept 90 kg of bodyweight and became a 110 kg press');
+  assert.equal(toBench.variantUsed, null);
+  assert.equal(toBench.pauseStyle, null);
+  assert.equal(toBench.gripWidth, null);
+  assert.equal(toBench.isIndexSet, false, 'the old lift’s index flag cannot vouch for the new lift');
+
+  const row = { ...dip, exerciseId: 'rowCSR', bodyweightUsed: null };
+  const toDip = correctionFor(row, { exerciseId: 'dip' }, { exercises, daily, fallbackBodyweight: 90 });
+  assert.ok(Math.abs(toDip.bodyweightUsed - 92.97) < 0.05, 'a dip with no bodyweight is a dip with no estimate');
+
+  const rpeOnly = correctionFor(dip, { rpe: 9 }, { exercises, daily, fallbackBodyweight: 90 });
+  assert.equal(rpeOnly.rir, 1, 'RIR still said 2 after the RPE became 9');
+  assert.equal(rpeOnly.bodyweightUsed, undefined, 'an unrelated field was rewritten');
+});
+
+test('UI-06: saving only a note in pounds does not drift the load', async () => {
+  const { actions } = await import('../js/ui/history.js');
+  const patches = [];
+  const ctx = {
+    state: { settings: { unit: 'lb' }, sets: [] },
+    toKg: (lb) => lb / 2.2046226218,
+    repairSet: async (id, patch) => {
+      patches.push(patch);
+      return { changed: 1 };
+    },
+    render() {},
+  };
+  // 100 kg is shown as 220.5 lb; sending that back stored 100.017 kg and
+  // wrote a "load" correction he never made.
+  await withFakeDocument(async () => {
+    await actions['repair-set-save'](ctx, { id: '1', loadShown: '220.5' });
+  }, { 'fix-load': '220.5', 'fix-reps': '5', 'fix-rpe': '8', 'fix-ex': 'benchComp', 'fix-note': 'felt slow' });
+  assert.equal('load' in patches[0], false, 'an untouched load box was re-sent');
+
+  await withFakeDocument(async () => {
+    await actions['repair-set-save'](ctx, { id: '1', loadShown: '220.5' });
+  }, { 'fix-load': '225', 'fix-reps': '5', 'fix-rpe': '8', 'fix-ex': 'benchComp', 'fix-note': '' });
+  assert.ok(Math.abs(patches[1].load - 102.06) < 0.01, 'a changed load was not saved');
+});
+
+test('UI-06: the exercise list is sorted and leaves out retired lifts', async () => {
+  const { actions } = await import('../js/ui/history.js');
+  const [, plan] = withSharedLibrary([FOPIP, FLOPIP]);
+  const set = { id: 1, sessionLogId: 1, exerciseId: 'benchComp', setIndex: 0, load: 100, reps: 5, rpe: 8 };
+  await withFakeDocument(async (nodes) => {
+    actions['repair-set-open']({ state: { plan, settings: { unit: 'kg' }, sets: [set] } }, { id: '1' });
+    const names = [...nodes.pan.innerHTML.matchAll(/<option value="[^"]*"[^>]*>([^<]*)<\/option>/g)].map((m) => m[1]);
+    assert.ok(names.length > 10);
+    assert.deepEqual(names, [...names].sort((a, b) => a.localeCompare(b)), 'the list was in object order');
+    const retired = Object.values(plan.exercises).filter((x) => x.retired).map((x) => x.name);
+    assert.ok(retired.length > 0);
+    assert.ok(!names.some((n) => retired.includes(n.replace(/&amp;/g, '&'))), 'retired lifts were offered');
+  });
+});

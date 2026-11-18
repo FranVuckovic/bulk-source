@@ -427,6 +427,37 @@ export function bodyweightOn(daily, dateISO, fallback = null) {
   return best && bestGap <= BODYWEIGHT_NEAREST_DAYS ? best.value : fallback;
 }
 
+/**
+ * A correction to a stored set, with what follows from it.
+ *
+ * "Fix this set" patched the fields it was given and nothing else. Moved from a
+ * weighted dip to a close-grip bench, a set kept `bodyweightUsed: 90` and was
+ * estimated as a 110 kg press; moved the other way, a dip had no bodyweight and
+ * no estimate. The variant, pause, grip and index flag belonged to the old lift
+ * and stayed, and RIR kept describing the old RPE.
+ *
+ * Returns the patch to write: the fields given, plus the ones that follow.
+ * Fields that do not follow from the change are left out, not rewritten.
+ */
+export function correctionFor(set, patch, { exercises = {}, daily = [], fallbackBodyweight = null, dateISO = null } = {}) {
+  const out = { ...patch };
+  if ('rpe' in patch && (patch.rpe ?? null) !== (set.rpe ?? null)) {
+    out.rir = patch.rpe == null ? null : Math.max(0, 10 - patch.rpe);
+  }
+  if (patch.exerciseId && patch.exerciseId !== set.exerciseId) {
+    const target = exercises[patch.exerciseId];
+    const day = dateISO || set.localDate || (set.timestampISO || '').slice(0, 10) || null;
+    out.bodyweightUsed = target?.bodyweightLoaded ? bodyweightOn(daily, day, fallbackBodyweight) : null;
+    // These described the old lift. A wrong grip on the right lift is worse
+    // than no grip recorded, and an index flag is the old slot's claim.
+    out.variantUsed = null;
+    out.pauseStyle = null;
+    out.gripWidth = null;
+    out.isIndexSet = false;
+  }
+  return out;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    Trends
    ═══════════════════════════════════════════════════════════════════════ */

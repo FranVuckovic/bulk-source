@@ -614,19 +614,22 @@ function repairSetSheet(ctx, set) {
   const name = state.plan.exercises[set.exerciseId]?.name || set.exerciseId;
 
   // Every exercise in the plan, so a set logged against the wrong one can be
-  // moved to the right one rather than deleted and retyped.
+  // moved to the right one rather than deleted and retyped. Sorted, and
+  // without retired lifts unless the set is on one, so the right name can be
+  // found rather than scrolled for.
   const options = Object.entries(state.plan.exercises)
+    .filter(([id, x]) => id === set.exerciseId || (!x.retired && !/\(retired/i.test(x.name)))
+    .sort(([, a], [, b]) => a.name.localeCompare(b.name))
     .map(([id, x]) => `<option value="${escape(id)}" ${id === set.exerciseId ? 'selected' : ''}>${escape(x.name)}</option>`)
     .join('');
+  const loadShown = set.load == null ? '' : fmtLoad(set.load, unit);
 
   return `<div class="ttl">Fix this set</div>
     <p style="text-align:center;font-size:13px;margin:10px 0 12px">${escape(name)} \u00b7 set ${set.setIndex + 1}</p>
 
     <div class="g3">
       <div><label for="fix-load">Load (${escape(unit)})</label>
-        <input id="fix-load" type="number" inputmode="decimal" step="0.5" value="${
-          set.load == null ? '' : fmtLoad(set.load, unit)
-        }"></div>
+        <input id="fix-load" type="number" inputmode="decimal" step="0.5" value="${loadShown}"></div>
       <div><label for="fix-reps">Reps</label>
         <input id="fix-reps" type="number" inputmode="numeric" step="1" value="${set.reps ?? ''}"></div>
       <div><label for="fix-rpe">RPE</label>
@@ -641,7 +644,7 @@ function repairSetSheet(ctx, set) {
     <div class="mt"><label for="fix-note">Note</label>
       <input id="fix-note" type="text" value="${escape(set.note || '')}" placeholder="What happened on this set"></div>
 
-    <button class="big mt" data-act="repair-set-save" data-id="${set.id}">Save the correction</button>
+    <button class="big mt" data-act="repair-set-save" data-id="${set.id}" data-load-shown="${escape(loadShown)}">Save the correction</button>
     <button class="big danger mt" data-act="repair-set-delete" data-id="${set.id}">Delete just this set</button>
     <button class="big ghost mt" data-act="sheet-close">Cancel</button>
     <p class="hint">Every correction is recorded with the field, the old value and the new one.</p>`;
@@ -1332,11 +1335,15 @@ export const actions = {
     };
     const load = num('fix-load');
     const note = document.getElementById('fix-note')?.value?.trim() || null;
+    // The box shows the load rounded to one decimal in the display unit. Sent
+    // back untouched, 100 kg came back from 220.5 lb as 100.017 kg, and a note
+    // edit wrote a "load" correction. Only a load he changed is sent.
+    const loadTouched = (document.getElementById('fix-load')?.value ?? '').trim() !== String(data.loadShown ?? '').trim();
 
     const result = await ctx.repairSet(Number(data.id), {
       // Typed in whatever unit is on display, stored in kilograms like
       // everything else.
-      load: load == null ? null : ctx.toKg(load),
+      ...(loadTouched ? { load: load == null ? null : ctx.toKg(load) } : {}),
       reps: num('fix-reps'),
       rpe: num('fix-rpe'),
       exerciseId: document.getElementById('fix-ex')?.value,

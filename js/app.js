@@ -49,7 +49,7 @@ import {
 } from './progress.js';
 import { systemLoad, estimateForSet, isHighConfidence, attemptMaxEffect, maxBeforeAttempt } from './calc.js';
 import { checkWorkingMax } from './plausibility.js';
-import { personalBestBefore, bodyweightOn } from './analytics.js';
+import { personalBestBefore, bodyweightOn, correctionFor } from './analytics.js';
 import { localDate, nowISO, timeZone, utcOffsetMinutes, daysBetween } from './dates.js';
 import {
   blockFor,
@@ -1596,6 +1596,16 @@ const ctx = {
   async repairSet(setId, patch) {
     const set = state.sets.find((row) => row.id === setId);
     if (!set) throw new Error('that set no longer exists');
+
+    // What follows from the change comes with it: a set moved to another lift
+    // takes that lift's bodyweight rule, and RIR follows RPE.
+    const log = state.logs.find((row) => row.id === set.sessionLogId);
+    patch = correctionFor(set, patch, {
+      exercises: state.plan.exercises,
+      daily: state.daily,
+      fallbackBodyweight: state.settings.bodyweight,
+      dateISO: (log?.localDate || log?.dateISO || '').slice(0, 10) || null,
+    });
 
     const changed = Object.entries(patch).filter(([key, value]) => (set[key] ?? null) !== (value ?? null));
     if (!changed.length) return { changed: 0 };
