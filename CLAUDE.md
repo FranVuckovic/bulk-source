@@ -52,7 +52,7 @@ with the output. If something was skipped, say that.
 ## Commands
 
 ```bash
-npm test          # 672 tests, ~4s, node:test only
+npm test          # 828 tests, ~5s, node:test only
 npm run serve     # dev server on :8123, no-store headers
 npm run publish -- https://github.com/FranVuckovic/bulk.git
 ```
@@ -94,6 +94,8 @@ Pure domain layer, no DOM, no storage, no `Date.now()`:
 | `js/calc.js` | RPE↔%1RM table, e1RM and its confidence, rounding, prescriptions, working-max rules |
 | `js/plan.js` | The plan compiler: rotation + session → resolved prescription |
 | `js/plans.js` | Which plans exist (FOPIP v2, FLOPIP 2), which plan a log or cycle belongs to |
+| `js/library.js` | The exercise library (`data/exercise-library.json`) and similarity-ranked swaps |
+| `js/plausibility.js` | "Is this number a typo?" — soft questions before a save, and which stored readings a trend leaves out |
 | `js/cycle.js` | A rotation as the unit of training: progress, corrections, projection |
 | `js/volume.js` | Fractional sets, head vs whole-muscle counting |
 | `js/analytics.js` | **Every number the Progress screen shows** |
