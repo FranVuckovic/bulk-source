@@ -1945,7 +1945,9 @@ function goTo(patch, { replace = false } = {}) {
     // as `history`, which shadows the global. Without the prefix this reads as
     // ui/history.js and throws "history.replaceState is not a function" during
     // boot, which takes the whole app down.
-    if (replace) window.history.replaceState({ view: next }, '');
+    // A sheet closed on the way here leaves an entry: the new screen takes it
+    // over rather than pushing past it. See "one sheet replacing another".
+    if (keepClosingSheetEntry() || replace) window.history.replaceState({ view: next }, '');
     else window.history.pushState({ view: next }, '');
   } catch {
     // A browser that refuses the history entry still navigates; it just cannot
@@ -1991,17 +1993,51 @@ function scrollToOpenTip() {
  * closing it with a set editor open.
  *
  * Closing a sheet by tapping spends the entry too, so the stack does not grow
- * a stale level per sheet. `poppingBack` stops that from recursing: when the
+ * a stale level per sheet. `ignoreNextPop` stops that from recursing: when the
  * close was itself caused by a back press, the entry is already gone.
+ *
+ * ONE SHEET REPLACING ANOTHER. Closing a sheet and opening the next one (or
+ * moving to another screen) in the same tap used to call `history.back()`
+ * and then `pushState()` straight after it. `back()` is asynchronous, so it
+ * landed after the push: the new sheet's entry was the one spent, and the
+ * next close stepped back over a real screen. Closing "Rotation 7" that way
+ * left the app for `about:blank`, and Back after a record celebration skipped
+ * the Log. So the give-back waits a task, and whatever opens in the meantime
+ * takes over the entry that is already there instead of pushing another.
+ * One Back always closes one sheet.
  */
 let sheetEntry = false;
 let ignoreNextPop = false;
+let givingBack = null;
+
+/** A sheet closed by a tap and not replaced: give its history entry back. */
+function giveBackSheetEntry() {
+  givingBack = null;
+  ignoreNextPop = true;
+  try {
+    window.history.back();
+  } catch {
+    ignoreNextPop = false;
+  }
+}
+
+/**
+ * Something opened in the same tap as a sheet closed: keep the closed sheet's
+ * entry rather than giving it back. True when there was one to keep.
+ */
+function keepClosingSheetEntry() {
+  if (!givingBack) return false;
+  clearTimeout(givingBack);
+  givingBack = null;
+  return true;
+}
 
 function onSheetOpen() {
   if (sheetEntry) return;
   sheetEntry = true;
   try {
-    window.history.pushState({ sheet: true, view: currentView() }, '');
+    if (keepClosingSheetEntry()) window.history.replaceState({ sheet: true, view: currentView() }, '');
+    else window.history.pushState({ sheet: true, view: currentView() }, '');
   } catch {
     sheetEntry = false;
   }
@@ -2014,12 +2050,7 @@ function onSheetClose({ fromBack }) {
   if (!sheetEntry) return;
   sheetEntry = false;
   if (fromBack) return;
-  ignoreNextPop = true;
-  try {
-    window.history.back();
-  } catch {
-    ignoreNextPop = false;
-  }
+  givingBack = setTimeout(giveBackSheetEntry, 0);
 }
 
 /*
@@ -2129,6 +2160,9 @@ function wireBackButton() {
   window.history.replaceState({ view: currentView() }, '');
 
   window.addEventListener('popstate', (event) => {
+    // His own Back, in the moment between a tap closing a sheet and that sheet
+    // giving its entry back: the gesture already spent it.
+    if (keepClosingSheetEntry()) return;
     // Our own doing: a sheet was closed by a tap and gave its entry back.
     if (ignoreNextPop) {
       ignoreNextPop = false;
