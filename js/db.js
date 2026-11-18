@@ -832,7 +832,17 @@ export function restoreSession(db, sessionLogId) {
     const log = await request(logs.get(sessionLogId));
     if (!log) throw new Error('that session no longer exists');
 
-    const attached = await request(sets.index('sessionLogId').getAll(sessionLogId));
+    /*
+     * Only the sets the session's own delete took. `softDeleteSession` stamps
+     * them with the same instant it stamps the log, and leaves alone any set
+     * that was already deleted. Restoring every attached set used to bring back
+     * the leg press set a swap had displaced (onto the same slot as the hack
+     * squat that replaced it) and the duplicate deliberately binned, so the
+     * restored session had three live sets where it had one.
+     */
+    const attached = (await request(sets.index('sessionLogId').getAll(sessionLogId))).filter(
+      (set) => set.deletedAtISO && set.deletedAtISO === log.deletedAtISO
+    );
     for (const set of attached) await request(sets.put({ ...set, deletedAtISO: null }));
     const restored = {
       ...log,

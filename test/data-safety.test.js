@@ -21,6 +21,12 @@ import {
   snapshot,
   withTransaction,
   request,
+  alive,
+  putSetIdempotent,
+  softDeleteRow,
+  softDeleteSession,
+  restoreSession,
+  deletedRecords,
 } from '../js/db.js';
 import { toCsv, CSV_COLUMNS, buildExport, parseImport, validateImport, applyImport, verifyAgainst } from '../js/export.js';
 import { exportRangeDefaults } from '../js/ui/settings.js';
@@ -260,4 +266,31 @@ test('L4: the export "To" date is the local civil date, not the UTC one', () => 
   assert.equal(exportRangeDefaults(state).to, '2026-09-30');
   assert.equal(exportRangeDefaults(state).from, '2026-09-30', 'with nothing stored, the range is just today');
   assert.doesNotMatch(source('../js/ui/settings.js'), /toISOString\(\)\.slice\(0, 10\)/);
+});
+
+/* ── M1: restoring a session restores only what the delete took ────── */
+
+test('M1: restoring a deleted session does not bring back displaced sets or sets binned on purpose', async () => {
+  const db = await freshDb();
+  const { sessionLogId } = await saveSession(db, { dateISO: '2026-08-18', sessionId: 'D', endedAt: '2026-08-18T19:00:00.000Z' }, []);
+  const set = (slotIndex, setIndex, exerciseId, load) => ({
+    sessionLogId, slotIndex, setIndex, exerciseId, load, reps: 10, rpe: 8, timestampISO: '2026-08-18T18:00:00.000Z',
+  });
+
+  // The leg press set, then a swap to hack squat on the same slot displaces it.
+  await putSetIdempotent(db, set(0, 0, 'legpress', 200), { operationId: 'op-1' });
+  const { set: hack } = await putSetIdempotent(db, set(0, 0, 'hackSquat', 120), { operationId: 'op-2' });
+  // A duplicate, deleted on purpose.
+  const { set: duplicate } = await putSetIdempotent(db, set(1, 0, 'legCurl', 50), { operationId: 'op-3' });
+  await softDeleteRow(db, 'sets', duplicate.id, { reason: 'logged twice' });
+
+  assert.deepEqual(alive(await getAll(db, 'sets')).map((row) => row.id), [hack.id], 'one live set before the delete');
+
+  await softDeleteSession(db, sessionLogId);
+  await restoreSession(db, sessionLogId);
+
+  const live = alive(await getAll(db, 'sets'));
+  assert.deepEqual(live.map((row) => row.id), [hack.id], 'and exactly that one after the restore');
+  const binned = (await deletedRecords(db)).filter((entry) => entry.store === 'sets');
+  assert.ok(binned.some((entry) => entry.id === duplicate.id), 'the purposely deleted set is still in the bin');
 });
