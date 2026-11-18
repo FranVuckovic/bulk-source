@@ -2678,9 +2678,10 @@ async function adoptStoredState() {
   state.settings = {
     unit: settings.unit,
     increment: settings.increment,
-    // Used for pull-ups, chin-ups and dips, where bodyweight is part of the
-    // load. One number, edited in Settings — not read from the daily weigh-in,
-    // so a 0.4 kg morning fluctuation cannot move every prescription.
+    // Pull-ups, chin-ups and dips run on bodyweight + added. The bodyweight is
+    // `bodyweightOn`: the 7-day average of the weigh-ins nearest the day, so a
+    // 0.4 kg morning cannot move a prescription. This setting is its fallback
+    // when there is no weigh-in within a week.
     bodyweight: settings.bodyweight ?? fallbackPlan.meta.referenceBodyweightKg ?? 90,
     barKg: settings.barKg ?? 20,
     // Exercises you added. Kept in state so the Settings screen and the swap

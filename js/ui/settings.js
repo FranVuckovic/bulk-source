@@ -106,7 +106,7 @@ export function view(ctx) {
         toDisplay(state.settings.bodyweight, unit),
         1
       )}" data-act-change="bodyweight">
-      <p class="hint">Pull-ups, chin-ups and dips lift your bodyweight plus whatever is on the belt, so this is part of every percentage, RPE and e1RM on those lifts. It is one deliberate number rather than the daily weigh-in — otherwise a 0.4 kg fluctuation would move every prescription.</p></div>
+      <p class="hint">Pull-ups, chin-ups and dips lift your bodyweight plus whatever is on the belt, so bodyweight is part of every percentage, RPE and e1RM on those lifts. The app uses the 7-day average of your weigh-ins nearest the day, so one heavy morning does not move a prescription. This number is used only when there is no weigh-in within a week.</p></div>
   </div></div></details>
 
   <details class="card settings-group"><summary><span>Data &amp; backups<small>${state.integrity?.ok ? 'Healthy' : 'Needs attention'} · ${state.logs.length} sessions · ${state.sets.length} sets</small></span></summary><div class="c">
