@@ -83,6 +83,19 @@ function withVersion(path) {
 }
 
 /**
+ * How many shell files are downloaded at once.
+ *
+ * Fetching all 34 at once never finished over HTTP/1.1, which is what the dev
+ * server speaks and what `?sw=1` testing uses: Chrome allows six connections
+ * per host, a response whose body has not been read keeps its connection, and
+ * the old install read no body until every response had arrived — so after the
+ * first six nothing else could get a connection, and the worker sat in
+ * `installing` for good. Four at a time, each body read before its slot is
+ * reused, stays under any per-host limit.
+ */
+const SHELL_CONCURRENCY = 4;
+
+/**
  * Fetch shell files for THIS version and store them under their plain paths.
  *
  * `cache: 'reload'` gets past the browser's HTTP cache, but not GitHub Pages'
@@ -92,18 +105,37 @@ function withVersion(path) {
  * bump. A URL carrying the version is one the CDN has never cached, so it goes
  * to the origin. The copy is stored under the path the page actually requests.
  *
- * All or nothing: every response is in hand before any is stored, so a failed
- * fetch leaves the cache as it was rather than holding half a build.
+ * All or nothing: every file is downloaded in full before any is stored, so a
+ * failed fetch leaves the cache as it was rather than holding half a build. A
+ * failure stops the remaining downloads too.
  */
 async function fetchShell(cache, paths) {
-  const responses = await Promise.all(
-    paths.map(async (path) => {
-      const response = await fetch(new Request(withVersion(path), { cache: 'reload' }));
-      if (!response.ok) throw new Error(`${path} could not be fetched (${response.status})`);
-      return [path, response];
-    })
-  );
-  await Promise.all(responses.map(([path, response]) => cache.put(path, response)));
+  const fetched = new Array(paths.length);
+  let next = 0;
+  let failure = null;
+
+  const download = async () => {
+    while (!failure && next < paths.length) {
+      const index = next++;
+      const path = paths[index];
+      try {
+        const response = await fetch(new Request(withVersion(path), { cache: 'reload' }));
+        if (!response.ok) throw new Error(`${path} could not be fetched (${response.status})`);
+        // Read in full here, which is what frees the connection for the next file.
+        const body = await response.blob();
+        fetched[index] = [
+          path,
+          new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers }),
+        ];
+      } catch (error) {
+        failure = failure || error;
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(SHELL_CONCURRENCY, paths.length) }, download));
+  if (failure) throw failure;
+  await Promise.all(fetched.map(([path, response]) => cache.put(path, response)));
 }
 
 /**

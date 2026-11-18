@@ -119,7 +119,7 @@ test('L6: the shell is fetched for this version, so a CDN-stale copy cannot be c
   const stored = [];
   const fetchShell = build(async (request) => {
     fetched.push(request);
-    return { ok: true, status: 200 };
+    return { ok: true, status: 200, blob: async () => new Blob(['x']) };
   });
   await fetchShell({ put: async (key) => stored.push(key) }, ['./js/app.js', './']);
 
@@ -129,7 +129,7 @@ test('L6: the shell is fetched for this version, so a CDN-stale copy cannot be c
 
   // Nothing is stored unless everything arrived: a half shell is a half app.
   const none = [];
-  const failing = build(async (request) => ({ ok: !request.url.includes('app.js'), status: 404 }));
+  const failing = build(async (request) => ({ ok: !request.url.includes('app.js'), status: 404, blob: async () => new Blob(['x']) }));
   await assert.rejects(failing({ put: async (key) => none.push(key) }, ['./js/app.js', './']));
   assert.deepEqual(none, []);
 
@@ -138,4 +138,89 @@ test('L6: the shell is fetched for this version, so a CDN-stale copy cannot be c
   assert.doesNotMatch(source, /cache\.addAll\(/, 'and nothing fills the cache with unversioned fetches');
   const shellBranch = source.slice(source.indexOf('shellPaths.has('));
   assert.match(shellBranch, /fetch\(withVersion\(/, 'nor does the miss repair in the fetch handler');
+});
+
+test('N3: the shell installs over a six-connection HTTP/1.1 host, a few files at a time', async () => {
+  // All 34 fetches started at once and no body was read until every one had
+  // arrived. Chrome gives HTTP/1.1 six connections per host and an unread
+  // response keeps its connection, so files seven onward never got one and the
+  // worker stayed `installing` forever on the dev server that `?sw=1` uses.
+  //
+  // The fake host below behaves like that: six connections, each held until
+  // its response body has been read.
+  const start = source.indexOf('function withVersion(');
+  const end = source.indexOf('\n}', source.indexOf('async function fetchShell(')) + 2;
+  const shell = source.slice(source.indexOf('const SHELL = ['), source.indexOf('];', source.indexOf('const SHELL = [')) + 2);
+  // eslint-disable-next-line no-new-func
+  const SHELL = new Function(`${shell}; return SHELL;`)();
+  assert.ok(SHELL.length > 6, 'the shell is bigger than one host’s connection limit');
+
+  let free = 6;
+  let inFlight = 0;
+  let mostInFlight = 0;
+  const waiting = [];
+  const release = () => {
+    free++;
+    waiting.shift()?.();
+  };
+  const host = async (request) => {
+    if (free === 0) await new Promise((resolve) => waiting.push(resolve));
+    free--;
+    inFlight++;
+    mostInFlight = Math.max(mostInFlight, inFlight);
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    return {
+      ok: true,
+      status: 200,
+      url: request.url,
+      blob: async () => {
+        inFlight--;
+        release();
+        return new Blob([request.url]);
+      },
+    };
+  };
+  // eslint-disable-next-line no-new-func
+  const fetchShell = new Function('VERSION', 'fetch', 'Request', `${source.slice(start, end)}; return fetchShell;`)(
+    'v9.9.9',
+    host,
+    class {
+      constructor(url) {
+        this.url = url;
+      }
+    }
+  );
+
+  const stored = new Map();
+  const install = fetchShell({ put: async (key, response) => stored.set(key, await response.text()) }, SHELL);
+  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('install never finished')), 2000));
+  await Promise.race([install, timeout]);
+
+  assert.equal(stored.size, SHELL.length, 'every shell file is cached');
+  assert.equal(stored.get('./js/app.js'), './js/app.js?v=v9.9.9', 'with the body that was downloaded for it');
+  assert.ok(mostInFlight <= 4, `at most four downloads at once, saw ${mostInFlight}`);
+});
+
+test('N3: a file that fails stops the install and stores nothing', async () => {
+  const start = source.indexOf('function withVersion(');
+  const end = source.indexOf('\n}', source.indexOf('async function fetchShell(')) + 2;
+  const requested = [];
+  // eslint-disable-next-line no-new-func
+  const fetchShell = new Function('VERSION', 'fetch', 'Request', `${source.slice(start, end)}; return fetchShell;`)(
+    'v9.9.9',
+    async (request) => {
+      requested.push(request.url);
+      return { ok: !request.url.includes('b.js'), status: 404, blob: async () => new Blob(['x']) };
+    },
+    class {
+      constructor(url) {
+        this.url = url;
+      }
+    }
+  );
+  const paths = ['./a.js', './b.js', ...Array.from({ length: 30 }, (_, i) => `./later-${i}.js`)];
+  const stored = [];
+  await assert.rejects(fetchShell({ put: async (key) => stored.push(key) }, paths), /b\.js could not be fetched/);
+  assert.deepEqual(stored, [], 'all or nothing: a half shell is a half app');
+  assert.ok(requested.length < paths.length, 'and the rest of the downloads were not started after the failure');
 });
