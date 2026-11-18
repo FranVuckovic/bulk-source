@@ -295,3 +295,32 @@ export function bandStatus(sets, muscle) {
 export function pastDiminishingReturns(rollUpSets) {
   return rollUpSets >= DIMINISHING_RETURNS_SETS;
 }
+
+/**
+ * Whole-muscle volume per rotation, one group per plan and rotation number,
+ * in the order the rotations were trained.
+ *
+ * The Progress chart grouped on the rotation number alone, so with two plans
+ * each counting from 1 its first six bars were FOPIP rotation n plus FLOPIP
+ * rotation n — about 250 sets each against a real 170. Grouping, ordering and
+ * counting live here so the chart only draws.
+ */
+export function volumeByRotation(sets, logs, { exercises, muscles, planIdOf = (log) => log?.planId ?? 'fopip-v2' } = {}) {
+  const logById = new Map((logs || []).map((log) => [log.id, log]));
+  const groups = new Map();
+  for (const set of sets || []) {
+    if (set.deletedAtISO) continue;
+    const log = logById.get(set.sessionLogId);
+    if (!log || log.deletedAtISO || log.cycleSequence == null) continue;
+    const planId = planIdOf(log);
+    const key = `${planId}:${log.cycleSequence}`;
+    const dateISO = (log.localDate || log.dateISO || '').slice(0, 10);
+    const group = groups.get(key) || { planId, cycleSequence: log.cycleSequence, firstDateISO: dateISO, sets: [] };
+    if (dateISO && (!group.firstDateISO || dateISO < group.firstDateISO)) group.firstDateISO = dateISO;
+    group.sets.push(set);
+    groups.set(key, group);
+  }
+  return [...groups.values()]
+    .sort((a, b) => (a.firstDateISO || '').localeCompare(b.firstDateISO || '') || a.cycleSequence - b.cycleSequence)
+    .map(({ sets: rows, ...group }) => ({ ...group, setCount: rows.length, values: rollUpFromSets(rows, exercises, muscles) }));
+}

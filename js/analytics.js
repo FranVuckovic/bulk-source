@@ -15,7 +15,7 @@
  * Pure: records in, metrics out.
  */
 
-import { planIdOf } from './plans.js';
+import { planIdOf, DEFAULT_PLAN_ID } from './plans.js';
 import { estimateForSet, isHighConfidence, systemLoad, e1rm, setDifficulty, noEstimateReason } from './calc.js';
 import { daysBetween, weekStart } from './dates.js';
 
@@ -251,6 +251,9 @@ export function strengthSeries(sets, { exercises, logs, exerciseId }) {
   const points = included
     .map(({ set, estimate, log, measured, reducedVolume }) => ({
       dateISO: (log?.localDate || log?.dateISO || set.localDate || '').slice(0, 10),
+      // Rotations and blocks are numbered per plan: FOPIP rotation 5 and
+      // FLOPIP rotation 5 are two months apart. Every grouping keys on both.
+      planId: planIdOf(log),
       cycleSequence: log?.cycleSequence ?? null,
       blockId: log?.blockId ?? null,
       sessionId: log?.sessionId ?? null,
@@ -279,10 +282,18 @@ export function bestPerCycle(points) {
   const byCycle = new Map();
   for (const point of points) {
     if (point.cycleSequence == null) continue;
-    const held = byCycle.get(point.cycleSequence);
-    if (!held || point.value > held.value) byCycle.set(point.cycleSequence, point);
+    // Keyed on the plan as well as the number. Both plans count rotations from
+    // 1, and keyed on the number alone FOPIP's September rotation 5 and
+    // FLOPIP's November rotation 5 were one point.
+    const key = `${point.planId ?? DEFAULT_PLAN_ID}:${point.cycleSequence}`;
+    const held = byCycle.get(key);
+    if (!held || point.value > held.value) byCycle.set(key, point);
   }
-  return [...byCycle.values()].sort((a, b) => a.cycleSequence - b.cycleSequence);
+  // In date order, which is the order the training happened in. Sorted by
+  // number, two plans' rotations interleaved and the trend ran backwards.
+  return [...byCycle.values()].sort(
+    (a, b) => a.dateISO.localeCompare(b.dateISO) || a.cycleSequence - b.cycleSequence
+  );
 }
 
 /** Best per calendar week, for anything genuinely tied to dates. */
@@ -524,21 +535,29 @@ export function blockComparison(sets, { exercises, logs, lifts }) {
     const { points } = strengthSeries(sets, { exercises, logs, exerciseId: lift.id });
     const byBlock = new Map();
 
+    // Per plan: FOPIP's block 3 is a recovery week and FLOPIP's block 3 is
+    // seven rotations of accumulation. One key for both merged them.
     for (const point of points) {
       if (point.blockId == null) continue;
-      if (!byBlock.has(point.blockId)) byBlock.set(point.blockId, []);
-      byBlock.get(point.blockId).push(point);
+      const key = `${point.planId ?? DEFAULT_PLAN_ID}:${point.blockId}`;
+      if (!byBlock.has(key)) byBlock.set(key, []);
+      byBlock.get(key).push(point);
     }
 
-    for (const [blockId, blockPoints] of byBlock) {
+    for (const blockPoints of byBlock.values()) {
       const ordered = blockPoints.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+      const { planId, blockId } = ordered[0];
       if (ordered.length < 2) {
-        rows.push({ lift: lift.id, name: lift.name, blockId, change: null, sampleCount: ordered.length, reason: 'one observation' });
+        rows.push({
+          lift: lift.id, name: lift.name, planId, blockId, change: null,
+          firstDateISO: ordered[0].dateISO, sampleCount: ordered.length, reason: 'one observation',
+        });
         continue;
       }
       rows.push({
         lift: lift.id,
         name: lift.name,
+        planId,
         blockId,
         first: ordered[0].value,
         firstDateISO: ordered[0].dateISO,
@@ -550,7 +569,7 @@ export function blockComparison(sets, { exercises, logs, lifts }) {
     }
   }
 
-  return rows.sort((a, b) => a.blockId - b.blockId || a.name.localeCompare(b.name));
+  return rows.sort((a, b) => a.firstDateISO.localeCompare(b.firstDateISO) || a.name.localeCompare(b.name));
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

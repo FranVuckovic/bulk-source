@@ -14,6 +14,7 @@ import { readFileSync } from 'node:fs';
 import { withSharedLibrary } from '../js/plans.js';
 import { newCycle } from '../js/cycle.js';
 import { slotsFor, rowValues } from '../js/ui/train.js';
+import { maxRows } from '../js/ui/progress.js';
 import {
   eligibleForStrength,
   strengthSeries,
@@ -23,6 +24,8 @@ import {
   recentEvidenceMax,
   sessionAnalysis,
   personalBestBefore,
+  bestPerCycle,
+  blockComparison,
 } from '../js/analytics.js';
 
 const load = (path) => JSON.parse(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'));
@@ -217,4 +220,80 @@ test('H3: an ordinary triple in a recovery rotation is still set aside, with an 
   const { included, excluded } = eligibleForStrength([triple], { exercises, logs: [recovery] });
   assert.equal(included.length, 0);
   assert.match(excluded[0].reason, /reduced-volume rotation/);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   M2 · rotations and blocks belong to a plan
+   ═══════════════════════════════════════════════════════════════════════ */
+
+// FOPIP rotation 5 was in September; FLOPIP rotation 5 in November. Keyed on
+// the number alone they shared a bucket, the series ran r4 = Nov then r5 = Aug,
+// the trend read "10/09 to 10/02, -7 days" and its lines left the card.
+const m2Logs = [
+  log(20, '2026-09-18', { planId: 'fopip-v2', cycleSequence: 5, blockId: 1 }),
+  log(21, '2026-10-30', { planId: 'flopip-2', cycleSequence: 4, blockId: 3 }),
+  log(22, '2026-11-13', { planId: 'flopip-2', cycleSequence: 5, blockId: 3 }),
+  log(23, '2026-09-01', { planId: 'fopip-v2', cycleSequence: 3, blockId: 1 }),
+];
+const m2Sets = [
+  bench(20, 20, { load: 110, reps: 5, rpe: 9 }),
+  bench(21, 21, { load: 100, reps: 5, rpe: 8 }),
+  bench(22, 22, { load: 102.5, reps: 5, rpe: 8 }),
+  bench(23, 23, { load: 100, reps: 5, rpe: 8.5 }),
+];
+
+test('M2: one bucket per plan and rotation, in date order', () => {
+  const { points } = strengthSeries(m2Sets, { exercises, logs: m2Logs, exerciseId: 'benchComp' });
+  const perCycle = bestPerCycle(points);
+  assert.equal(perCycle.length, 4, 'FOPIP r5 and FLOPIP r5 were merged into one bucket');
+  const dates = perCycle.map((p) => p.dateISO);
+  assert.deepEqual(dates, [...dates].sort(), 'rotations from two plans were ordered by number, not by date');
+  assert.deepEqual(perCycle.map((p) => p.planId), ['fopip-v2', 'fopip-v2', 'flopip-2', 'flopip-2']);
+});
+
+test('M2: blocks with the same number in two plans are two blocks', () => {
+  const logs = [
+    log(30, '2026-08-20', { planId: 'fopip-v2', blockId: 3 }), log(31, '2026-08-25', { planId: 'fopip-v2', blockId: 3 }),
+    log(32, '2026-10-30', { planId: 'flopip-2', blockId: 3 }), log(33, '2026-11-06', { planId: 'flopip-2', blockId: 3 }),
+  ];
+  const sets = [
+    bench(30, 30, { load: 100 }), bench(31, 31, { load: 105 }),
+    bench(32, 32, { load: 90 }), bench(33, 33, { load: 92.5 }),
+  ];
+  const rows = blockComparison(sets, { exercises, logs, lifts: [{ id: 'benchComp', name: 'Bench' }] });
+  assert.equal(rows.length, 2, 'FOPIP block 3 (recovery) merged with FLOPIP block 3 (accumulation)');
+  assert.deepEqual(rows.map((r) => r.planId), ['fopip-v2', 'flopip-2'], 'rows are in date order');
+  assert.ok(rows.every((r) => r.sampleCount === 2));
+});
+
+test('M2: rotation volume is counted per plan and rotation, in date order', async () => {
+  const { volumeByRotation } = await import('../js/volume.js');
+  const groups = volumeByRotation(m2Sets, m2Logs, { exercises, muscles: FLOPIP.muscles });
+  assert.equal(groups.length, 4, 'FOPIP rotation n and FLOPIP rotation n were added together');
+  assert.deepEqual(
+    groups.map((g) => `${g.planId}:${g.cycleSequence}`),
+    ['fopip-v2:3', 'fopip-v2:5', 'flopip-2:4', 'flopip-2:5']
+  );
+  assert.ok(groups.every((g) => g.values.Chest > 0));
+});
+
+test('M2: the working-max review reads only the active plan’s rotations', () => {
+  const [, plan] = withSharedLibrary([FOPIP, FLOPIP]);
+  const state = {
+    plan,
+    settings: { unit: 'kg', bodyweight: 90 },
+    block: { idx: 3, from: 4, to: 10, name: 'Accumulation' },
+    cycle: { sequence: 5 },
+    maxes: new Map([['benchComp', { exerciseId: 'benchComp', workingMax: 125 }]]),
+    sets: m2Sets,
+    logs: m2Logs,
+    todayISO: '2026-11-18',
+    activeLog: null,
+  };
+  const row = maxRows(state).find((r) => r.id === 'benchComp');
+  assert.deepEqual(
+    row.observations.map((o) => o.dateISO),
+    ['2026-10-30', '2026-11-13'],
+    'September FOPIP sets entered a FLOPIP block review'
+  );
 });

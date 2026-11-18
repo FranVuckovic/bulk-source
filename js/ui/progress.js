@@ -21,7 +21,7 @@
  *   review; confirming each proposed working max is a deliberate tap.
  */
 
-import { belongsTo } from '../plans.js';
+import { belongsTo, planIdOf } from '../plans.js';
 import { pct, systemLoad, proposeBlockBoundaryMax, proposeMidBlockBump } from '../calc.js';
 import {
   strengthSeries,
@@ -38,7 +38,7 @@ import {
   GAIN_TARGETS,
 } from '../analytics.js';
 import { weeklyLoads, decisionFlags, weekStartISO, daysBetween, shouldDeload } from '../progress.js';
-import { rollUpFromSets, plannedVsCompleted } from '../volume.js';
+import { volumeByRotation, plannedVsCompleted } from '../volume.js';
 import { resolveSession, toDisplaySession } from '../plan.js';
 import { alive } from '../db.js';
 import { addDays } from '../dates.js';
@@ -591,7 +591,9 @@ function strengthCard(state, m, unit) {
       unit: ` ${unit}`,
       fit,
       label: (p) =>
-        `${p.dateISO}${p.cycleSequence ? ` · rotation ${p.cycleSequence}` : ''} · ${fmtLoad(p.load, unit)}×${p.reps}${
+        `${p.dateISO}${
+          p.cycleSequence ? ` · ${escape(state.plans?.[p.planId]?.meta?.name || '')} rotation ${p.cycleSequence}` : ''
+        } · ${fmtLoad(p.load, unit)}×${p.reps}${
           p.rpe ? ` @${p.rpe}` : ''
         } → ${fmtNum(p.value, 1)} ${unit}`,
     })}
@@ -787,32 +789,34 @@ function plannedCard(state, m) {
 }
 
 function volumeCard(state, m) {
-  const byCycle = new Map();
-  const logById = new Map(m.logs.map((log) => [log.id, log]));
+  const rotations = volumeByRotation(m.sets, m.logs, {
+    exercises: state.plan.exercises,
+    muscles: state.plan.muscles,
+    planIdOf,
+  }).slice(-14);
+  if (!rotations.length) return `<div class="card">${emptyChart('Nothing logged yet.')}</div>`;
 
-  for (const set of m.sets) {
-    const log = logById.get(set.sessionLogId);
-    if (!log) continue;
-    const key = log.cycleSequence ?? null;
-    if (key == null) continue;
-    if (!byCycle.has(key)) byCycle.set(key, []);
-    byCycle.get(key).push(set);
+  const groups = rotations.map((row) => ({ label: String(row.cycleSequence), values: row.values }));
+  // Which plan each run of bars belongs to, in the order they are drawn.
+  const runs = [];
+  for (const row of rotations) {
+    const last = runs[runs.length - 1];
+    if (last && last.planId === row.planId) last.to = row.cycleSequence;
+    else runs.push({ planId: row.planId, from: row.cycleSequence, to: row.cycleSequence });
   }
-  if (!byCycle.size) return `<div class="card">${emptyChart('Nothing logged yet.')}</div>`;
-
-  const groups = [...byCycle.entries()]
-    .sort(([a], [b]) => a - b)
-    .slice(-14)
-    .map(([sequence, sets]) => ({
-      label: String(sequence),
-      values: rollUpFromSets(sets, state.plan.exercises, state.plan.muscles),
-    }));
+  const planName = (id) => state.plans?.[id]?.meta?.name || id;
+  const legend =
+    runs.length > 1
+      ? ` Left to right: ${runs
+          .map((run) => `${escape(planName(run.planId))} rotation${run.from === run.to ? ` ${run.from}` : `s ${run.from}–${run.to}`}`)
+          .join(', then ')}.`
+      : '';
 
   return `<div class="card">
     ${stackedBars(groups, { keys: Object.keys(ROLL_COLORS), colors: ROLL_COLORS })}
     <p class="hint">One bar per <b>rotation</b>, not per calendar week — a rotation that took nine days is still one
     training unit. Whole-muscle roll-ups from the sets you actually logged, which is what catches the accessories
-    that quietly stopped happening a month ago.</p></div>`;
+    that quietly stopped happening a month ago.${legend}</p></div>`;
 }
 
 function sessionLoadChart(state) {
@@ -993,9 +997,10 @@ function blockCard(state, m, unit) {
 
   return `<div class="card block-comparison">
     ${rows
-      .sort((a, b) => a.blockId - b.blockId)
       .map((row) => {
-        const block = state.plan.blocks.find((candidate) => candidate.id === row.blockId);
+        // A block number means something only inside its own plan.
+        const blocks = (state.plans?.[row.planId] || state.plan).blocks || [];
+        const block = blocks.find((candidate) => candidate.id === row.blockId);
         const isCalibration = block?.type === 'baseline';
         const change = toDisplay(row.change, unit);
         return `<div class="block-row">
@@ -1290,6 +1295,7 @@ function deloadCard(state, m) {
  * four.
  */
 export function maxRows(state) {
+  const activePlanId = state.plan.meta?.id ?? 'fopip-v2';
   const blockFrom = state.block.from ?? 1;
   const blockTo = state.block.to ?? state.cycle.sequence;
 
@@ -1297,8 +1303,16 @@ export function maxRows(state) {
     const stored = state.maxes.get(lift.id)?.workingMax ?? state.plan.meta.seedWorkingMaxes[lift.id] ?? null;
     const points = e1rmPoints(state, lift.id);
 
+    // The block is the active plan's: the other plan's rotations with the same
+    // numbers are months away and are not evidence about this block.
     const inBlock = points
-      .filter((point) => point.cycleSequence != null && point.cycleSequence >= blockFrom && point.cycleSequence <= blockTo)
+      .filter(
+        (point) =>
+          point.planId === activePlanId &&
+          point.cycleSequence != null &&
+          point.cycleSequence >= blockFrom &&
+          point.cycleSequence <= blockTo
+      )
       .map((point) => ({
         e1rm: point.value,
         // The "week" the protocol counts in is a rotation of the plan.
