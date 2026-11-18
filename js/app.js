@@ -830,12 +830,6 @@ function refreshToday() {
 }
 
 /**
- * Bring the app back to the current day.
- *
- * Called when the app is shown again and on a slow timer, so an app left open
- * across midnight rolls over on its own rather than waiting to be reloaded.
- */
-/**
  * Say so, before anything is tapped, when the open session was left open.
  *
  * Asked on boot and when the day rolls over in a resumed app. The same
@@ -847,6 +841,12 @@ function askIfStale() {
   if (stale) train.askQuestion(state, stale);
 }
 
+/**
+ * Bring the app back to the current day.
+ *
+ * Called when the app is shown again and on a slow timer, so an app left open
+ * across midnight rolls over on its own rather than waiting to be reloaded.
+ */
 async function rollOverIfNeeded() {
   if (!state.db || !refreshToday()) return;
   // Readiness is about the day. With nothing open, yesterday's answer is not
