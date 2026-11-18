@@ -549,3 +549,117 @@ test('UI-09: a deleted set is named in the Bin as a set, with its exercise and n
   assert.match(html, new RegExp(`Set · ${plan.exercises.benchComp.name}`));
   assert.match(html, /100(\.0)? kg × 5/);
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   N2 · one import policy: a complete backup replaces, a partial one merges
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const ZOTTMAN = { id: 'custom-zottman-curl-machine-x', name: 'Zottman curl machine X', basedOn: 'zottman' };
+const SHRUG = { id: 'custom-shrug-machine', name: 'Shrug machine', basedOn: 'shrug' };
+const flopip = cycleSettingKeys('flopip-2');
+
+/** His situation: a backup taken at rotation 6, then rotation 7 started, a custom exercise added and E opened. */
+async function newerThanBackup() {
+  const db = await freshDb();
+  await saveSession(db, { id: 70, dateISO: '2026-11-14', sessionId: 'E', planId: 'flopip-2', endedAt: '2026-11-14T19:00:00.000Z' }, [
+    { exerciseId: 'benchComp', slotIndex: 0, setIndex: 0, load: 120, reps: 1, rpe: 10, logicalKey: '70:0:0' },
+  ]);
+  await put(db, 'cycles', { id: 'cycle-flopip-2-6', planId: 'flopip-2', sequence: 6 });
+  await put(db, 'settings', { key: 'activePlanId', value: 'flopip-2' });
+  await put(db, 'settings', { key: flopip.sequence, value: 6 });
+  await put(db, 'settings', { key: 'activeSessionLogId', value: null });
+  await put(db, 'settings', { key: 'customExercises', value: [SHRUG] });
+  await put(db, 'settings', { key: 'unit', value: 'kg' });
+  const backup = await snapshot(db);
+
+  // After the backup.
+  await put(db, 'cycles', { id: 'cycle-flopip-2-7', planId: 'flopip-2', sequence: 7 });
+  await put(db, 'settings', { key: flopip.sequence, value: 7 });
+  await put(db, 'settings', { key: 'customExercises', value: [SHRUG, ZOTTMAN] });
+  await saveSession(db, { id: 77, dateISO: '2026-11-20', sessionId: 'E', planId: 'flopip-2', cycleId: 'cycle-flopip-2-7' }, [
+    { exerciseId: ZOTTMAN.id, slotIndex: 0, setIndex: 0, load: 20, reps: 12, rpe: 8, logicalKey: '77:0:0' },
+  ]);
+  await put(db, 'settings', { key: 'activeSessionLogId', value: 77 });
+  await put(db, 'settings', { key: 'unit', value: 'lb' });
+  return { db, backup };
+}
+
+/** His real zip's shape: written before archives said what their range left out. */
+const legacyRanged = (backup) => ({
+  format: 4, range: { from: '2026-08-19', to: '2026-11-17' },
+  included: { sets: true, daily: true, measurements: true, niggles: true, media: true, maxes: true, plan: true },
+  data: backup.data,
+});
+
+test('N2: an older partial backup over newer data keeps rotation 7, the open session and the custom exercise', async () => {
+  // It merged the sessions but replaced cycles and settings: rotation 7's cycle
+  // vanished under its own open session, the chip read rotation 6, the open
+  // session lost its pointer and the Zottman set showed as a raw id.
+  const { db, backup } = await newerThanBackup();
+  const archive = legacyRanged(backup);
+  const report = validateImport(archive, { current: {} });
+  assert.equal(report.complete, false, 'a legacy ranged archive cannot show it is complete');
+  assert.deepEqual(report.replaces, [], 'a partial backup replaces nothing');
+  assert.ok(report.merges.includes('cycles') && report.merges.includes('settings'));
+
+  await apply(db, archive);
+  const settings = await readSettings(db);
+  assert.equal(settings[flopip.sequence], 7, 'the rotation went back to 6');
+  assert.equal(settings.activeSessionLogId, 77, 'the open session lost its pointer');
+  assert.equal(settings.unit, 'kg', 'its other settings are restored');
+  assert.deepEqual(settings.customExercises.map((x) => x.id).sort(), [SHRUG.id, ZOTTMAN.id].sort(), 'the custom exercise was wiped');
+  assert.deepEqual((await getAll(db, 'cycles')).map((c) => c.sequence).sort(), [6, 7], 'rotation 7’s cycle is gone');
+  assert.deepEqual((await getAll(db, 'sessionLogs')).map((l) => l.id).sort(), [70, 77]);
+});
+
+test('N2: a complete backup is a true restore — everything replaced, custom exercises merged', async () => {
+  const { db, backup } = await newerThanBackup();
+  const report = validateImport(backup, { current: {} });
+  assert.equal(report.complete, true);
+  assert.deepEqual(report.merges, []);
+
+  await apply(db, backup);
+  const settings = await readSettings(db);
+  assert.equal(settings[flopip.sequence], 6, 'a true restore puts the rotation back where the backup was');
+  assert.equal(settings.activeSessionLogId, null);
+  assert.equal(settings.unit, 'kg');
+  assert.deepEqual((await getAll(db, 'cycles')).map((c) => c.sequence), [6]);
+  assert.deepEqual((await getAll(db, 'sessionLogs')).map((l) => l.id), [70], 'the session logged after it is replaced');
+  assert.deepEqual(settings.customExercises.map((x) => x.id).sort(), [SHRUG.id, ZOTTMAN.id].sort(), 'custom exercises are never replaced');
+});
+
+test('N2: a partial backup restored onto an empty phone takes its rotation and open session', async () => {
+  const { backup } = await newerThanBackup();
+  const target = await freshDb();
+  await apply(target, legacyRanged(backup));
+  const settings = await readSettings(target);
+  assert.equal(settings[flopip.sequence], 6, 'a new phone has no rotation of its own to keep');
+  assert.equal(settings.activePlanId, 'flopip-2');
+  assert.deepEqual(settings.customExercises.map((x) => x.id), [SHRUG.id]);
+});
+
+test('N2: a new ranged export that left rows out, or an unticked category, is partial and says why', () => {
+  const partial = buildExport({ data: { sessionLogs: [{ id: 1, dateISO: '2026-07-01' }], daily: [], sets: [] } }, null, { from: '2026-08-01' });
+  const parsed = { ...partial.meta, data: { ...Object.fromEntries(ALL_STORES.map((s) => [s, []])), sessionLogs: [] } };
+  const report = validateImport(parsed);
+  assert.equal(report.complete, false);
+  assert.match(report.partialBecause.join(' '), /date range/);
+
+  const unticked = validateImport({ included: { daily: false }, data: Object.fromEntries(ALL_STORES.map((s) => [s, []])) });
+  assert.equal(unticked.complete, false);
+  assert.match(unticked.partialBecause.join(' '), /leaves out daily/);
+});
+
+test('N2: the import preview states the policy it will apply', async () => {
+  const { importPolicyText } = await import('../js/ui/settings.js');
+  const complete = importPolicyText({ complete: true, partialBecause: [] });
+  assert.match(complete, /complete backup/);
+  assert.match(complete, /replaces everything/);
+  assert.match(complete, /Custom exercises you added since are kept/);
+  const partial = importPolicyText({ complete: false, partialBecause: ['it leaves out daily'] });
+  assert.match(partial, /partial backup/);
+  assert.match(partial, /it leaves out daily/);
+  assert.match(partial, /merged/);
+  assert.match(partial, /rotation each plan is on and any open session stay as they\s+are now/);
+  assert.match(partial, /Custom exercises\s+from both are kept/);
+});

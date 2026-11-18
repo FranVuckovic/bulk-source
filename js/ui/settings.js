@@ -309,6 +309,25 @@ export function exportRangeDefaults(state) {
   return { from: dates[0] && dates[0] < today ? dates[0] : today, to: today };
 }
 
+/**
+ * What the restore will do, in the words of THE IMPORT POLICY in export.js.
+ * Change one and change the other.
+ */
+export function importPolicyText(report) {
+  if (report.complete) {
+    return `<div class="flag f-warn" style="margin-top:12px"><i>!</i><span>This is a <b>complete backup</b>, so
+      restoring it <b>replaces everything</b>: sessions, sets, body entries, maxes, rotations, settings and any open
+      session become exactly what the backup holds, and anything logged after it was taken is lost (the safety copy
+      keeps it). Custom exercises you added since are kept.</span></div>`;
+  }
+  return `<div class="flag f-ok" style="margin-top:12px"><i>✓</i><span>This is a <b>partial backup</b> (${escape(
+    report.partialBecause.join('; ')
+  )}), so it is <b>merged</b>: its sessions, sets, rotations and other entries are written over the same entries
+    here, and nothing is removed. The active plan, the rotation each plan is on and any open session stay as they
+    are now (taken from the backup only where this phone has none); its other settings are restored. Custom exercises
+    from both are kept.</span></div>`;
+}
+
 /** File pickers, handled on change rather than click. */
 export const files = {
   /**
@@ -351,31 +370,14 @@ export const files = {
       }</p>
       <table style="margin-top:10px"><thead><tr><th>Store</th><th>Now</th><th>After</th></tr></thead>
         <tbody>${rows}</tbody></table>
-      ${
-        report.replaces.length
-          ? `<div class="flag f-warn" style="margin-top:12px"><i>!</i><span>This <b>replaces</b> ${escape(
-              report.replaces.join(', ')
-            )}. Anything in those stores that is not in the backup is lost.</span></div>`
-          : ''
-      }
-      ${
-        report.merges.length
-          ? `<div class="flag f-ok" style="margin-top:8px"><i>✓</i><span>This backup holds only part of ${escape(
-              report.merges.join(', ')
-            )}${
-              report.range?.from || report.range?.to
-                ? ` (${escape(report.range.from || '…')} to ${escape(report.range.to || '…')})`
-                : ''
-            }, so those are <b>merged</b>: entries outside it are kept.</span></div>`
-          : ''
-      }
+      ${importPolicyText(report)}
       ${
         report.warnings.length
           ? `<p class="hint">${report.warnings.map(escape).join(' ')}</p>`
           : ''
       }
       <p class="hint">A safety export of your current data downloads first, automatically.</p>
-      <button class="big danger mt" data-act="confirm-import">Replace my data</button>
+      <button class="big danger mt" data-act="confirm-import">${report.complete ? 'Replace my data' : 'Merge into my data'}</button>
       <button class="big ghost mt" data-act="sheet-close">Cancel</button>`);
   },
 

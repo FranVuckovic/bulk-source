@@ -11,6 +11,7 @@
  */
 
 import { ALL_STORES, FORMAT_VERSION } from './db.js';
+import { DEFAULT_PLAN_ID, cycleSettingKeys } from './plans.js';
 
 /* ═══════════════════════════════════════════════════════════════════════
    A store-only zip
@@ -446,9 +447,10 @@ export function parseImport(bytes) {
 }
 
 /**
- * Restore into a database. Replaces every store the export holds completely,
- * merges the ones it holds part of, and leaves the rest alone, so a partial
- * export cannot silently wipe what it did not include. See importModes.
+ * Restore into a database without a transaction, store by store. The app
+ * restores through `applyImport`; this is the same policy for callers that
+ * have no transaction, and it does not read the stored settings, so it applies
+ * the backup's settings as they are. See THE IMPORT POLICY.
  */
 export async function restore(db, parsed, { put, clearStore }) {
   const restored = {};
@@ -463,42 +465,111 @@ export async function restore(db, parsed, { put, clearStore }) {
   return restored;
 }
 
+/*
+ * THE IMPORT POLICY. The preview in ui/settings.js says the same thing in
+ * words; change one and change the other.
+ *
+ * A backup is COMPLETE when it holds every category, every store, and nothing
+ * was left out by a date range. Restoring it is a true restore: after the
+ * safety copy, every store is emptied and refilled from the backup — sessions,
+ * sets, body entries, maxes, rotations, settings, the open-session pointer, the
+ * audit log. Whatever was logged after it was taken is gone (it is in the
+ * safety copy). This is what a new phone, or an erase, needs.
+ *
+ * Anything else is PARTIAL — a category unticked, a range that left rows out,
+ * or an archive written before archives said whether their range left anything
+ * out (those carry `range` but no `partial`, so completeness cannot be shown,
+ * and merging never loses anything). A partial backup is MERGED: every row it
+ * holds lands over the same key and nothing else is touched. No store is
+ * emptied. Its cycles are merged rather than replacing yours, and from its
+ * settings everything is taken EXCEPT the pointers to where you are now —
+ * which plan is active, which rotation each plan is on and when it started,
+ * and which session is open — which keep their current values wherever this
+ * database has them. Restoring an older partial backup over newer training
+ * used to replace cycles and settings while merging sessions: rotation 7's
+ * cycle vanished under its own open session, the chip went back to rotation
+ * 6, and the open session lost its pointer.
+ *
+ * Either way, custom exercises are MERGED, never replaced: the backup's list
+ * plus every one this database has that the backup does not. A set on an
+ * exercise added since the backup otherwise came back as a raw id and dropped
+ * out of the volume count.
+ */
+
+/** Settings that say where you are now, rather than how the app is set up. */
+const POINTER_SETTINGS = new Set(['activePlanId', 'activeSessionLogId']);
+export function isPointerSetting(key) {
+  if (POINTER_SETTINGS.has(key)) return true;
+  const planId = String(key).includes('@') ? String(key).split('@')[1] : DEFAULT_PLAN_ID;
+  return Object.values(cycleSettingKeys(planId)).includes(key);
+}
+
+/** The backup's custom exercises, plus every current one it does not have. */
+export function mergeCustomExercises(incoming, current) {
+  const theirs = Array.isArray(incoming) ? incoming : [];
+  const ids = new Set(theirs.map((x) => x?.id));
+  return [...theirs, ...(Array.isArray(current) ? current : []).filter((x) => x && !ids.has(x.id))];
+}
+
+/**
+ * The settings rows a restore writes, given what is stored now. `mode` is the
+ * settings store's mode: `replace` writes these after emptying the store,
+ * `merge` writes them over the rows already there.
+ */
+export function settingsForImport(incoming, current, mode) {
+  const now = new Map((current || []).map((row) => [row.key, row]));
+  const rows = (incoming || []).filter(
+    (row) => row.key !== 'customExercises' && !(mode === 'merge' && isPointerSetting(row.key) && now.has(row.key))
+  );
+  const theirs = (incoming || []).find((row) => row.key === 'customExercises');
+  const ours = now.get('customExercises');
+  if (theirs || ours) rows.push({ key: 'customExercises', value: mergeCustomExercises(theirs?.value, ours?.value) });
+  return rows;
+}
+
+/**
+ * Whether an archive is a complete backup, and why not when it is not.
+ * See THE IMPORT POLICY above.
+ */
+export function importPolicy(parsed) {
+  const data = parsed?.data || {};
+  const included = parsed?.included || {};
+  const reasons = [];
+
+  const skippedCategories = Object.keys(CATEGORY_STORES).filter((category) => included[category] === false);
+  // An unticked category in an older archive was written as an empty list
+  // beside `included: { sets: false }`; that list is ignored, not believed.
+  const skipped = new Set(skippedCategories.flatMap((category) => CATEGORY_STORES[category]));
+  if (skippedCategories.length) reasons.push(`it leaves out ${skippedCategories.join(', ')}`);
+
+  const missing = ALL_STORES.filter((store) => !Array.isArray(data[store]) && !skipped.has(store));
+  if (missing.length) reasons.push(`it has no ${missing.join(', ')}`);
+
+  const ranged = parsed?.range?.from || parsed?.range?.to;
+  const span = ranged ? `${parsed.range.from || '…'} to ${parsed.range.to || '…'}` : null;
+  if (Array.isArray(parsed?.partial)) {
+    if (parsed.partial.length) reasons.push(`its date range (${span || 'a range'}) left out older or newer entries`);
+  } else if (ranged) {
+    reasons.push(`it was cut to ${span} by an older version that did not record whether that left anything out`);
+  }
+
+  const complete = reasons.length === 0;
+  const modes = {};
+  for (const store of ALL_STORES) {
+    if (!Array.isArray(data[store]) || skipped.has(store)) continue;
+    modes[store] = complete ? 'replace' : 'merge';
+  }
+  return { complete, reasons, modes };
+}
+
 /**
  * What a restore does to each store the archive carries: `replace` (empty it
  * and refill from the archive) or `merge` (write the archive's rows over the
  * same keys and leave every other row alone). A store missing from the result
  * is not touched at all.
- *
- * Only a store the archive holds COMPLETELY may replace. Two shapes of archive
- * hold less than that, and both used to be restored by clearing:
- *
- *   A date range. The sheet defaulted "From" to the first session, so the
- *   weigh-ins and tape readings from before it were not in the zip — and a
- *   restore emptied `daily` and kept only what was in range. Ranged stores now
- *   merge. Archives written before `partial` existed say only what range they
- *   were cut to, so any range on those makes every dated store merge.
- *
- *   An unticked category. Older archives wrote it as an empty list beside
- *   `included: { sets: false }`; that list is ignored rather than believed.
  */
 export function importModes(parsed) {
-  const data = parsed?.data || {};
-  const included = parsed?.included || {};
-  const skipped = new Set(
-    Object.entries(CATEGORY_STORES).flatMap(([category, stores]) => (included[category] === false ? stores : []))
-  );
-
-  let partial;
-  if (Array.isArray(parsed?.partial)) partial = new Set(parsed.partial);
-  else if (parsed?.range?.from || parsed?.range?.to) partial = new Set(DATED_STORES);
-  else partial = new Set();
-
-  const modes = {};
-  for (const store of ALL_STORES) {
-    if (!Array.isArray(data[store]) || skipped.has(store)) continue;
-    modes[store] = partial.has(store) ? 'merge' : 'replace';
-  }
-  return modes;
+  return importPolicy(parsed).modes;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -600,7 +671,8 @@ export function validateImport(parsed, { current = {} } = {}) {
     keys.add(key);
   }
 
-  const modes = importModes(parsed);
+  const policy = importPolicy(parsed);
+  const modes = policy.modes;
   const preview = ALL_STORES.map((store) => ({
     store,
     incoming: modes[store] ? data[store].length : null,
@@ -617,6 +689,8 @@ export function validateImport(parsed, { current = {} } = {}) {
     takenAtISO: parsed.takenAtISO ?? parsed.exportedAtISO ?? null,
     format: parsed.format,
     range: parsed.range ?? null,
+    complete: policy.complete,
+    partialBecause: policy.reasons,
     replaces: preview.filter((row) => row.mode === 'replace' && row.existing).map((row) => row.store),
     merges: preview.filter((row) => row.mode === 'merge').map((row) => row.store),
   };
@@ -643,8 +717,12 @@ export function applyImport(db, parsed, { withTransaction, request, stores = ALL
       const handle = list[index];
       // A store the archive holds only part of is merged: its rows land over
       // the same keys and nothing outside them is touched. See importModes.
+      // Settings are read first: the pointers a merge keeps, and the custom
+      // exercises either kind of restore merges, are the ones stored now.
+      const rows =
+        store === 'settings' ? settingsForImport(data.settings, await request(handle.getAll()), modes.settings) : data[store];
       if (modes[store] === 'replace') await request(handle.clear());
-      for (const row of data[store]) await request(handle.put(row));
+      for (const row of rows) await request(handle.put(row));
       restored[store] = data[store].length;
     }
     return restored;
