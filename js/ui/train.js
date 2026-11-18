@@ -43,9 +43,9 @@ import {
   BORROWABLE_FIELDS,
   substitutesFor,
 } from '../plan.js';
-import { exerciseNoteHistory, recentEvidenceMax } from '../analytics.js';
+import { exerciseNoteHistory, recentEvidenceMax, LONG_GAP_SECONDS } from '../analytics.js';
 import { cycleProgress } from '../cycle.js';
-import { daysBetween } from '../dates.js';
+import { daysBetween, localDate, localDateOf } from '../dates.js';
 import {
   escape,
   fmtLoad,
@@ -200,6 +200,7 @@ export function isAnswered(state, question) {
  * so answering logs that set.
  */
 export function askQuestion(state, question) {
+  if (question.kind === 'stale') return askAboutStaleSession(question);
   const id = escape(question.sessionId);
   const n = question.sequence;
   const resume = question.resume ? ` data-si="${question.resume.si}" data-i="${question.resume.i}"` : '';
@@ -228,6 +229,126 @@ export function askQuestion(state, question) {
     <p style="text-align:center;font-size:13px">Starting ${id} now makes it the first session of rotation ${n}, out of order.</p>
     <button class="big mt" data-act="start-pick" data-id="${first}">Open ${first} instead</button>
     ${previous}${anyway}${back}`);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   A forgotten Finish
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * A rest after the last set: what a late Finish is replaced with.
+ *
+ * Roughly a working set's rest, so the session is not cut off the moment the
+ * last set was logged, and short enough that a forgotten Finish costs minutes
+ * rather than hours.
+ */
+export const FINISH_REST_SECONDS = 3 * 60;
+
+/**
+ * An open session this long after its last set, or on another day, was
+ * almost certainly left open rather than still being trained.
+ */
+export const STALE_SESSION_SECONDS = 3 * 60 * 60;
+
+const lastStamp = (sets) =>
+  (sets || []).map((set) => set?.timestampISO).filter(Boolean).sort().pop() || null;
+
+/**
+ * When a session ended, given the moment Finish was pressed.
+ *
+ * Finish stamped `endedAt = now`, unconditionally. Pressed hours after the
+ * last set — forgotten, then remembered at home — that turned 57 minutes of
+ * work into a 446-minute session, and an overnight one into 1350 minutes. It
+ * happened in a quarter of his sessions and dominated the weekly session load.
+ *
+ * Pressed more than a long gap (`LONG_GAP_SECONDS`, the same 20 minutes that
+ * stops counting as rest) after the last set, the session ends at that set
+ * plus a rest. The button time is kept as `finishPressedAt`, so nothing about
+ * what happened is thrown away.
+ */
+export function finishTimes(sets, now) {
+  const last = lastStamp(sets);
+  const lateBy = last ? (Date.parse(now) - Date.parse(last)) / 1000 : null;
+  if (lateBy != null && lateBy > LONG_GAP_SECONDS) {
+    return {
+      endedAt: new Date(Date.parse(last) + FINISH_REST_SECONDS * 1000).toISOString(),
+      finishPressedAt: now,
+      endedAtSource: 'last-set',
+      lastSetAt: last,
+    };
+  }
+  return { endedAt: now, finishPressedAt: now, endedAtSource: 'finish', lastSetAt: last };
+}
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const clockTime = (iso) => {
+  const d = new Date(iso);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+};
+
+/**
+ * Is the open session one that was left open, rather than one being trained?
+ *
+ * Stale when its last set (or its start, with no sets) is on an earlier civil
+ * date, or more than three hours ago. Null otherwise. `day` is how the prompt
+ * names it: today, yesterday, or the weekday.
+ */
+export function staleSession(log, sets, now) {
+  if (!log) return null;
+  const own = (sets || []).filter((set) => set.sessionLogId == null || set.sessionLogId === log.id);
+  const lastSet = lastStamp(own);
+  const last = lastSet || log.startedAt;
+  if (!last) return null;
+  const nowDate = new Date(now);
+  const lastDay = localDateOf(last);
+  const today = localDate(nowDate);
+  const gap = (nowDate.getTime() - Date.parse(last)) / 1000;
+  if (lastDay === today && gap <= STALE_SESSION_SECONDS) return null;
+
+  const days = daysBetween(lastDay, today);
+  const day =
+    days === 0
+      ? 'today'
+      : days === 1
+        ? 'yesterday'
+        : new Date(last).toLocaleDateString('en-GB', { weekday: 'long' });
+  return {
+    kind: 'stale',
+    sessionId: log.sessionId ?? null,
+    logId: log.id,
+    lastSetAt: lastSet,
+    hasSets: !!lastSet,
+    day,
+    time: clockTime(last),
+  };
+}
+
+/**
+ * Ask before anything is added to a session that was left open.
+ *
+ * Nothing is closed, discarded or appended without a tap. Closing ends it at
+ * its last set, the same rule as a late Finish.
+ */
+function askAboutStaleSession(question) {
+  const whose = question.day === 'today' ? 'this' : question.day === 'yesterday' ? "yesterday's" : `${question.day}'s`;
+  const when = question.day === 'today' ? 'today' : question.day === 'yesterday' ? 'yesterday' : `on ${question.day}`;
+  const resume = question.resume ? ` data-si="${question.resume.si}" data-i="${question.resume.i}"` : '';
+  openSheet(`<div class="ttl">Session ${escape(question.sessionId ?? '')} is still open</div>
+    <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">${
+      question.hasSets
+        ? `Its last set was logged ${escape(when)} at <b>${escape(question.time)}</b>.`
+        : `It was opened ${escape(when)} at <b>${escape(question.time)}</b> and has nothing logged.`
+    }</p>
+    <p style="text-align:center;font-size:13px">If you forgot to finish it, ${
+      question.hasSets ? 'close it there' : 'discard it'
+    }. Anything you log after that starts a new session.</p>
+    ${
+      question.hasSets
+        ? `<button class="big mt" data-act="close-stale">Close ${escape(whose)} session at its last set (${escape(question.time)})</button>`
+        : '<button class="big mt" data-act="discard-session">Discard it</button>'
+    }
+    <button class="big ghost mt" data-act="keep-stale"${resume}>Keep it open and log here</button>
+    <button class="big ghost mt" data-act="sheet-close">Go back</button>`);
 }
 
 /** saveSet, with the row attached to any question it raises. */
@@ -2728,6 +2849,24 @@ export const actions = {
     state.startAnswer = { sessionId: state.trainSessionId, sequence: state.cycle.sequence, choice: data.choice };
     closeSheet();
     await ctx.startSession();
+    if (data.si != null && data.i != null) {
+      await actions.tick(ctx, { si: data.si, i: data.i }, { stopPropagation() {} });
+    } else {
+      ctx.render();
+    }
+  },
+
+  /** Close a session that was left open, at its last set. See `finishTimes`. */
+  async 'close-stale'(ctx) {
+    closeSheet();
+    await ctx.finishSession();
+  },
+
+  /** It is still the same session: stop asking about it, and log the set. */
+  async 'keep-stale'(ctx, data) {
+    const { state } = ctx;
+    state.staleAnswered = state.activeLog?.id ?? null;
+    closeSheet();
     if (data.si != null && data.i != null) {
       await actions.tick(ctx, { si: data.si, i: data.i }, { stopPropagation() {} });
     } else {

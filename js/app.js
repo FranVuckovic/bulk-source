@@ -48,7 +48,7 @@ import {
   sortLogsByDate,
 } from './progress.js';
 import { e1rm, systemLoad, estimateForSet, isHighConfidence } from './calc.js';
-import { localDate, nowISO, timeZone, utcOffsetMinutes, daysBetween } from './dates.js';
+import { localDate, localDateOf, nowISO, timeZone, utcOffsetMinutes, daysBetween } from './dates.js';
 import {
   blockFor,
   effortModeFor,
@@ -522,6 +522,16 @@ async function ensureActiveLog() {
 }
 
 async function saveSet(slotIndex, setIndex, values) {
+  /*
+   * A new set for a session that was left open — another day, or hours after
+   * its last set — is asked about first. Restoring yesterday's open log and
+   * appending to it filed today's sets under yesterday's date, silently.
+   * Correcting a set already in it is not appending, and is not asked about.
+   */
+  if (state.activeLog && !state.loggedSets.has(`${slotIndex}:${setIndex}`) && state.staleAnswered !== state.activeLog.id) {
+    const stale = train.staleSession(state.activeLog, [...state.loggedSets.values()], nowISO());
+    if (stale) throw new train.NeedsAnswer(stale);
+  }
   const log = await ensureActiveLog();
   const slot = train.slotsFor(state)[slotIndex];
   const key = `${slotIndex}:${setIndex}`;
@@ -737,9 +747,14 @@ async function finishSession() {
 
   // One transaction: the end state and the active pointer move together, so a
   // failure between them cannot leave a finished session looking active.
+  // Finish pressed long after the last set ends the session at that set plus a
+  // rest, and keeps the button time beside it. See `finishTimes`.
+  const times = train.finishTimes([...state.loggedSets.values()], nowISO());
   const { log: finishedLog } = await finishSessionAtomic(state.db, state.activeLog.id, {
-    endedAt: nowISO(),
-    localEndDate: todayISO(),
+    endedAt: times.endedAt,
+    finishPressedAt: times.finishPressedAt,
+    endedAtSource: times.endedAtSource,
+    localEndDate: localDateOf(times.endedAt),
     isPartial: ratio != null && ratio < 0.5,
     completionRatio: ratio,
     prescribedSets: prescribed,
@@ -820,6 +835,18 @@ function refreshToday() {
  * Called when the app is shown again and on a slow timer, so an app left open
  * across midnight rolls over on its own rather than waiting to be reloaded.
  */
+/**
+ * Say so, before anything is tapped, when the open session was left open.
+ *
+ * Asked on boot and when the day rolls over in a resumed app. The same
+ * question a new tick asks; nothing changes until it is answered.
+ */
+function askIfStale() {
+  if (!state.activeLog || state.staleAnswered === state.activeLog.id || sheetIsOpen()) return;
+  const stale = train.staleSession(state.activeLog, [...state.loggedSets.values()], nowISO());
+  if (stale) train.askQuestion(state, stale);
+}
+
 async function rollOverIfNeeded() {
   if (!state.db || !refreshToday()) return;
   // Readiness is about the day. With nothing open, yesterday's answer is not
@@ -829,6 +856,7 @@ async function rollOverIfNeeded() {
   buildHistory();
   resetBodyDraft();
   render();
+  askIfStale();
 }
 
 /**
@@ -1554,6 +1582,46 @@ const ctx = {
       moved: true,
       wasSeconds: from ? Math.round((Date.parse(end) - Date.parse(from)) / 1000) : null,
       spanSeconds: Math.round((Date.parse(end) - Date.parse(to)) / 1000),
+    };
+  },
+
+  /**
+   * Move a session's end to its last set, plus a rest.
+   *
+   * The other half of the start repair, for the sessions finished hours after
+   * their last set before Finish learned to do this itself. The time Finish
+   * was actually pressed is kept as `finishPressedAt`.
+   */
+  async repairSessionEnd(logId) {
+    const log = state.logs.find((row) => row.id === logId);
+    if (!log) throw new Error('that session no longer exists');
+    if (!log.endedAt) return { moved: false };
+
+    const sets = state.sets.filter((set) => set.sessionLogId === logId);
+    const times = train.finishTimes(sets, log.endedAt);
+    if (times.endedAtSource !== 'last-set') return { moved: false };
+
+    const from = log.endedAt;
+    await put(state.db, 'sessionLogs', {
+      ...log,
+      endedAt: times.endedAt,
+      localEndDate: localDateOf(times.endedAt),
+      finishPressedAt: log.finishPressedAt ?? from,
+      endedAtSource: 'last-set',
+    });
+    await put(state.db, 'auditLog', {
+      atISO: nowISO(), entity: 'sessionLog', entityId: logId, action: 'edit', field: 'endedAt', from, to: times.endedAt,
+    });
+
+    await loadEverything();
+    rebuildActiveSession();
+    buildHistory();
+    render();
+    const start = Date.parse(log.startedAt);
+    return {
+      moved: true,
+      wasSeconds: Number.isFinite(start) ? Math.round((Date.parse(from) - start) / 1000) : null,
+      nowSeconds: Number.isFinite(start) ? Math.round((Date.parse(times.endedAt) - start) / 1000) : null,
     };
   },
 
@@ -2578,6 +2646,7 @@ async function boot() {
   wireDayRollover();
   wireTimerDrag();
   render();
+  askIfStale();
 
   // Asked for after the first render, so the prompt never delays the screen.
   state.storage = { ...(await requestPersistentStorage()), ...(await storageEstimate()) };

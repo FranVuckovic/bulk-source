@@ -557,6 +557,7 @@ function repairSheet(ctx, log) {
     <button class="big mt" data-act="repair-rotation" data-id="${log.id}">Move it to that rotation</button>
 
     ${startRepair(ctx, log)}
+    ${endRepair(ctx, log)}
 
     ${
       log.endedAt
@@ -605,6 +606,25 @@ function startRepair(ctx, log) {
     <button class="big ghost" data-act="repair-start" data-id="${log.id}">Move the start to the first set</button>
     <p class="hint">Only the start instant changes. No set is touched, and the correction is recorded like every
     other.</p>`;
+}
+
+/** Offer to move an end that plainly postdates the training: a forgotten Finish. */
+function endRepair(ctx, log) {
+  const sets = ctx.state.sets.filter((set) => set.sessionLogId === log.id);
+  const t = sessionTiming(log, sets);
+  if (!t.endLooksWrong) return '';
+
+  return `<h3>Finished too late?</h3>
+    ${flag(
+      'warn',
+      '!',
+      `This session says it ended <b>${Math.round(t.endedAfterLastSetSeconds / 60)} minutes</b> after its last
+       set, which makes every duration it reports wrong. Moving the end to the last set, plus a few minutes' rest,
+       fixes that.`
+    )}
+    <button class="big ghost" data-act="repair-end" data-id="${log.id}">Move the end to the last set</button>
+    <p class="hint">Only the end instant changes. No set is touched, the time Finish was pressed is kept, and the
+    correction is recorded like every other.</p>`;
 }
 
 /** One set, editable. */
@@ -694,8 +714,8 @@ function sessionScreen(ctx) {
   const t = sessionTiming(log, sets);
   // A start instant that predates the training makes the raw span nonsense, so
   // the header shows what the work actually occupied and the Timing card
-  // explains the difference. See `startLooksWrong`.
-  const durationSeconds = t.startLooksWrong ? t.workingSpanSeconds : t.totalSeconds;
+  // explains the difference. The same for an end long after the last set. See `startLooksWrong`, `endLooksWrong`.
+  const durationSeconds = t.startLooksWrong || t.endLooksWrong ? t.workingSpanSeconds : t.totalSeconds;
   const minutes = durationSeconds != null ? Math.round(durationSeconds / 60) : minutesBetween(log.startedAt, log.endedAt);
   const notes = log.deviations?.exerciseNotes || {};
 
@@ -711,7 +731,7 @@ function sessionScreen(ctx) {
     <div class="nm">${escape(sessionTitle(state, log))}</div>
     <div class="meta">
       <span>rotation ${log.cycleSequence ?? '\u2014'}</span>
-      ${minutes ? `<span>${minutes} min${t.startLooksWrong ? ' of work' : ''}</span>` : ''}
+      ${minutes ? `<span>${minutes} min${t.startLooksWrong || t.endLooksWrong ? ' of work' : ''}</span>` : ''}
       ${log.sessionRpe ? `<span>sRPE ${log.sessionRpe}</span>` : ''}
       ${log.bodyweight ? `<span>${fmtLoad(log.bodyweight, unit)} ${escape(unit)}</span>` : ''}
       ${log.endedAt ? '' : '<span style="color:var(--warn)">never finished</span>'}
@@ -924,8 +944,8 @@ function timingSection(ctx, log, sets) {
     <div class="card">
       ${startWarning}
       <div class="g3">
-        <div class="tstat"><b>${escape(clock(t.startLooksWrong ? t.workingSpanSeconds : t.totalSeconds))}</b><span>${
-          t.startLooksWrong ? 'first to last' : 'total'
+        <div class="tstat"><b>${escape(clock(t.startLooksWrong || t.endLooksWrong ? t.workingSpanSeconds : t.totalSeconds))}</b><span>${
+          t.startLooksWrong || t.endLooksWrong ? 'first to last' : 'total'
         }</span></div>
         <div class="tstat"><b>${escape(clock(t.medianRestSeconds))}</b><span>typical rest</span></div>
         <div class="tstat"><b>${escape(clock(t.longestRestSeconds))}</b><span>longest rest</span></div>
@@ -1296,6 +1316,21 @@ export const actions = {
               clock(result.wasSeconds)
             )}.`
           : 'There was nothing to move it to.'
+      }</p>
+      <button class="big mt" data-act="sheet-close">Close</button>`);
+  },
+
+  async 'repair-end'(ctx, data) {
+    const result = await ctx.repairSessionEnd(Number(data.id));
+    closeSheet();
+    ctx.render();
+    openSheet(`<div class="ttl">${result.moved ? 'End corrected' : 'Not changed'}</div>
+      <p style="text-align:center;font-size:13.5px;margin:14px 0">${
+        result.moved
+          ? `The session now ends just after its last set. It reports ${escape(clock(result.nowSeconds))} instead of ${escape(
+              clock(result.wasSeconds)
+            )}.`
+          : 'Its end is already close to its last set.'
       }</p>
       <button class="big mt" data-act="sheet-close">Close</button>`);
   },

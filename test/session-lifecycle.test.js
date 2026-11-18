@@ -26,7 +26,11 @@ import {
   startQuestion,
   askQuestion,
   NeedsAnswer,
+  finishTimes,
+  staleSession,
+  FINISH_REST_SECONDS,
 } from '../js/ui/train.js';
+import { sessionTiming, LONG_GAP_SECONDS } from '../js/analytics.js';
 import { stopRest } from '../js/ui/components.js';
 import { createFakeEnv } from './helpers/fake-indexeddb.js';
 import { openDatabase, getAll, putSetIdempotent, logicalSetKey } from '../js/db.js';
@@ -701,6 +705,115 @@ test('UI-10: every write that opens a session goes through the question, and the
   assert.match(ensure, /throw new train\.NeedsAnswer\(/);
   assert.match(ensure, /outOfOrder:/);
   assert.match(appBody('function showFailure('), /instanceof train\.NeedsAnswer/);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   H5 · A forgotten Finish
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/** An instant at a local wall-clock time, so labels read the same in any zone. */
+const at = (day, hour, minute = 0) => new Date(2026, 10, day, hour, minute).toISOString();
+const minutesAfter = (iso, minutes) => new Date(Date.parse(iso) + minutes * 60000).toISOString();
+
+test('H5: Finish pressed long after the last set ends the session at that set, plus a rest', () => {
+  // 25% of sessions had a late Finish; one recorded 446 min for 57 min of work,
+  // and an overnight session finished at 1350 min.
+  const sets = [{ timestampISO: at(17, 17, 0) }, { timestampISO: at(17, 18, 42) }, { timestampISO: at(17, 18, 30) }];
+  const late = finishTimes(sets, at(17, 22, 0));
+  assert.equal(late.endedAt, minutesAfter(at(17, 18, 42), FINISH_REST_SECONDS / 60));
+  assert.equal(late.finishPressedAt, at(17, 22, 0), 'the button time is kept');
+  assert.equal(late.endedAtSource, 'last-set');
+
+  const prompt = finishTimes(sets, at(17, 18, 50));
+  assert.equal(prompt.endedAt, at(17, 18, 50), 'a Finish within the rest of the last set is believed');
+  assert.equal(prompt.endedAtSource, 'finish');
+  assert.ok(FINISH_REST_SECONDS >= 120 && FINISH_REST_SECONDS <= 300);
+  assert.equal(LONG_GAP_SECONDS, 20 * 60);
+});
+
+test('H5: finishSession takes its end from finishTimes and stores the button time beside it', () => {
+  const finish = appBody('async function finishSession(');
+  assert.match(finish, /train\.finishTimes\(/);
+  assert.match(finish, /finishPressedAt: times\.finishPressedAt/);
+  assert.match(finish, /endedAt: times\.endedAt/);
+  assert.match(finish, /localEndDate: localDateOf\(times\.endedAt\)/);
+  assert.doesNotMatch(finish, /endedAt: nowISO\(\)/);
+});
+
+test('H5: sessionTiming flags an end long after the last set, as it does a start long before the first', () => {
+  const log = { startedAt: at(17, 16, 55), endedAt: at(18, 0, 30), timingReliable: true };
+  const sets = Array.from({ length: 20 }, (_, i) => ({ id: i, timestampISO: minutesAfter(at(17, 17, 0), i * 3) }));
+  const t = sessionTiming(log, sets);
+  assert.equal(t.endLooksWrong, true);
+  assert.ok(t.endedAfterLastSetSeconds > LONG_GAP_SECONDS);
+
+  const fine = sessionTiming({ ...log, endedAt: minutesAfter(sets[19].timestampISO, 4) }, sets);
+  assert.equal(fine.endLooksWrong, false);
+  const open = sessionTiming({ ...log, endedAt: null }, sets, { now: at(18, 9, 0) });
+  assert.equal(open.endLooksWrong, false, 'an open session has not ended late — it has not ended');
+});
+
+test('H5: an open session is stale on another civil date, or three hours after its last set', () => {
+  const log = { id: 4, sessionId: 'B', startedAt: at(17, 17, 0) };
+  const sets = [{ sessionLogId: 4, timestampISO: at(17, 18, 42) }];
+
+  const nextDay = staleSession(log, sets, at(18, 9, 0));
+  assert.equal(nextDay.kind, 'stale');
+  assert.equal(nextDay.lastSetAt, at(17, 18, 42));
+  assert.equal(nextDay.day, 'yesterday');
+  assert.equal(staleSession(log, sets, at(17, 21, 43)).day, 'today');
+  assert.equal(staleSession(log, sets, at(17, 21, 41)), null, 'under three hours on the same day is a long rest');
+  assert.equal(staleSession(log, sets, at(17, 19, 30)), null);
+  assert.match(staleSession(log, sets, at(20, 9, 0)).day, /^[A-Z][a-z]+day$/, 'older than yesterday names the day');
+  assert.equal(staleSession(null, sets, at(18, 9, 0)), null);
+});
+
+test('H5: the stale prompt offers to close the session at its last set, in plain words', async () => {
+  const log = { id: 4, sessionId: 'B', startedAt: at(17, 17, 0) };
+  const question = staleSession(log, [{ sessionLogId: 4, timestampISO: at(17, 18, 42) }], at(18, 9, 0));
+  await withFakeDocument(async (nodes) => {
+    askQuestion({}, { ...question, resume: { si: 1, i: 0 } });
+    const html = nodes.pan.innerHTML;
+    assert.match(html, /data-act="close-stale">Close yesterday's session at its last set \(18:42\)</);
+    assert.match(html, /data-act="keep-stale" data-si="1" data-i="0">Keep it open and log here</);
+  });
+});
+
+test('H5: a new tick is never appended to a stale session without asking', () => {
+  // Yesterday's open log was restored on boot and today's sets were filed under
+  // yesterday's date.
+  const save = appBody('async function saveSet(');
+  assert.match(save, /train\.staleSession\(/);
+  assert.match(save, /throw new train\.NeedsAnswer\(/);
+  assert.match(save, /state\.staleAnswered !== state\.activeLog\.id/);
+  // On boot and when the day rolls over, the same question is put before anything is tapped.
+  assert.match(appBody('async function boot('), /askIfStale\(\)/);
+  assert.match(appBody('async function rollOverIfNeeded('), /askIfStale\(\)/);
+});
+
+test('H5: closing a stale session finishes it; keeping it open is remembered for that session', async () => {
+  const state = trainState(FLOPIP, 'B', { sequence: 4, activeLog: { id: 4 } });
+  await withFakeDocument(async () => {
+    const ctx = recordingCtx(state);
+    let finished = 0;
+    ctx.finishSession = async () => { finished += 1; };
+    await actions['close-stale'](ctx);
+    assert.equal(finished, 1);
+
+    await actions['keep-stale'](ctx, { si: '0', i: '0' });
+    assert.equal(state.staleAnswered, 4);
+    assert.equal(ctx.saved.length, 1, 'the tick that asked was not logged');
+  });
+});
+
+test('H1 (QA): the Log can move a late end to the last set', () => {
+  const repair = appBody('async repairSessionEnd(logId)');
+  assert.match(repair, /train\.finishTimes\(/);
+  assert.match(repair, /auditLog/);
+  const history = readFileSync(new URL('../js/ui/history.js', import.meta.url), 'utf8');
+  assert.match(history, /function endRepair\(ctx, log\)/);
+  assert.match(history, /\$\{endRepair\(ctx, log\)\}/);
+  assert.match(history, /data-act="repair-end"/);
 });
 
 test('UI-03: a new civil date with no session open starts at normal readiness', () => {
