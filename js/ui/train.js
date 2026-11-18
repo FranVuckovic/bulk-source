@@ -42,7 +42,7 @@ import {
   companionSlots,
   BORROWABLE_FIELDS,
 } from '../plan.js';
-import { exerciseNoteHistory, recentEvidenceMax, LONG_GAP_SECONDS } from '../analytics.js';
+import { exerciseNoteHistory, recentEvidenceMax, LONG_GAP_SECONDS, bodyweightOn } from '../analytics.js';
 import { rankSwaps, listedSubs, searchKey, matchesQuery, guessBasedOn, normalize } from '../library.js';
 import { cycleProgress } from '../cycle.js';
 import { questionSet } from '../plausibility.js';
@@ -748,9 +748,16 @@ function prescriptionMax(state, slot) {
  * Bodyweight counts as part of the load on pull-ups, chin-ups and dips, so the
  * maths runs on bodyweight + added and the screen shows the added weight.
  * Everything else gets 0 and behaves exactly as before.
+ *
+ * Today's bodyweight comes from `bodyweightOn`, the same function the saved set
+ * takes its `bodyweightUsed` from. This read the Settings figure (90) while the
+ * stored set used his weigh-ins (91.1), so the same chin-up showed e1RM 137.8
+ * here and 139.2 in the Log, and its prescription and typo check used 90.
  */
 const bodyweightFor = (state, exerciseId) =>
-  state.plan.exercises[exerciseId]?.bodyweightLoaded ? state.settings.bodyweight : 0;
+  state.plan.exercises[exerciseId]?.bodyweightLoaded
+    ? bodyweightOn(state.daily || [], state.todayISO, state.settings.bodyweight)
+    : 0;
 
 const loadOptions = (state, exerciseId) => ({ bodyweight: bodyweightFor(state, exerciseId) });
 
@@ -1954,7 +1961,8 @@ function setRow(state, slot, slotIndex, i) {
   const unit = state.settings.unit;
   const { logged, toFailure, load, reps, rpe } = rowValues(state, slot, slotIndex, i);
   const cls = logged ? '' : 'pres';
-  const bodyweight = bodyweightFor(state, slot.ex);
+  // A logged set is shown on the bodyweight it was stored with, as the Log shows it.
+  const bodyweight = bodyweightFor(state, slot.ex) ? logged?.bodyweightUsed ?? bodyweightFor(state, slot.ex) : 0;
   // e1RM is computed on what you actually lifted: bodyweight included.
   const total = load != null && reps ? systemLoad(load, bodyweight) : null;
   const estimate = total != null ? e1rm(total, reps, Math.min(10, rpe)) : null;

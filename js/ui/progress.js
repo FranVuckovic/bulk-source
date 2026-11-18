@@ -38,6 +38,7 @@ import {
   measurementSeries,
   bodyweightSeries as cleanBodyweight,
   GAIN_TARGETS,
+  bodyweightOn,
 } from '../analytics.js';
 import { weeklyLoads, decisionFlags, weekStartISO, daysBetween, shouldDeload } from '../progress.js';
 import { volumeByRotation, plannedVsCompleted } from '../volume.js';
@@ -952,7 +953,7 @@ function recordsCard(state, m, unit, { onlyExerciseId = null, excludeExerciseId 
     const exercise = state.plan.exercises[r.exerciseId];
     if (!exercise?.bodyweightLoaded) return `${fmtLoad(r.load, unit)} ${unit} × ${r.reps} rep${r.reps === 1 ? '' : 's'}`;
     // The bodyweight that set was estimated on, not today's setting.
-    const bodyweight = r.bodyweightUsed ?? state.settings.bodyweight;
+    const bodyweight = r.bodyweightUsed ?? bodyweightOn(state.daily || [], r.dateISO, state.settings.bodyweight);
     return `+${fmtLoad(r.load, unit)} ${unit} × ${r.reps} rep${r.reps === 1 ? '' : 's'} · ${fmtLoad(
       systemLoad(r.load, bodyweight),
       unit

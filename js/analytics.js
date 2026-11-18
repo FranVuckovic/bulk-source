@@ -1175,7 +1175,7 @@ export function records(sets, { exercises, logs }) {
  * different claim from one out of thirty, and the screen should be able to say
  * so.
  */
-export function bestEstimates(sets, { exercises, logs, bodyweight = 0 } = {}) {
+export function bestEstimates(sets, { exercises, logs, bodyweight = 0, daily = null } = {}) {
   const byLog = new Map((logs || []).map((log) => [log.id, log]));
   const rows = new Map();
   const candidates = new Map();
@@ -1203,10 +1203,16 @@ export function bestEstimates(sets, { exercises, logs, bodyweight = 0 } = {}) {
 
     // Rough estimates are allowed here and marked as rough on the screen; the
     // reasons a set cannot speak for strength at all are the shared ones.
+    // A set stored without its bodyweight is estimated on his weigh-ins that
+    // day, through the same `bodyweightOn` the set would have been saved with.
+    const fallback =
+      exercise.bodyweightLoaded && set.bodyweightUsed == null && daily
+        ? bodyweightOn(daily, dateOfSet(set, byLog), bodyweight)
+        : bodyweight;
     const gate = maxEvidence(set, {
       exercise,
       requireHigh: false,
-      bodyweight: exercise.bodyweightLoaded ? bodyweight : 0,
+      bodyweight: exercise.bodyweightLoaded ? fallback : 0,
     });
     if (!gate.ok) {
       note(here, gate.reason);

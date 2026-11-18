@@ -881,3 +881,37 @@ test('UI-03: a new civil date with no session open starts at normal readiness', 
   const roll = appBody('async function rollOverIfNeeded()');
   assert.match(roll, /if \(!state\.activeLog\) state\.readiness = 'normal'/);
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   N6 · one bodyweight for a chin-up: his weigh-ins, through bodyweightOn
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('N6: the Train editor uses the weigh-ins, as the stored set does', async () => {
+  // Train read the Settings figure (90) while the stored set used his
+  // weigh-ins (91.1): "105.0 kg total with bodyweight" and e1RM 137.8 on Train,
+  // 139.2 in the Log, for the same +15 × 9 @ 9 chin-up.
+  const { bodyweightOn } = await import('../js/analytics.js');
+  const state = trainState(FLOPIP, 'A');
+  state.daily = ['2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10'].map((dateISO, i) => ({ id: i + 1, dateISO, bodyweight: 91.1 }));
+  assert.equal(bodyweightOn(state.daily, state.todayISO, 90), 91.1);
+  const si = slotsFor(state).findIndex((slot) => FLOPIP.exercises[slot.ex].bodyweightLoaded);
+  assert.ok(si >= 0, 'session A has a bodyweight lift');
+
+  await withFakeDocument(async (nodes) => {
+    const ctx = recordingCtx(state);
+    actions['open-step'](ctx, { si: String(si), i: '0', field: 'load' });
+    const shown = nodes.pan.innerHTML.replace(/\s+/g, ' ').match(/\+([\d.]+) kg × \d+ @ RPE [\d.]+ <br><span[^>]*>([\d.]+) kg total with bodyweight/);
+    assert.ok(shown, 'the editor no longer shows the total with bodyweight');
+    const [, added, total] = shown.map(Number);
+    assert.ok(Math.abs(total - added - 91.1) < 0.05, `the editor added ${total - added}, not his weigh-ins`);
+  });
+});
+
+test('N6: Train reads bodyweight through bodyweightOn, never the setting alone (wiring)', () => {
+  const train = readFileSync(new URL('../js/ui/train.js', import.meta.url), 'utf8');
+  const helper = train.slice(train.indexOf('const bodyweightFor ='), train.indexOf('const loadOptions ='));
+  assert.match(helper, /bodyweightOn\(/, 'Train computes bodyweight + added from a second source');
+  assert.match(APP, /bodyweightUsed: [^\n]*bodyweightOn\(/, 'the saved set no longer uses bodyweightOn');
+  const progress = readFileSync(new URL('../js/ui/progress.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(progress, /bodyweightUsed \?\? state\.settings\.bodyweight/, 'a record falls back to the setting, not the weigh-ins');
+});

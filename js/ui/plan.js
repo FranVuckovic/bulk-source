@@ -384,6 +384,7 @@ function bestList(state) {
     exercises: state.plan.exercises,
     logs: state.logs,
     bodyweight: state.settings.bodyweight,
+    daily: state.daily || [],
   });
   if (!rows.length) {
     return `<div class="card" style="margin-bottom:12px"><p style="margin:0;color:var(--muted);font-size:13px">
