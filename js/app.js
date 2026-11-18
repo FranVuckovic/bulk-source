@@ -39,15 +39,8 @@ import {
   checkIntegrity,
   ALL_STORES,
 } from './db.js';
-import {
-  rotationPosition,
-  blockProgress,
-  planProgress,
-  prescribedSetCount,
-  isPartialSession,
-  sortLogsByDate,
-} from './progress.js';
-import { systemLoad, estimateForSet, isHighConfidence, attemptMaxEffect, maxBeforeAttempt } from './calc.js';
+import { prescribedSetCount, sortLogsByDate } from './progress.js';
+import { systemLoad, attemptMaxEffect, maxBeforeAttempt } from './calc.js';
 import { checkWorkingMax } from './plausibility.js';
 import { personalBestBefore, bodyweightOn, correctionFor } from './analytics.js';
 import { localDate, nowISO, timeZone, utcOffsetMinutes, daysBetween } from './dates.js';
@@ -56,7 +49,7 @@ import {
   effortModeFor,
   resolveSession,
   toDisplaySession,
-  validatePlan,
+  assertPlansValid,
   withCustomExercises,
   customExerciseId,
 } from './plan.js';
@@ -2512,6 +2505,9 @@ async function boot() {
     loaded.push(await response.json());
   }
   const shared = withSharedLibrary(loaded);
+  // A plan that contradicts itself stops here, with the problems named,
+  // before the database is opened.
+  assertPlansValid(shared);
   // The demo seeds whichever plan is active, so it needs one before settings
   // are readable. The real choice is made below, once the database is open.
   state.plan = shared.find((p) => p.meta.id === DEFAULT_PLAN_ID) || shared[0];

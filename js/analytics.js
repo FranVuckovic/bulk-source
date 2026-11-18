@@ -16,7 +16,7 @@
  */
 
 import { planIdOf, DEFAULT_PLAN_ID } from './plans.js';
-import { estimateForSet, isHighConfidence, systemLoad, e1rm, setDifficulty, noEstimateReason } from './calc.js';
+import { estimateForSet, isHighConfidence, systemLoad, setDifficulty, noEstimateReason } from './calc.js';
 import { daysBetween, weekStart } from './dates.js';
 import { TAPE_RANGES_CM, BODYWEIGHT_RANGE_KG, WEIGH_IN_DEVIATION_KG, outlierReason } from './plausibility.js';
 

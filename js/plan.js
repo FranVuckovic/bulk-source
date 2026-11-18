@@ -550,6 +550,28 @@ export function validatePlan(plan) {
   return { ok: problems.length === 0, problems };
 }
 
+/**
+ * Every shipped plan, validated, or an error that says what is wrong.
+ *
+ * `validatePlan` said it ran at startup and nothing called it, so a plan file
+ * that contradicted itself would have prescribed from the contradiction. Boot
+ * calls this before the database is opened: a broken plan stops the app with
+ * the problems listed, and his data is not touched.
+ */
+export function assertPlansValid(plans) {
+  const broken = (plans || [])
+    .map((plan) => ({ plan, result: validatePlan(plan) }))
+    .filter(({ result }) => !result.ok);
+  if (!broken.length) return true;
+  const lines = broken.map(
+    ({ plan, result }) =>
+      `${plan.meta?.name || plan.meta?.id || 'a plan'}: ${result.problems.slice(0, 5).join('; ')}${
+        result.problems.length > 5 ? ` (and ${result.problems.length - 5} more)` : ''
+      }`
+  );
+  throw new Error(`The training plan is broken, so nothing will be prescribed from it. ${lines.join(' · ')}`);
+}
+
 /** Physical working sets in a resolved session. */
 export const setCount = (resolved) => resolved.slots.reduce((total, slot) => total + slot.sets, 0);
 

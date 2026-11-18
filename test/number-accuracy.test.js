@@ -800,3 +800,35 @@ test('session load leaves out sessions whose timing is not reliable, and says wh
   assert.deepEqual(result.excluded.map((row) => row.logId).sort(), [2, 3]);
   assert.ok(result.excluded.every((row) => row.reason), 'a session was dropped without a reason');
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   L7 · the plan validator runs at startup, as its comment always said
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('L7: a broken plan stops the app with the problem named', async () => {
+  const { assertPlansValid } = await import('../js/plan.js');
+  const [fopip, flopip] = withSharedLibrary([FOPIP, FLOPIP]);
+  assert.equal(assertPlansValid([fopip, flopip]), true, 'a shipped plan does not validate');
+  const broken = structuredClone(flopip);
+  broken.sessions[0].slots[0].ex = 'noSuchLift';
+  assert.throws(() => assertPlansValid([fopip, broken]), /FLOPIP 2: .*unknown exercise noSuchLift/);
+});
+
+test('L7: boot calls the validator before the database is opened (wiring)', () => {
+  // validatePlan was imported by app.js, described as running at startup, and
+  // never called.
+  const app = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+  const boot = app.slice(app.indexOf('async function boot()'));
+  const validated = boot.indexOf('assertPlansValid(shared)');
+  assert.ok(validated > 0, 'boot does not validate the plans');
+  assert.ok(validated < boot.indexOf('openDatabase()'), 'the plans are validated after the database is opened');
+});
+
+test('L7: app.js imports nothing it does not use (grep evidence for the removals)', () => {
+  const app = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+  for (const name of ['rotationPosition', 'blockProgress', 'planProgress', 'isPartialSession', 'estimateForSet', 'isHighConfidence', 'validatePlan']) {
+    const asFunction = new RegExp(`\\b${name}\\(`);
+    assert.doesNotMatch(app, asFunction, `${name} is called, so its import was not dead`);
+    assert.doesNotMatch(app, new RegExp(`^\\s*${name},$|[{,]\\s*${name}\\s*[,}]`, 'm'), `${name} is still imported`);
+  }
+});
