@@ -155,9 +155,11 @@ export function readZip(bytes, { verify = true } = {}) {
  */
 const cell = (value) => {
   if (value == null) return '';
-  if (typeof value === 'object') return JSON.stringify(value);
-  const text = String(value);
-  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  // An object goes out as JSON, and JSON is full of commas and quotes. It used
+  // to be written unquoted, so `{"a":1,"b":2}` split into two columns and every
+  // cell after it on that row moved one to the right.
+  const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 };
 
 export function toCsv(rows, columns) {
@@ -167,9 +169,16 @@ export function toCsv(rows, columns) {
 }
 
 export const CSV_COLUMNS = Object.freeze({
-  sessionLogs: ['id', 'dateISO', 'startedAt', 'endedAt', 'planId', 'sessionId', 'blockId', 'rotationIndex', 'bodyweight', 'sessionRpe', 'note', 'isPartial', 'timingReliable'],
-  sets: ['id', 'sessionLogId', 'exerciseId', 'slotIndex', 'setIndex', 'load', 'bodyweightUsed', 'reps', 'rpe', 'rir', 'toFailure', 'isAmrap', 'formBreakdown', 'attemptResult', 'isIndexSet', 'isMyoRep', 'velocity', 'note', 'wasPrescribed', 'prescribedLoad', 'timestampISO', 'gripWidth', 'variantUsed', 'pauseStyle'],
-  daily: ['dateISO', 'savedAtISO', 'bodyweight', 'scale', 'scaleNote', 'bodyfatPct', 'sleepHours', 'steps', 'mood', 'caffeine', 'note'],
+  /*
+   * `deletedAtISO` is on every store that has a bin. The CSVs carry binned and
+   * swap-displaced rows as well as live ones — they are a copy of what is
+   * stored — and without the column a spreadsheet counted every binned set as
+   * work done. Filter on an empty `deletedAtISO` to get what the app shows.
+   * New columns go on the end, so a sheet built on the old layout still lines up.
+   */
+  sessionLogs: ['id', 'dateISO', 'startedAt', 'endedAt', 'planId', 'sessionId', 'blockId', 'rotationIndex', 'bodyweight', 'sessionRpe', 'note', 'isPartial', 'timingReliable', 'status', 'cycleSequence', 'rotationPosition', 'deletedAtISO'],
+  sets: ['id', 'sessionLogId', 'exerciseId', 'slotIndex', 'setIndex', 'load', 'bodyweightUsed', 'reps', 'rpe', 'rir', 'toFailure', 'isAmrap', 'formBreakdown', 'attemptResult', 'isIndexSet', 'isMyoRep', 'velocity', 'note', 'wasPrescribed', 'prescribedLoad', 'timestampISO', 'gripWidth', 'variantUsed', 'pauseStyle', 'deletedAtISO'],
+  daily: ['dateISO', 'savedAtISO', 'bodyweight', 'scale', 'scaleNote', 'bodyfatPct', 'sleepHours', 'steps', 'mood', 'caffeine', 'note', 'deletedAtISO'],
   /*
    * Every measurement site, in the order the Body screen shows them, plus the
    * columns around them. Sites are only ever added; a row written before a site
@@ -198,9 +207,10 @@ export const CSV_COLUMNS = Object.freeze({
     'quadR',
     'neck',
     'note',
+    'deletedAtISO',
   ],
-  niggles: ['id', 'dateISO', 'site', 'severity', 'context', 'note'],
-  media: ['id', 'dateISO', 'kind', 'exerciseId', 'load', 'reps', 'note', 'fileRef'],
+  niggles: ['id', 'dateISO', 'site', 'severity', 'context', 'note', 'deletedAtISO'],
+  media: ['id', 'dateISO', 'kind', 'exerciseId', 'load', 'reps', 'note', 'fileRef', 'deletedAtISO'],
   maxes: ['exerciseId', 'workingMax', 'conf', 'setAtISO', 'sourceSetId', 'blockId'],
   maxHistory: ['id', 'exerciseId', 'workingMax', 'conf', 'setAtISO', 'blockId', 'reason'],
 });
