@@ -9,7 +9,7 @@
 import { rollingMean, gainRateVerdict, bodyweightSeries } from '../analytics.js';
 import { checkWeighIn, checkTape } from '../plausibility.js';
 import { preparePhoto, imageUrl, releaseImageUrl, formatBytes } from '../photos.js';
-import { escape, fmtLoad, fmtNum, toDisplay, section, openSheet, closeSheet, parseNumber } from './components.js';
+import { escape, fmtLoad, fmtNum, toDisplay, section, openSheet, closeSheet, parseNumber, questionSheet, questionFmt } from './components.js';
 
 /*
  * Sites are only ever ADDED to this list, never removed and never renamed.
@@ -534,7 +534,7 @@ export const actions = {
     const earlier = (ctx.state.daily || [])
       .filter((d) => Number.isFinite(d.bodyweight) && d.dateISO <= row.dateISO)
       .map((d) => ({ dateISO: d.dateISO, value: d.bodyweight }));
-    const weighIn = checkWeighIn(row.bodyweight, earlier, { dateISO: row.dateISO, fmt: (kg) => `${Math.round(toDisplay(kg, unit) * 10) / 10} ${unit}` });
+    const weighIn = checkWeighIn(row.bodyweight, earlier, { dateISO: row.dateISO, fmt: questionFmt(unit) });
     return confirmPlausible(ctx, [weighIn], () => confirmBlanks(ctx, blanks, 'daily', async () => {
       await ctx.saveDaily(row);
       savedSheet('Weigh-in saved', [
@@ -810,12 +810,12 @@ function confirmPlausible(ctx, checks, next) {
   const problems = (checks || []).filter((check) => check && !check.ok);
   if (!problems.length) return next();
   ctx.state.pendingSave = next;
-  openSheet(`<div class="ttl">Check ${problems.length === 1 ? 'this number' : 'these numbers'}</div>
-    ${problems
-      .map((p) => `<p style="text-align:center;margin:12px 0 4px;font-size:14px;color:var(--ink)">${escape(p.message)}</p>`)
-      .join('')}
-    <button class="big mt" data-act="confirm-body-save">Save</button>
-    <button class="big ghost mt" data-act="sheet-close">Fix</button>`);
+  openSheet(
+    questionSheet(
+      problems.map((p) => p.message),
+      { save: 'data-act="confirm-body-save"', fix: 'data-act="sheet-close"' }
+    )
+  );
 }
 
 function confirmBlanks(ctx, blanks, what, save) {

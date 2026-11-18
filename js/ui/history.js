@@ -13,8 +13,22 @@
  */
 
 import { e1rm, systemLoad, setDifficulty, noEstimateReason, roughE1rm, roughConfidence } from '../calc.js';
-import { sessionTiming, sessionAnalysis } from '../analytics.js';
-import { escape, fmtLoad, fmtNum, fmtLength, lengthLabel, subnav, flag, openSheet, closeSheet } from './components.js';
+import { sessionTiming, sessionAnalysis, correctionFor } from '../analytics.js';
+import { questionSet, checkWeighIn, checkTape } from '../plausibility.js';
+import {
+  escape,
+  fmtLoad,
+  fmtNum,
+  fmtLength,
+  lengthLabel,
+  subnav,
+  flag,
+  openSheet,
+  closeSheet,
+  questionSheet,
+  questionFmt,
+  SET_TYPO_NOTE,
+} from './components.js';
 import { measurementTimeLabel, scaleLabel, MEASUREMENT_SITES } from './body.js';
 import { rowBars, barChart } from './charts.js';
 import { planIdOf, sessionForLog } from '../plans.js';
@@ -637,10 +651,17 @@ function endRepair(ctx, log) {
     correction is recorded like every other.</p>`;
 }
 
-/** One set, editable. */
-function repairSetSheet(ctx, set) {
+/**
+ * One set, editable.
+ *
+ * `draft` is what he had typed, when "Fix" on the plausibility question brings
+ * the form back. The boxes show the draft; `data-load-shown` stays the stored
+ * load, because that is what decides whether the load was touched at all.
+ */
+function repairSetSheet(ctx, stored, draft = null) {
   const { state } = ctx;
   const unit = state.settings.unit;
+  const set = draft ? { ...stored, ...draft } : stored;
   const name = state.plan.exercises[set.exerciseId]?.name || set.exerciseId;
 
   // Every exercise in the plan, so a set logged against the wrong one can be
@@ -652,14 +673,15 @@ function repairSetSheet(ctx, set) {
     .sort(([, a], [, b]) => a.name.localeCompare(b.name))
     .map(([id, x]) => `<option value="${escape(id)}" ${id === set.exerciseId ? 'selected' : ''}>${escape(x.name)}</option>`)
     .join('');
-  const loadShown = set.load == null ? '' : fmtLoad(set.load, unit);
+  const loadShown = stored.load == null ? '' : fmtLoad(stored.load, unit);
+  const loadBox = draft && 'loadTyped' in draft ? draft.loadTyped ?? '' : loadShown;
 
   return `<div class="ttl">Fix this set</div>
     <p style="text-align:center;font-size:13px;margin:10px 0 12px">${escape(name)} \u00b7 set ${set.setIndex + 1}</p>
 
     <div class="g3">
       <div><label for="fix-load">Load (${escape(unit)})</label>
-        <input id="fix-load" type="number" inputmode="decimal" step="0.5" value="${loadShown}"></div>
+        <input id="fix-load" type="number" inputmode="decimal" step="0.5" value="${escape(loadBox)}"></div>
       <div><label for="fix-reps">Reps</label>
         <input id="fix-reps" type="number" inputmode="numeric" step="1" value="${set.reps ?? ''}"></div>
       <div><label for="fix-rpe">RPE</label>
@@ -1092,11 +1114,13 @@ const EDITABLE = {
  * Nothing here writes. The button leads to a confirmation that shows exactly
  * what is about to change, and that confirmation is what writes.
  */
-export function editSheet(state, row) {
+export function editSheet(state, row, draft = null) {
   const spec = EDITABLE[row.kind];
   if (!spec) return plainDetail(state, row);
+  // "Fix" on the plausibility question comes back here with what he typed.
+  const record = draft ? { ...row.record, ...draft } : row.record;
   const value = (key) => {
-    const held = row.record[key];
+    const held = record[key];
     return held == null || held === '' ? '' : String(held);
   };
 
@@ -1153,6 +1177,80 @@ function diffOf(row, patch) {
     .map(([key, next]) => ({ key, from: row.record[key] ?? null, to: next ?? null }));
 }
 
+/*
+ * The Log is where he goes to fix typos, so it asks the same questions every
+ * other screen asks before a number is written: a bench single corrected to
+ * 1250 used to save as "Corrected" and become a 1250 kg 1RM on Progress, and a
+ * weigh-in edited to 97 among 91s saved without a word. The checks are the
+ * ones in plausibility.js and the sheet is `questionSheet` — nothing here
+ * decides on its own what is plausible.
+ */
+
+/** The question a corrected set raises, or null. Asked only when a number or the lift changed. */
+function setRepairQuestion(state, set, patch) {
+  const changed = ['load', 'reps', 'exerciseId'].some((key) => key in patch && (patch[key] ?? null) !== (set[key] ?? null));
+  if (!changed) return null;
+  // The set as it would be stored: a set moved to a bodyweight lift is judged
+  // with that lift's bodyweight, exactly as repairSet will write it.
+  const log = state.logs.find((row) => row.id === set.sessionLogId);
+  const corrected = {
+    ...set,
+    ...correctionFor(set, patch, {
+      exercises: state.plan.exercises,
+      daily: state.daily || [],
+      fallbackBodyweight: state.settings.bodyweight,
+      dateISO: (log?.localDate || log?.dateISO || '').slice(0, 10) || null,
+    }),
+  };
+  return questionSet(corrected, state.sets, {
+    exercise: state.plan.exercises[corrected.exerciseId],
+    fmt: questionFmt(state.settings.unit),
+  });
+}
+
+/**
+ * The questions an edited weigh-in or tape reading raises. The entry itself is
+ * left out of what it is compared with, or a typo vouches for itself.
+ */
+function editQuestions(state, row, patch, changes) {
+  const changedKeys = new Set(changes.map((change) => change.key));
+  const dateISO = dayOf(patch.dateISO || row.dateISO);
+  if (row.kind === 'daily') {
+    if (!changedKeys.has('bodyweight') && !changedKeys.has('dateISO')) return [];
+    const earlier = (state.daily || [])
+      .filter((d) => d.id !== row.id && Number.isFinite(d.bodyweight) && dayOf(d.dateISO) <= dateISO)
+      .map((d) => ({ dateISO: dayOf(d.dateISO), value: d.bodyweight }));
+    const verdict = checkWeighIn(patch.bodyweight, earlier, { dateISO });
+    return verdict.ok ? [] : [verdict.message];
+  }
+  if (row.kind === 'measurement') {
+    const earlier = (state.measurements || [])
+      .filter((m) => m.id !== row.id && dayOf(m.dateISO) <= dateISO)
+      .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+    const lastAt = (site) => [...earlier].reverse().find((m) => Number.isFinite(m[site]))?.[site] ?? null;
+    return MEASUREMENT_SITES.filter(([site]) => changedKeys.has(site) && Number.isFinite(patch[site]))
+      .map(([site, label]) => checkTape(site, patch[site], lastAt(site), { label }))
+      .filter((verdict) => !verdict.ok)
+      .map((verdict) => verdict.message);
+  }
+  return [];
+}
+
+/** Write a set correction and say what changed. Returned, so a failure reaches the central handler. */
+async function writeSetRepair(ctx, id, patch) {
+  const result = await ctx.repairSet(id, patch);
+  closeSheet();
+  ctx.render();
+  openSheet(`<div class="ttl">${result.changed ? 'Corrected' : 'Nothing changed'}</div>
+    <p style="text-align:center;font-size:13.5px;margin:14px 0">${
+      result.changed
+        ? `${result.changed} field${result.changed === 1 ? '' : 's'} updated, each one recorded with what it was before.`
+        : 'Everything was already as you typed it.'
+    }</p>
+    <button class="big mt" data-act="sheet-close">Close</button>`);
+  return result;
+}
+
 export const actions = {
   /*
    * A session gets a screen, not a sheet. There is too much worth seeing about
@@ -1185,8 +1283,25 @@ export const actions = {
   'history-edit-review'(ctx, data) {
     const row = entries(ctx.state).find((entry) => entry.key === data.key);
     if (!row) return;
-    const patch = readEditForm(row);
+    // After "Save" on the question the form is gone; what he typed was kept.
+    const kept = data.checked && ctx.state.pendingEdit?.key === row.key ? ctx.state.pendingEdit.patch : null;
+    const patch = kept || readEditForm(row);
     const changes = diffOf(row, patch);
+
+    if (changes.length && !kept) {
+      const questions = editQuestions(ctx.state, row, patch, changes);
+      if (questions.length) {
+        ctx.state.pendingEdit = { key: row.key, patch };
+        openSheet(
+          questionSheet(questions, {
+            save: `data-act="history-edit-review" data-key="${escape(row.key)}" data-checked="1"`,
+            fix: `data-act="history-edit-fix" data-key="${escape(row.key)}"`,
+          })
+        );
+        return;
+      }
+    }
+    ctx.state.pendingEdit = null;
 
     if (!changes.length) {
       openSheet(`<div class="ttl">Nothing changed</div>
@@ -1215,6 +1330,14 @@ export const actions = {
         JSON.stringify(patch)
       )}">Yes, save it</button>
       <button class="big ghost mt" data-act="history-edit" data-key="${escape(row.key)}">Back to the form</button>`);
+  },
+
+  /** "Fix" on the question: the form again, holding what he typed. */
+  'history-edit-fix'(ctx, data) {
+    const row = entries(ctx.state).find((entry) => entry.key === data.key);
+    const pending = ctx.state.pendingEdit;
+    ctx.state.pendingEdit = null;
+    if (row) openSheet(editSheet(ctx.state, row, pending?.key === row.key ? pending.patch : null));
   },
 
   async 'history-edit-save'(ctx, data) {
@@ -1385,7 +1508,8 @@ export const actions = {
     // edit wrote a "load" correction. Only a load he changed is sent.
     const loadTouched = (document.getElementById('fix-load')?.value ?? '').trim() !== String(data.loadShown ?? '').trim();
 
-    const result = await ctx.repairSet(Number(data.id), {
+    const id = Number(data.id);
+    const patch = {
       // Typed in whatever unit is on display, stored in kilograms like
       // everything else.
       ...(loadTouched ? { load: load == null ? null : ctx.toKg(load) } : {}),
@@ -1393,16 +1517,49 @@ export const actions = {
       rpe: num('fix-rpe'),
       exerciseId: document.getElementById('fix-ex')?.value,
       note,
-    });
-    closeSheet();
-    ctx.render();
-    openSheet(`<div class="ttl">${result.changed ? 'Corrected' : 'Nothing changed'}</div>
-      <p style="text-align:center;font-size:13.5px;margin:14px 0">${
-        result.changed
-          ? `${result.changed} field${result.changed === 1 ? '' : 's'} updated, each one recorded with what it was before.`
-          : 'Everything was already as you typed it.'
-      }</p>
-      <button class="big mt" data-act="sheet-close">Close</button>`);
+    };
+
+    const set = state.sets.find((row) => row.id === id);
+    const question = set ? setRepairQuestion(state, set, patch) : null;
+    if (question) {
+      state.pendingRepair = {
+        id,
+        patch,
+        draft: {
+          loadTyped: document.getElementById('fix-load')?.value ?? '',
+          reps: patch.reps,
+          rpe: patch.rpe,
+          exerciseId: patch.exerciseId || set.exerciseId,
+          note,
+        },
+      };
+      openSheet(
+        questionSheet([question], {
+          title: 'Check this set',
+          note: SET_TYPO_NOTE,
+          save: 'data-act="repair-set-confirm"',
+          fix: 'data-act="repair-set-fix"',
+        })
+      );
+      return;
+    }
+    return writeSetRepair(ctx, id, patch);
+  },
+
+  /** "Save" on the question: exactly what he typed. Never blocked. */
+  async 'repair-set-confirm'(ctx) {
+    const pending = ctx.state.pendingRepair;
+    ctx.state.pendingRepair = null;
+    if (!pending) return;
+    return writeSetRepair(ctx, pending.id, pending.patch);
+  },
+
+  /** "Fix" on the question: the form again, holding what he typed. */
+  'repair-set-fix'(ctx) {
+    const pending = ctx.state.pendingRepair;
+    ctx.state.pendingRepair = null;
+    const set = pending && ctx.state.sets.find((row) => row.id === pending.id);
+    if (set) openSheet(repairSetSheet(ctx, set, pending.draft));
   },
 
   async 'repair-set-delete'(ctx, data) {

@@ -58,6 +58,9 @@ import {
   closeSheet,
   startRest,
   parseNumber,
+  questionSheet,
+  questionFmt,
+  SET_TYPO_NOTE,
 } from './components.js';
 
 const setKey = (slotIndex, setIndex) => `${slotIndex}:${setIndex}`;
@@ -376,15 +379,18 @@ function askIfImplausible(ctx, pending) {
       bodyweightUsed: bodyweightFor(state, pending.slot.ex) || null,
     },
     state.sets,
-    { exercise: state.plan.exercises[pending.slot.ex] }
+    { exercise: state.plan.exercises[pending.slot.ex], fmt: questionFmt(state.settings.unit) }
   );
   if (!warning) return false;
   state.pendingSet = pending;
-  openSheet(`<div class="ttl">Check this set</div>
-    <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">${escape(warning)}</p>
-    <p style="text-align:center;font-size:13px">A typo here goes into every estimate and chart that uses this lift.</p>
-    <button class="big mt" data-act="plausible-save">Save</button>
-    <button class="big ghost mt" data-act="plausible-fix">Fix</button>`);
+  openSheet(
+    questionSheet([warning], {
+      title: 'Check this set',
+      note: SET_TYPO_NOTE,
+      save: 'data-act="plausible-save"',
+      fix: 'data-act="plausible-fix"',
+    })
+  );
   return true;
 }
 

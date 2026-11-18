@@ -106,6 +106,42 @@ export function closeSheet({ fromBack = false } = {}) {
 
 export const sheetIsOpen = () => document.getElementById('sheet').classList.contains('on');
 
+/**
+ * The one "is this what you meant?" sheet: the messages a plausibility check
+ * raised, then Save and Fix.
+ *
+ * Every screen that saves a number he typed asks with this — the Train set
+ * editor and one-tap, the Body weigh-in and tape, the working max, and the
+ * Log's corrections. The Log's paths used to write without asking, so a bench
+ * single corrected to 1250 became his 1RM on Progress; one sheet means a new
+ * path cannot quietly ask differently or not at all.
+ *
+ * `save` and `fix` are the attributes of each button (its action and data),
+ * already escaped by the caller. Soft by design: Save always saves.
+ */
+/** Why a set is asked about, said under the question wherever a set is. */
+export const SET_TYPO_NOTE = 'A typo here goes into every estimate and chart that uses this lift.';
+
+/**
+ * How a question writes a kilogram figure: in the unit on display, to one
+ * decimal. The checks run in kilograms; a question in pounds mode that said
+ * "Save 1025 kg?" about a number typed in pounds was asking about something
+ * he never typed.
+ */
+export const questionFmt = (unit) => (kg) => `${Math.round(toDisplay(kg, unit) * 10) / 10} ${unit}`;
+
+export function questionSheet(messages, { title = null, save, fix, note = '' }) {
+  const list = (messages || []).filter(Boolean);
+  const heading = title || (list.length === 1 ? 'Check this number' : 'Check these numbers');
+  return `<div class="ttl">${escape(heading)}</div>
+    ${list
+      .map((message) => `<p style="text-align:center;margin:12px 0 4px;font-size:14px;color:var(--ink)">${escape(message)}</p>`)
+      .join('')}
+    ${note ? `<p style="text-align:center;font-size:13px">${escape(note)}</p>` : ''}
+    <button class="big mt" ${save}>Save</button>
+    <button class="big ghost mt" ${fix}>Fix</button>`;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    Rest timer
    ═══════════════════════════════════════════════════════════════════════ */

@@ -155,3 +155,141 @@ test('a failed edit is returned to the central action handler', async () => {
   };
   await assert.rejects(actions['history-edit-save'](ctx, { key: 'measurement:3', patch: '{"waist":87}' }), failure);
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   N1 · the Log's corrections ask the same question every other screen asks
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/** Just enough of a page for a sheet to open and close, and for inputs to be read. */
+async function withPage(run, inputs = {}) {
+  const previous = globalThis.document;
+  const node = () => ({ innerHTML: '', classList: { on: false, add() { this.on = true; }, remove() { this.on = false; }, contains() { return this.on; } } });
+  const nodes = { pan: node(), sheet: node() };
+  globalThis.document = {
+    getElementById: (id) => nodes[id] || (id in inputs ? { value: inputs[id] } : null),
+    querySelector: () => null,
+    querySelectorAll: () => Object.entries(inputs).filter(([key]) => key.startsWith('edit:')).map(([key, value]) => ({ dataset: { editField: key.slice(5) }, value })),
+  };
+  try {
+    return await run(nodes);
+  } finally {
+    globalThis.document = previous;
+  }
+}
+
+const BENCH_PLAN = { sessions: [], exercises: { benchComp: { name: 'Competition bench press', tracksMax: true, maxConf: 'high' } } };
+
+function benchCtx() {
+  const sets = [
+    { id: 1, sessionLogId: 9, exerciseId: 'benchComp', setIndex: 0, load: 120, reps: 1, rpe: 10 },
+    { id: 2, sessionLogId: 8, exerciseId: 'benchComp', setIndex: 0, load: 130, reps: 1, rpe: 10 },
+    { id: 3, sessionLogId: 8, exerciseId: 'benchComp', setIndex: 1, load: 110, reps: 5, rpe: 8 },
+  ];
+  const ctx = {
+    state: { ...baseState({}), plan: BENCH_PLAN, sets, logs: [{ id: 9, dateISO: '2026-11-14' }], settings: { unit: 'kg', bodyweight: 90 } },
+    toKg: Number,
+    repaired: [],
+    async repairSet(id, patch) {
+      this.repaired.push([id, patch]);
+      return { changed: 1 };
+    },
+    render() {},
+  };
+  return ctx;
+}
+
+const fixForm = (load) => ({ 'fix-load': load, 'fix-reps': '1', 'fix-rpe': '10', 'fix-ex': 'benchComp', 'fix-note': '' });
+
+test('N1: a bench single corrected to 1250 in the Log asks first, and Save still saves it', async () => {
+  // It said "Corrected" with no question, and Progress then showed a 1250 kg 1RM.
+  const ctx = benchCtx();
+  await withPage(async (nodes) => {
+    await actions['repair-set-save'](ctx, { id: '1', loadShown: '120.0' });
+    assert.equal(ctx.repaired.length, 0, 'the Log wrote 1250 without asking');
+    assert.match(nodes.pan.innerHTML, /Save 1250 kg\? Your best on this lift is 130 kg\./);
+    assert.match(nodes.pan.innerHTML, /data-act="repair-set-confirm">Save</);
+    assert.match(nodes.pan.innerHTML, /data-act="repair-set-fix">Fix</);
+
+    await actions['repair-set-confirm'](ctx);
+    assert.equal(ctx.repaired.length, 1, 'Save must never be blocked');
+    assert.equal(ctx.repaired[0][1].load, 1250);
+  }, fixForm('1250'));
+});
+
+test('N1: Fix on the Log question brings the form back with what was typed', async () => {
+  const ctx = benchCtx();
+  await withPage(async (nodes) => {
+    await actions['repair-set-save'](ctx, { id: '1', loadShown: '120.0' });
+    actions['repair-set-fix'](ctx);
+    assert.equal(ctx.repaired.length, 0);
+    assert.match(nodes.pan.innerHTML, /id="fix-load"[^>]*value="1250"/);
+    // Still the stored load: whether the box was touched is judged against it.
+    assert.match(nodes.pan.innerHTML, /data-load-shown="120\.0"/);
+  }, fixForm('1250'));
+});
+
+test('N1: an ordinary correction in the Log saves with no question', async () => {
+  const ctx = benchCtx();
+  await withPage(async () => {
+    await actions['repair-set-save'](ctx, { id: '1', loadShown: '120.0' });
+  }, fixForm('122.5'));
+  assert.equal(ctx.repaired.length, 1);
+  assert.equal(ctx.repaired[0][1].load, 122.5);
+});
+
+test('N1: a rejected Log set correction reaches the central action handler', async () => {
+  const failure = new Error('write failed');
+  const ctx = benchCtx();
+  ctx.repairSet = async () => { throw failure; };
+  await withPage(async () => {
+    await assert.rejects(actions['repair-set-save'](ctx, { id: '1', loadShown: '120.0' }), failure);
+  }, fixForm('122.5'));
+  await withPage(async () => {
+    await actions['repair-set-save'](ctx, { id: '1', loadShown: '120.0' });
+    await assert.rejects(actions['repair-set-confirm'](ctx), failure);
+  }, fixForm('1250'));
+});
+
+test('N1: a weigh-in edited to 97 among 91s in the Log asks before the review', async () => {
+  const daily = ['2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15'].map((dateISO, i) => ({ id: i + 1, dateISO, bodyweight: 91 }));
+  const ctx = { state: baseState({ daily }) };
+  const key = 'daily:4';
+  await withPage(async (nodes) => {
+    actions['history-edit-review'](ctx, { key });
+    assert.match(nodes.pan.innerHTML, /Save 97 kg\? That's 6 kg above your 7-day average of 91 kg\./);
+    assert.doesNotMatch(nodes.pan.innerHTML, /history-edit-save/, 'the review — and its write — came before the question');
+
+    actions['history-edit-fix'](ctx, { key });
+    assert.match(nodes.pan.innerHTML, /data-edit-field="bodyweight"[^>]*value="97"/, 'Fix lost what was typed');
+
+    actions['history-edit-review'](ctx, { key });
+    actions['history-edit-review'](ctx, { key, checked: '1' });
+    assert.match(nodes.pan.innerHTML, /data-act="history-edit-save"/, 'Save on the question did not lead on to the review');
+    assert.match(nodes.pan.innerHTML, /&quot;bodyweight&quot;:97/);
+  }, { 'edit:dateISO': '2026-11-15', 'edit:bodyweight': '97', 'edit:bodyfatPct': '', 'edit:sleepHours': '', 'edit:steps': '', 'edit:note': '' });
+});
+
+test('N1: a tape reading edited to 1095 in the Log asks before the review', async () => {
+  const measurements = [{ id: 1, dateISO: '2026-11-01', chest: 110 }, { id: 2, dateISO: '2026-11-10', chest: 109 }];
+  const ctx = { state: baseState({ measurements }) };
+  await withPage(async (nodes) => {
+    actions['history-edit-review'](ctx, { key: 'measurement:2' });
+    assert.match(nodes.pan.innerHTML, /Save Chest 1095 cm\?/);
+    assert.doesNotMatch(nodes.pan.innerHTML, /history-edit-save/);
+  }, { 'edit:dateISO': '2026-11-10', 'edit:chest': '1095' });
+});
+
+test('N1: every Save/Fix question in the app is drawn by the one questionSheet (wiring)', async () => {
+  // The Log wrote its own sheets and asked nothing; a copy is how a path ends
+  // up asking differently or not at all.
+  const { readFileSync } = await import('node:fs');
+  for (const file of ['train', 'body', 'settings', 'history']) {
+    const source = readFileSync(new URL(`../js/ui/${file}.js`, import.meta.url), 'utf8');
+    assert.doesNotMatch(source, />Fix<\/button>/, `ui/${file}.js draws its own Save/Fix sheet`);
+    assert.match(source, /questionSheet\(/, `ui/${file}.js does not ask through questionSheet`);
+  }
+  const history = readFileSync(new URL('../js/ui/history.js', import.meta.url), 'utf8');
+  assert.match(history, /questionSet\(/, 'the Log set correction does not use questionSet');
+  assert.match(history, /checkWeighIn\(/);
+  assert.match(history, /checkTape\(/);
+});

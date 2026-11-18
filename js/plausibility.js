@@ -228,7 +228,7 @@ export function outlierReason(value, others, { range = null, share = 0.25, unit 
  * the set being edited is left out so an outlier is judged against the rest.
  * The rep rule comes from `checkSet` when the exercise is known.
  */
-export function questionSet(set, history, { exercise = null } = {}) {
+export function questionSet(set, history, { exercise = null, fmt = kgText } = {}) {
   const total = (s) => (Number.isFinite(s?.load) ? s.load + (Number(s.bodyweightUsed) || 0) : null);
   const value = total(set);
   if (value == null || !set?.exerciseId) return null;
@@ -244,7 +244,7 @@ export function questionSet(set, history, { exercise = null } = {}) {
     }
   }
   if (value > 0 && best != null && best > 0 && value > best * SET_LOAD_FACTOR) {
-    return `Save ${round1(set.load)} kg? Your best on this lift is ${round1(bestRow.load)} kg.`;
+    return `Save ${fmt(set.load)}? Your best on this lift is ${fmt(bestRow.load)}.`;
   }
   if (exercise) {
     const verdict = checkSet({ load: null, reps: set.reps, exercise });
