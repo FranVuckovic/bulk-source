@@ -44,6 +44,7 @@ import {
   substitutesFor,
 } from '../plan.js';
 import { exerciseNoteHistory, recentEvidenceMax } from '../analytics.js';
+import { cycleProgress } from '../cycle.js';
 import { daysBetween } from '../dates.js';
 import {
   escape,
@@ -121,6 +122,122 @@ export function resetSessionState(state) {
 export function setStamps(existing, now) {
   if (!existing?.timestampISO) return { timestampISO: now, editedAtISO: null, stamp: now };
   return { timestampISO: existing.timestampISO, editedAtISO: now, stamp: now };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Starting a session the rotation did not expect
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * A write that cannot go ahead until the lifter answers a question.
+ *
+ * Thrown from `ensureActiveLog` — the one place every session is opened from,
+ * whether by Start, the first tick, a swap or an added exercise — and caught by
+ * the central action handler, which asks instead of reporting a failure.
+ */
+export class NeedsAnswer extends Error {
+  constructor(question) {
+    super('This needs an answer before anything is saved.');
+    this.name = 'NeedsAnswer';
+    this.question = question;
+  }
+}
+
+/**
+ * Should starting this session ask first? Null when it should not.
+ *
+ * Two cases, both from real use:
+ *
+ *   `done` — the position is already complete or partial in this rotation.
+ *   The Start button asked; the first tick did not, and one tick on a finished
+ *   rotation's A filed a second A into it.
+ *
+ *   `order` — nothing is logged in this rotation yet and this is not its first
+ *   letter. Starting FLOPIP on a Friday with E made every rotation run E, A, B,
+ *   C, D, and in rotation 3 put the test before the taper.
+ *
+ * Neither is forbidden. Both are asked, with the previous rotation offered
+ * when this position is still pending there — the usual reason for both is a
+ * rotation advanced a session too early.
+ */
+export function startQuestion(state) {
+  if (state.activeLog || isOutsideRotation(state)) return null;
+  const id = state.trainSessionId;
+  const order = state.plan.meta.rotationOrder;
+  if (!order.includes(id) || !state.cycleProgress) return null;
+
+  const sequence = state.cycle.sequence;
+  const positions = state.cycleProgress.positions || [];
+  const status = positions.find((p) => p.position === id)?.status ?? 'pending';
+  const common = { sessionId: id, sequence, canAdvance: sequence < state.plan.meta.rotations, previous: previousOpening(state, id) };
+
+  if (status === 'complete' || status === 'partial') return { kind: 'done', status, ...common };
+  if (id !== order[0] && positions.every((p) => p.status === 'pending')) return { kind: 'order', first: order[0], ...common };
+  return null;
+}
+
+/** The previous rotation, if this position is still pending in it. */
+function previousOpening(state, position) {
+  const sequence = state.cycle.sequence - 1;
+  const cycle = (state.cycles || []).find((c) => c.sequence === sequence);
+  if (!cycle) return null;
+  const finished = (state.logs || []).filter((log) => log.endedAt && !log.deletedAtISO);
+  const progress = cycleProgress(state.plan, cycle, finished);
+  const status = progress.positions.find((p) => p.position === position)?.status ?? 'pending';
+  return status === 'pending' ? { sequence, cycleId: cycle.id } : null;
+}
+
+/** Has this question been answered, for this session in this rotation? */
+export function isAnswered(state, question) {
+  const answer = state.startAnswer;
+  return !!answer && answer.sessionId === question.sessionId && answer.sequence === question.sequence;
+}
+
+/**
+ * Ask it, on the sheet the Start button has always used, in its words.
+ *
+ * `question.resume` is the row whose tick asked, carried on the answer buttons
+ * so answering logs that set.
+ */
+export function askQuestion(state, question) {
+  const id = escape(question.sessionId);
+  const n = question.sequence;
+  const resume = question.resume ? ` data-si="${question.resume.si}" data-i="${question.resume.i}"` : '';
+  const previous = question.previous
+    ? `<button class="big ghost mt" data-act="start-answer" data-choice="previous"${resume}>File it in rotation ${question.previous.sequence}</button>`
+    : '';
+  const anyway = `<button class="big ghost mt" data-act="start-answer" data-choice="anyway"${resume}>Train it in rotation ${n} anyway</button>`;
+  const back = '<button class="big ghost mt" data-act="sheet-close">Go back</button>';
+
+  if (question.kind === 'done') {
+    openSheet(`<div class="ttl">Already done this rotation</div>
+      <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">Session <b>${id}</b> is already logged as ${escape(
+        question.status
+      )} in <b>rotation ${n}</b>.</p>
+      <p style="text-align:center;font-size:13px">Starting it now records a second ${id} in rotation ${n}${
+        question.canAdvance ? ` — not in rotation ${n + 1}.` : '.'
+      }</p>
+      ${question.canAdvance ? `<button class="big mt" data-act="advance-cycle">Start rotation ${n + 1} first</button>` : ''}
+      ${previous}${anyway}${back}`);
+    return;
+  }
+
+  const first = escape(question.first);
+  openSheet(`<div class="ttl">Not the first session of the rotation</div>
+    <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">Nothing is logged in <b>rotation ${n}</b> yet, and it starts with <b>${first}</b>.</p>
+    <p style="text-align:center;font-size:13px">Starting ${id} now makes it the first session of rotation ${n}, out of order.</p>
+    <button class="big mt" data-act="start-pick" data-id="${first}">Open ${first} instead</button>
+    ${previous}${anyway}${back}`);
+}
+
+/** saveSet, with the row attached to any question it raises. */
+async function saveAsking(ctx, slotIndex, setIndex, values) {
+  try {
+    return await ctx.saveSet(slotIndex, setIndex, values);
+  } catch (error) {
+    if (error instanceof NeedsAnswer) error.question.resume = { si: slotIndex, i: setIndex };
+    throw error;
+  }
 }
 
 /** One session's stored sets, keyed the way the Train screen reads them. */
@@ -1903,7 +2020,7 @@ export const actions = {
       return;
     }
 
-    const result = await ctx.saveSet(slotIndex, i, {
+    const result = await saveAsking(ctx, slotIndex, i, {
       load,
       reps,
       rpe,
@@ -2584,52 +2701,44 @@ export const actions = {
     return ctx.finishSession();
   },
 
-  /** Start the clock without logging anything. */
   /**
-   * Starting a session that this rotation has already had.
+   * Start the clock without logging anything.
    *
-   * The last line of defence for the misfiling loop. Even with the screen
-   * saying the rotation is finished, you can pick a session and start it — and
-   * you may genuinely want to, after a session that went badly. What you must
-   * not do is start it *believing* you are in the next rotation. So the app
-   * says which rotation the work is about to be filed under, and offers the
-   * advance instead.
+   * Asks first when the rotation says this session is not the one to start —
+   * see `startQuestion`. The first tick, a swap or an added exercise ask the
+   * same question, from `ensureActiveLog`.
    */
   async 'start-session'(ctx) {
-    const { state } = ctx;
-    // A custom workout has no rotation position, so it can never be "already
-    // done this rotation" — it is always allowed to start.
-    const status = isOutsideRotation(state)
-      ? null
-      : state.cycleProgress.positions.find((p) => p.position === state.trainSessionId)?.status;
-
-    if (status === 'complete' || status === 'partial') {
-      const last = state.cycle.sequence >= state.plan.meta.rotations;
-      openSheet(`<div class="ttl">Already done this rotation</div>
-        <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">Session <b>${escape(
-          state.trainSessionId
-        )}</b> is already logged as ${escape(status)} in <b>rotation ${state.cycle.sequence}</b>.</p>
-        <p style="text-align:center;font-size:13px">Starting it now records a second ${escape(
-          state.trainSessionId
-        )} in rotation ${state.cycle.sequence}${
-          last ? '.' : ` — not in rotation ${state.cycle.sequence + 1}.`
-        }</p>
-        ${
-          last
-            ? ''
-            : `<button class="big mt" data-act="advance-cycle">Start rotation ${state.cycle.sequence + 1} first</button>`
-        }
-        <button class="big ghost mt" data-act="do-start-session">Train it in rotation ${state.cycle.sequence} anyway</button>
-        <button class="big ghost mt" data-act="sheet-close">Go back</button>`);
+    const question = startQuestion(ctx.state);
+    if (question && !isAnswered(ctx.state, question)) {
+      askQuestion(ctx.state, question);
       return;
     }
-
     await ctx.startSession();
   },
 
-  async 'do-start-session'(ctx) {
+  /**
+   * The answer to "already done" or "not the first session": train it anyway,
+   * or file it in the previous rotation. Recorded for this session and this
+   * rotation only, then the session starts — and the set whose tick asked the
+   * question is logged, so the answer does not cost a second tap.
+   */
+  async 'start-answer'(ctx, data) {
+    const { state } = ctx;
+    state.startAnswer = { sessionId: state.trainSessionId, sequence: state.cycle.sequence, choice: data.choice };
     closeSheet();
     await ctx.startSession();
+    if (data.si != null && data.i != null) {
+      await actions.tick(ctx, { si: data.si, i: data.i }, { stopPropagation() {} });
+    } else {
+      ctx.render();
+    }
+  },
+
+  /** "Open A instead": the rotation's first session, in place of this one. */
+  'start-pick'(ctx, data) {
+    closeSheet();
+    ctx.openSession(data.id);
   },
 
   async 'toggle-timing'(ctx) {

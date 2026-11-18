@@ -448,12 +448,25 @@ async function ensureActiveLog() {
   if (state.activeLog) return state.activeLog;
   if (startingSession) return startingSession;
 
+  /*
+   * The same question the Start button asks, asked here because this is where
+   * every session is opened — the first tick, a swap, an added exercise. Only
+   * Start used to ask, so one tick on a finished rotation filed a second A
+   * into it. Asked, never refused: the answer is recorded and the session
+   * starts where it says.
+   */
+  const question = train.startQuestion(state);
+  if (question && !train.isAnswered(state, question)) throw new train.NeedsAnswer(question);
+  const answer = question ? state.startAnswer : null;
+  const intoPrevious = answer?.choice === 'previous' && question.previous;
+  const cycle = intoPrevious ? state.cycles.find((c) => c.id === question.previous.cycleId) || state.cycle : state.cycle;
+
   // Stable for this one start attempt, but never reused for a later legitimate
   // restart of the same workout. The active-pointer transaction and
   // `startingSession` prevent double opens; a date-level key incorrectly
   // resurrected a discarded session when the user tried again that day.
   const nonce = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const operationId = `start:${state.cycle.id}:${state.trainSessionId}:${nonce}`;
+  const operationId = `start:${cycle.id}:${state.trainSessionId}:${nonce}`;
 
   startingSession = (async () => {
     const { log } = await startSessionAtomic(
@@ -472,10 +485,13 @@ async function ensureActiveLog() {
         // neither carries a rotation position, so neither can satisfy, advance
         // or inflate A–F. `cycleProgress` filters on exactly this.
         rotationPosition: train.isOutsideRotation(state) ? null : state.trainSessionId,
-        cycleId: state.cycle.id,
-        cycleSequence: state.cycle.sequence,
-        blockId: state.block.idx,
-        effortMode: state.effortMode,
+        cycleId: cycle.id,
+        cycleSequence: cycle.sequence,
+        blockId: blockFor(state.plan, cycle.sequence)?.id ?? state.block.idx,
+        effortMode: effortModeFor(state.plan, cycle.sequence),
+        // Started after being told it was a second one in this rotation, or not
+        // the rotation's first letter, and trained here anyway.
+        outOfOrder: answer?.choice === 'anyway',
         readiness: state.readiness || 'normal',
         // Real until said otherwise: a session logged as it happens is the
         // normal case, and the switch beside Finish is for the times it is not.
@@ -2335,6 +2351,12 @@ function downloadBytes(data, filename, type) {
 }
 
 function showFailure(error) {
+  // Not a failure: a write that needs an answer first. Nothing was saved.
+  if (error instanceof train.NeedsAnswer) {
+    train.askQuestion(state, error.question);
+    return;
+  }
+
   /*
    * A refusal is not a failure. In demo mode every write is turned away at the
    * database on purpose, and reporting that as "that did not save" would read

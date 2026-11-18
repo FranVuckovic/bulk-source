@@ -23,6 +23,9 @@ import {
   setStamps,
   keepStepDraft,
   loggedSetsFor,
+  startQuestion,
+  askQuestion,
+  NeedsAnswer,
 } from '../js/ui/train.js';
 import { stopRest } from '../js/ui/components.js';
 import { createFakeEnv } from './helpers/fake-indexeddb.js';
@@ -585,6 +588,119 @@ test('UI-14: confirming one max redraws the review instead of closing it', async
   } finally {
     progressActions['open-review'] = original;
   }
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   UI-10 / H6 · The first tick asks what the Start button asks
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/** A finished log of one position in one rotation. */
+const doneLog = (plan, cycle, position, id) => ({
+  id, planId: plan.meta.id, cycleId: cycle.id, cycleSequence: cycle.sequence,
+  rotationPosition: position, sessionId: position, status: 'complete', completionRatio: 1,
+  startedAt: '2026-11-01T10:00:00.000Z', endedAt: '2026-11-01T11:00:00.000Z',
+});
+
+function rotationState(plan, sessionId, { sequence, done = [], previousDone = null }) {
+  const state = trainState(plan, sessionId, { sequence, activeLog: null });
+  const logs = done.map((position, i) => doneLog(plan, state.cycle, position, i + 1));
+  if (previousDone) {
+    const previous = newCycle(plan, { sequence: sequence - 1, startedAtISO: '2026-10-20T00:00:00.000Z', localStartDate: null });
+    state.cycles = [previous, state.cycle];
+    previousDone.forEach((position, i) => logs.push(doneLog(plan, previous, position, 100 + i)));
+  }
+  state.logs = logs;
+  state.cycleProgress = cycleProgress(plan, state.cycle, logs);
+  return state;
+}
+
+test('H6: a position already done this rotation asks before a second one is filed', () => {
+  // The guard ran only on "Start session". One tick on a finished rotation's A
+  // filed a second A into it — the misfiling loop the guard was written for.
+  const state = rotationState(FLOPIP, 'A', { sequence: 4, done: ['A', 'B', 'C', 'D', 'E'] });
+  const question = startQuestion(state);
+  assert.equal(question.kind, 'done');
+  assert.equal(question.sequence, 4);
+  assert.equal(question.canAdvance, true);
+});
+
+test('H6: the first log of an empty rotation that is not its first letter asks', () => {
+  // Starting FLOPIP on a Friday with E made every rotation E, A, B, C, D — and
+  // in rotation 3 put the test before the taper.
+  const state = rotationState(FLOPIP, 'E', { sequence: 4 });
+  assert.deepEqual(
+    { kind: startQuestion(state).kind, first: startQuestion(state).first },
+    { kind: 'order', first: 'A' }
+  );
+  assert.equal(startQuestion(rotationState(FLOPIP, 'A', { sequence: 4 })), null, 'A first is the normal case');
+  assert.equal(startQuestion(rotationState(FLOPIP, 'C', { sequence: 4, done: ['A', 'B'] })), null);
+  const open = rotationState(FLOPIP, 'E', { sequence: 4 });
+  open.activeLog = { id: 3 };
+  assert.equal(startQuestion(open), null, 'an open session is never asked again');
+});
+
+test('H6: the previous rotation is offered when that position is still pending there', () => {
+  const state = rotationState(FLOPIP, 'E', { sequence: 4, previousDone: ['A', 'B', 'C', 'D'] });
+  const question = startQuestion(state);
+  assert.equal(question.previous?.sequence, 3);
+  const none = rotationState(FLOPIP, 'E', { sequence: 4, previousDone: ['A', 'B', 'C', 'D', 'E'] });
+  assert.equal(startQuestion(none).previous, null);
+});
+
+test('UI-10: the question uses the Start sheet\'s words and offers every way forward', async () => {
+  const state = rotationState(FLOPIP, 'E', { sequence: 4, previousDone: ['A', 'B', 'C', 'D'] });
+  await withFakeDocument(async (nodes) => {
+    askQuestion(state, { ...startQuestion(state), resume: { si: 2, i: 0 } });
+    const html = nodes.pan.innerHTML;
+    assert.match(html, /Not the first session of the rotation/);
+    assert.match(html, /data-act="start-pick" data-id="A"/);
+    assert.match(html, /data-act="start-answer" data-choice="previous"[^>]*>File it in rotation 3</);
+    assert.match(html, /data-act="start-answer" data-choice="anyway"[^>]*>Train it in rotation 4 anyway</);
+    assert.match(html, /data-si="2" data-i="0"/, 'the tick that asked is not resumed');
+
+    const done = rotationState(FLOPIP, 'A', { sequence: 4, done: ['A', 'B', 'C', 'D', 'E'] });
+    askQuestion(done, startQuestion(done));
+    assert.match(nodes.pan.innerHTML, /Already done this rotation/);
+    assert.match(nodes.pan.innerHTML, /data-act="advance-cycle">Start rotation 5 first</);
+  });
+});
+
+test('UI-10: answering starts the session and logs the set that was tapped', async () => {
+  const state = rotationState(FLOPIP, 'E', { sequence: 4 });
+  await withFakeDocument(async () => {
+    const ctx = recordingCtx(state);
+    ctx.startSession = async () => {
+      assert.deepEqual(state.startAnswer, { sessionId: 'E', sequence: 4, choice: 'anyway' });
+      state.activeLog = { id: 1 };
+    };
+    await actions['start-answer'](ctx, { choice: 'anyway', si: '2', i: '0' });
+    assert.equal(ctx.saved.length, 1);
+    assert.deepEqual([ctx.saved[0].slotIndex, ctx.saved[0].setIndex], [2, 0]);
+  });
+});
+
+test('UI-10: a tick that has to ask carries its row with the question', async () => {
+  const state = rotationState(FLOPIP, 'E', { sequence: 4 });
+  await withFakeDocument(async () => {
+    const ctx = recordingCtx(state);
+    ctx.saveSet = async () => {
+      throw new NeedsAnswer(startQuestion(state));
+    };
+    const si = slotsFor(state).findIndex((slot) => slot.ex === 'dip');
+    await assert.rejects(actions.tick(ctx, { si: String(si), i: '1' }, { stopPropagation() {} }), (error) => {
+      assert.ok(error instanceof NeedsAnswer);
+      assert.deepEqual(error.question.resume, { si, i: 1 });
+      return true;
+    });
+  });
+});
+
+test('UI-10: every write that opens a session goes through the question, and the answer is stored', () => {
+  const ensure = appBody('async function ensureActiveLog(');
+  assert.match(ensure, /train\.startQuestion\(state\)/);
+  assert.match(ensure, /throw new train\.NeedsAnswer\(/);
+  assert.match(ensure, /outOfOrder:/);
+  assert.match(appBody('function showFailure('), /instanceof train\.NeedsAnswer/);
 });
 
 test('UI-03: a new civil date with no session open starts at normal readiness', () => {
