@@ -1514,9 +1514,14 @@ export const actions = {
       <button class="big ghost mt" data-act="sheet-close">Close</button>`);
   },
 
+  /*
+   * The review is redrawn, not closed: confirming four lifts used to mean
+   * opening it four times. The confirmed row drops out of the list because it
+   * no longer needs confirming, and the rest stay where they were.
+   */
   async 'confirm-max'(ctx, data) {
     await ctx.confirmMax(data.id, Number(data.value), data.reason);
-    closeSheet();
     ctx.render();
+    actions['open-review'](ctx);
   },
 };

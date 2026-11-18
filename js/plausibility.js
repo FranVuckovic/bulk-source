@@ -218,3 +218,37 @@ export function outlierReason(value, others, { range = null, share = 0.25, unit 
   }
   return null;
 }
+
+/**
+ * The question to ask before a logged set is saved, or null.
+ *
+ * The set editor and the one-tap path ask with the set itself and every stored
+ * set: the best for the same exercise is found here, bodyweight lifts compare
+ * bodyweight + added (so a first weighted dip is not mistaken for a typo), and
+ * the set being edited is left out so an outlier is judged against the rest.
+ * The rep rule comes from `checkSet` when the exercise is known.
+ */
+export function questionSet(set, history, { exercise = null } = {}) {
+  const total = (s) => (Number.isFinite(s?.load) ? s.load + (Number(s.bodyweightUsed) || 0) : null);
+  const value = total(set);
+  if (value == null || !set?.exerciseId) return null;
+  let best = null;
+  let bestRow = null;
+  for (const row of history || []) {
+    if (row.exerciseId !== set.exerciseId || row.deletedAtISO) continue;
+    if (set.id != null && row.id === set.id) continue;
+    const t = total(row);
+    if (t != null && (best == null || t > best)) {
+      best = t;
+      bestRow = row;
+    }
+  }
+  if (value > 0 && best != null && best > 0 && value > best * SET_LOAD_FACTOR) {
+    return `Save ${round1(set.load)} kg? Your best on this lift is ${round1(bestRow.load)} kg.`;
+  }
+  if (exercise) {
+    const verdict = checkSet({ load: null, reps: set.reps, exercise });
+    if (!verdict.ok) return verdict.message;
+  }
+  return null;
+}

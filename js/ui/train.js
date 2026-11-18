@@ -42,9 +42,11 @@ import {
   companionSlots,
   BORROWABLE_FIELDS,
 } from '../plan.js';
-import { exerciseNoteHistory, recentEvidenceMax } from '../analytics.js';
+import { exerciseNoteHistory, recentEvidenceMax, LONG_GAP_SECONDS } from '../analytics.js';
 import { rankSwaps, listedSubs, searchKey, matchesQuery, guessBasedOn, normalize } from '../library.js';
-import { daysBetween } from '../dates.js';
+import { cycleProgress } from '../cycle.js';
+import { questionSet } from '../plausibility.js';
+import { daysBetween, localDate, localDateOf } from '../dates.js';
 import {
   escape,
   fmtLoad,
@@ -74,6 +76,374 @@ export const CUSTOM_SESSION_ID = 'custom';
  */
 export const customWorkoutById = (state, id) =>
   (state?.plan?.customWorkouts || []).find((w) => w.id === id) || null;
+
+/** A session's departures from the plan, before it has any. */
+export const freshDeviations = () => ({ swaps: {}, extras: [], addedSets: {}, exerciseNotes: {}, phaseSwaps: {} });
+
+/**
+ * Forget everything the last session left on the Train screen.
+ *
+ * One list, used by finish, discard, plan switch and erase. There used to be a
+ * hand-written list in each, and they had drifted: discard cleared only the
+ * log and its sets, so the next session inherited the discarded one's swaps,
+ * added exercises, grips, note — all keyed by slot index, so they landed on
+ * whatever the next session had in that position — and none of them reset
+ * readiness, so a red day stayed red until the app was cold-started.
+ */
+export function resetSessionState(state) {
+  state.activeLog = null;
+  state.loggedSets = new Map();
+  state.deviations = freshDeviations();
+  state.grips = {};
+  state.swapConfirmed = new Set();
+  state.draft = { note: '', bodyweight: '', sessionRpe: '' };
+  state.cleared = new Set();
+  state.exOpen = new Set(['0']);
+  state.readiness = 'normal';
+  state.stepDrafts = {};
+  state.startAnswer = null;
+  state.pendingSet = null;
+  state.pendingTick = null;
+  state.staleAnswered = null;
+}
+
+/**
+ * When a set happened, and when it was last corrected.
+ *
+ * `timestampISO` is the moment the set was first logged and an edit never
+ * moves it. Every save used to re-stamp it, so fixing an RPE at the end of the
+ * session moved that set to the end — and every rest gap, duration and
+ * "logged live?" judgement built on the timestamps was wrong in a way nothing
+ * could detect. `editedAtISO` says when it was changed instead.
+ *
+ * `stamp` is what the save's operation id is built from. It must change on an
+ * edit: built from the kept timestamp, the edit would carry the first save's
+ * operation id and the idempotency check would hand back the old row.
+ */
+export function setStamps(existing, now) {
+  if (!existing?.timestampISO) return { timestampISO: now, editedAtISO: null, stamp: now };
+  return { timestampISO: existing.timestampISO, editedAtISO: now, stamp: now };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Starting a session the rotation did not expect
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * A write that cannot go ahead until the lifter answers a question.
+ *
+ * Thrown from `ensureActiveLog` — the one place every session is opened from,
+ * whether by Start, the first tick, a swap or an added exercise — and caught by
+ * the central action handler, which asks instead of reporting a failure.
+ */
+export class NeedsAnswer extends Error {
+  constructor(question) {
+    super('This needs an answer before anything is saved.');
+    this.name = 'NeedsAnswer';
+    this.question = question;
+  }
+}
+
+/**
+ * Should starting this session ask first? Null when it should not.
+ *
+ * Two cases, both from real use:
+ *
+ *   `done` — the position is already complete or partial in this rotation.
+ *   The Start button asked; the first tick did not, and one tick on a finished
+ *   rotation's A filed a second A into it.
+ *
+ *   `order` — nothing is logged in this rotation yet and this is not its first
+ *   letter. Starting FLOPIP on a Friday with E made every rotation run E, A, B,
+ *   C, D, and in rotation 3 put the test before the taper.
+ *
+ * Neither is forbidden. Both are asked, with the previous rotation offered
+ * when this position is still pending there — the usual reason for both is a
+ * rotation advanced a session too early.
+ */
+export function startQuestion(state) {
+  if (state.activeLog || isOutsideRotation(state)) return null;
+  const id = state.trainSessionId;
+  const order = state.plan.meta.rotationOrder;
+  if (!order.includes(id) || !state.cycleProgress) return null;
+
+  const sequence = state.cycle.sequence;
+  const positions = state.cycleProgress.positions || [];
+  const status = positions.find((p) => p.position === id)?.status ?? 'pending';
+  const common = { sessionId: id, sequence, canAdvance: sequence < state.plan.meta.rotations, previous: previousOpening(state, id) };
+
+  if (status === 'complete' || status === 'partial') return { kind: 'done', status, ...common };
+  if (id !== order[0] && positions.every((p) => p.status === 'pending')) return { kind: 'order', first: order[0], ...common };
+  return null;
+}
+
+/** The previous rotation, if this position is still pending in it. */
+function previousOpening(state, position) {
+  const sequence = state.cycle.sequence - 1;
+  const cycle = (state.cycles || []).find((c) => c.sequence === sequence);
+  if (!cycle) return null;
+  const finished = (state.logs || []).filter((log) => log.endedAt && !log.deletedAtISO);
+  const progress = cycleProgress(state.plan, cycle, finished);
+  const status = progress.positions.find((p) => p.position === position)?.status ?? 'pending';
+  return status === 'pending' ? { sequence, cycleId: cycle.id } : null;
+}
+
+/** Has this question been answered, for this session in this rotation? */
+export function isAnswered(state, question) {
+  const answer = state.startAnswer;
+  return !!answer && answer.sessionId === question.sessionId && answer.sequence === question.sequence;
+}
+
+/**
+ * Ask it, on the sheet the Start button has always used, in its words.
+ *
+ * `question.resume` is the row whose tick asked, carried on the answer buttons
+ * so answering logs that set.
+ */
+export function askQuestion(state, question) {
+  if (question.kind === 'stale') return askAboutStaleSession(question);
+  const id = escape(question.sessionId);
+  const n = question.sequence;
+  const resume = question.resume ? ` data-si="${question.resume.si}" data-i="${question.resume.i}"` : '';
+  const previous = question.previous
+    ? `<button class="big ghost mt" data-act="start-answer" data-choice="previous"${resume}>File it in rotation ${question.previous.sequence}</button>`
+    : '';
+  const anyway = `<button class="big ghost mt" data-act="start-answer" data-choice="anyway"${resume}>Train it in rotation ${n} anyway</button>`;
+  const back = '<button class="big ghost mt" data-act="sheet-close">Go back</button>';
+
+  if (question.kind === 'done') {
+    openSheet(`<div class="ttl">Already done this rotation</div>
+      <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">Session <b>${id}</b> is already logged as ${escape(
+        question.status
+      )} in <b>rotation ${n}</b>.</p>
+      <p style="text-align:center;font-size:13px">Starting it now records a second ${id} in rotation ${n}${
+        question.canAdvance ? ` — not in rotation ${n + 1}.` : '.'
+      }</p>
+      ${question.canAdvance ? `<button class="big mt" data-act="advance-cycle">Start rotation ${n + 1} first</button>` : ''}
+      ${previous}${anyway}${back}`);
+    return;
+  }
+
+  const first = escape(question.first);
+  openSheet(`<div class="ttl">Not the first session of the rotation</div>
+    <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">Nothing is logged in <b>rotation ${n}</b> yet, and it starts with <b>${first}</b>.</p>
+    <p style="text-align:center;font-size:13px">Starting ${id} now makes it the first session of rotation ${n}, out of order.</p>
+    <button class="big mt" data-act="start-pick" data-id="${first}">Open ${first} instead</button>
+    ${previous}${anyway}${back}`);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   A forgotten Finish
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * A rest after the last set: what a late Finish is replaced with.
+ *
+ * Roughly a working set's rest, so the session is not cut off the moment the
+ * last set was logged, and short enough that a forgotten Finish costs minutes
+ * rather than hours.
+ */
+export const FINISH_REST_SECONDS = 3 * 60;
+
+/**
+ * An open session this long after its last set, or on another day, was
+ * almost certainly left open rather than still being trained.
+ */
+export const STALE_SESSION_SECONDS = 3 * 60 * 60;
+
+const lastStamp = (sets) =>
+  (sets || []).map((set) => set?.timestampISO).filter(Boolean).sort().pop() || null;
+
+/**
+ * When a session ended, given the moment Finish was pressed.
+ *
+ * Finish stamped `endedAt = now`, unconditionally. Pressed hours after the
+ * last set — forgotten, then remembered at home — that turned 57 minutes of
+ * work into a 446-minute session, and an overnight one into 1350 minutes. It
+ * happened in a quarter of his sessions and dominated the weekly session load.
+ *
+ * Pressed more than a long gap (`LONG_GAP_SECONDS`, the same 20 minutes that
+ * stops counting as rest) after the last set, the session ends at that set
+ * plus a rest. The button time is kept as `finishPressedAt`, so nothing about
+ * what happened is thrown away.
+ */
+export function finishTimes(sets, now) {
+  const last = lastStamp(sets);
+  const lateBy = last ? (Date.parse(now) - Date.parse(last)) / 1000 : null;
+  if (lateBy != null && lateBy > LONG_GAP_SECONDS) {
+    return {
+      endedAt: new Date(Date.parse(last) + FINISH_REST_SECONDS * 1000).toISOString(),
+      finishPressedAt: now,
+      endedAtSource: 'last-set',
+      lastSetAt: last,
+    };
+  }
+  return { endedAt: now, finishPressedAt: now, endedAtSource: 'finish', lastSetAt: last };
+}
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const clockTime = (iso) => {
+  const d = new Date(iso);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+};
+
+/**
+ * Is the open session one that was left open, rather than one being trained?
+ *
+ * Stale when its last set (or its start, with no sets) is on an earlier civil
+ * date, or more than three hours ago. Null otherwise. `day` is how the prompt
+ * names it: today, yesterday, or the weekday.
+ */
+export function staleSession(log, sets, now) {
+  if (!log) return null;
+  const own = (sets || []).filter((set) => set.sessionLogId == null || set.sessionLogId === log.id);
+  const lastSet = lastStamp(own);
+  const last = lastSet || log.startedAt;
+  if (!last) return null;
+  const nowDate = new Date(now);
+  const lastDay = localDateOf(last);
+  const today = localDate(nowDate);
+  const gap = (nowDate.getTime() - Date.parse(last)) / 1000;
+  if (lastDay === today && gap <= STALE_SESSION_SECONDS) return null;
+
+  const days = daysBetween(lastDay, today);
+  const day =
+    days === 0
+      ? 'today'
+      : days === 1
+        ? 'yesterday'
+        : new Date(last).toLocaleDateString('en-GB', { weekday: 'long' });
+  return {
+    kind: 'stale',
+    sessionId: log.sessionId ?? null,
+    logId: log.id,
+    lastSetAt: lastSet,
+    hasSets: !!lastSet,
+    day,
+    time: clockTime(last),
+  };
+}
+
+/**
+ * Ask before anything is added to a session that was left open.
+ *
+ * Nothing is closed, discarded or appended without a tap. Closing ends it at
+ * its last set, the same rule as a late Finish.
+ */
+function askAboutStaleSession(question) {
+  const whose = question.day === 'today' ? 'this' : question.day === 'yesterday' ? "yesterday's" : `${question.day}'s`;
+  const when = question.day === 'today' ? 'today' : question.day === 'yesterday' ? 'yesterday' : `on ${question.day}`;
+  const resume = question.resume ? ` data-si="${question.resume.si}" data-i="${question.resume.i}"` : '';
+  openSheet(`<div class="ttl">Session ${escape(question.sessionId ?? '')} is still open</div>
+    <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">${
+      question.hasSets
+        ? `Its last set was logged ${escape(when)} at <b>${escape(question.time)}</b>.`
+        : `It was opened ${escape(when)} at <b>${escape(question.time)}</b> and has nothing logged.`
+    }</p>
+    <p style="text-align:center;font-size:13px">If you forgot to finish it, ${
+      question.hasSets ? 'close it there' : 'discard it'
+    }. Anything you log after that starts a new session.</p>
+    ${
+      question.hasSets
+        ? `<button class="big mt" data-act="close-stale">Close ${escape(whose)} session at its last set (${escape(question.time)})</button>`
+        : '<button class="big mt" data-act="discard-session">Discard it</button>'
+    }
+    <button class="big ghost mt" data-act="keep-stale"${resume}>Keep it open and log here</button>
+    <button class="big ghost mt" data-act="sheet-close">Go back</button>`);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   A number worth a second look
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Ask before saving a set that does not look like something that happened.
+ *
+ * Soft: "Save" saves exactly what was entered, "Fix" goes back to the editor
+ * with it. 1025 typed for 102.5 used to save without a word, and a typo in a
+ * working max prescribed 1197.5 kg for one tap to log. Returns true when it
+ * asked, and the save is waiting on the answer.
+ */
+function askIfImplausible(ctx, pending) {
+  const { state } = ctx;
+  const logged = state.loggedSets.get(setKey(pending.si, pending.i));
+  const warning = questionSet(
+    {
+      id: logged?.id,
+      exerciseId: pending.slot.ex,
+      load: pending.values.load,
+      reps: pending.values.reps,
+      bodyweightUsed: bodyweightFor(state, pending.slot.ex) || null,
+    },
+    state.sets,
+    { exercise: state.plan.exercises[pending.slot.ex] }
+  );
+  if (!warning) return false;
+  state.pendingSet = pending;
+  openSheet(`<div class="ttl">Check this set</div>
+    <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">${escape(warning)}</p>
+    <p style="text-align:center;font-size:13px">A typo here goes into every estimate and chart that uses this lift.</p>
+    <button class="big mt" data-act="plausible-save">Save</button>
+    <button class="big ghost mt" data-act="plausible-fix">Fix</button>`);
+  return true;
+}
+
+/** Log a one-tap set, start the rest, and celebrate a record. */
+async function commitTick(ctx, slotIndex, i, slot, values) {
+  const result = await saveAsking(ctx, slotIndex, i, values);
+  startRest(slot.restSec || ctx.state.plan.exercises[slot.ex].defaultRestSec);
+  if (result?.beaten) ctx.celebrate?.(result.beaten);
+}
+
+/** Log the set in the editor, close it, and celebrate a record once it is gone. */
+async function commitStep(ctx, values) {
+  const c = ctx.state.sheetCtx;
+  ctx.state.exOpen.add(String(c.si));
+  const result = await ctx.saveSet(c.si, c.i, values);
+  endStepEdit(ctx.state);
+  startRest(c.slot.restSec || ctx.state.plan.exercises[c.slot.ex].defaultRestSec);
+  closeSheet();
+  ctx.render();
+  // After the editor is gone, or closing it would close this too.
+  if (result?.beaten) ctx.celebrate?.(result.beaten);
+}
+
+/** saveSet, with the row attached to any question it raises. */
+async function saveAsking(ctx, slotIndex, setIndex, values) {
+  try {
+    return await ctx.saveSet(slotIndex, setIndex, values);
+  } catch (error) {
+    if (error instanceof NeedsAnswer) error.question.resume = { si: slotIndex, i: setIndex };
+    throw error;
+  }
+}
+
+/** One session's stored sets, keyed the way the Train screen reads them. */
+export function loggedSetsFor(sets, sessionLogId) {
+  return new Map(
+    (sets || [])
+      .filter((set) => set.sessionLogId === sessionLogId && !set.deletedAtISO)
+      .map((set) => [setKey(set.slotIndex, set.setIndex), set])
+  );
+}
+
+/**
+ * The rotation the displayed session is resolved against.
+ *
+ * An open session's own, whatever the plan has moved on to. Logged sets are
+ * keyed by position (`slotIndex:setIndex`), and the shape of a session changes
+ * between rotations — FLOPIP's Friday has an AMRAP every other rotation, FOPIP
+ * A gains a static hold at the front from rotation 11. Reopening a past
+ * session, or advancing or correcting the rotation while one is open, used to
+ * re-resolve it against the plan's current rotation, so its sets were drawn
+ * under the wrong exercises and the next tick could displace them.
+ *
+ * This is the minimal safe fix rather than keying sets by slot id: it changes
+ * no stored data, and a session's slot list can no longer change under its
+ * own logged sets except through readiness, which is already refused when it
+ * would reindex.
+ */
+export const sessionRotation = (state) => state.activeLog?.cycleSequence ?? state.cycle.sequence;
 
 /** True for the blank ad-hoc session and for any saved custom workout. */
 export const isOutsideRotation = (state, id = state.trainSessionId) =>
@@ -120,7 +490,7 @@ export function slotsFor(state, readinessOverride) {
   // adjustment. The screen never decides what the session is.
   const resolved = toDisplaySession(
     resolveSession(state.plan, {
-      rotation: state.cycle.sequence,
+      rotation: sessionRotation(state),
       sessionId: state.trainSessionId,
       readiness: readinessOverride ?? state.readiness ?? 'normal',
     })
@@ -430,6 +800,12 @@ const isFailureSet = (slot, i) => !!slot.failLast && i >= slot.sets - slot.failL
  */
 const isAmrapSet = (slot, i) => !!slot.amrap && i === 0;
 
+/**
+ * A row whose numbers are the measurement: the AMRAP, a test, the attempt.
+ * Nothing may fill these in for you — not a tick, not "same as last time".
+ */
+const isMeasurementRow = (slot, i) => isAmrapSet(slot, i) || !!slot.isTest || slot.role === 'attempt';
+
 /** What the row is displaying, so a one-tap set stores it rather than null. */
 const defaultGrip = (state, slot, slotIndex) => {
   const exercise = state.plan.exercises[slot.ex];
@@ -437,8 +813,58 @@ const defaultGrip = (state, slot, slotIndex) => {
   return state.grips[`${state.trainSessionId}-${slotIndex}`] || exercise.grips[0];
 };
 
-/** Every competition-bench set in this plan is paused; say so rather than guess later. */
-const defaultPause = (state, slot) => (tracksPause(slot.ex) ? 'paused' : null);
+/*
+ * What each plan says about how its bench lifts are performed.
+ *
+ * The two plans disagree about the competition bench, and each is right about
+ * itself. FOPIP v2: "The competition bench is always controlled touch-and-go.
+ * All paused competition-grip work lives in the long-pause lift" — except its
+ * AMRAP ("a fixed 100 kg, paused") and the weekly attempt ("Paused, spotted",
+ * the note plan.js writes on it). FLOPIP 2 writes "paused" on every
+ * competition-bench slot, Sunday volume, Friday single, AMRAP and test alike
+ * (docs/training-plan-flopip-2.md).
+ *
+ * Keyed `exercise` or `exercise@role`; the role entry wins.
+ */
+const PLAN_PAUSE = Object.freeze({
+  'fopip-v2': { benchComp: 'touch-and-go', 'benchComp@amrap': 'paused', 'benchComp@attempt': 'paused' },
+  'flopip-2': { benchComp: 'paused' },
+});
+
+/*
+ * What a lift is, whatever the plan. Long-pause is paused by definition. Pin
+ * press starts from the pins and speed bench is about bar speed, so neither has
+ * a pause style worth stamping. Anything else is left for the lifter to say.
+ */
+const EXERCISE_PAUSE = Object.freeze({ benchPause: 'paused', benchPin: null, benchSpeed: null });
+
+/**
+ * The pause style a bench set is stored with unless you choose another.
+ *
+ * One source, used by the tick, by "same as last time" and by the set editor.
+ * The tick used to stamp "paused" on every exercise whose id began with
+ * `bench` and the editor stamped nothing, so the same set got a different
+ * stored value depending on which button logged it.
+ *
+ * In order: a pause style the slot states as a field; a slot whose own text
+ * says paused or touch-and-go (FLOPIP writes it there) — unless it has been
+ * swapped, because the label survives a swap and a pin press in a slot
+ * labelled "paused" is still a pin press; the plan's statement; the lift's.
+ */
+export function defaultPause(state, slot) {
+  if (!slot || !tracksPause(slot.ex)) return null;
+  if (PAUSE_STYLES.includes(slot.pauseStyle)) return slot.pauseStyle;
+  if (!slot.swappedFrom) {
+    const said = `${slot.label || ''} ${slot.note || ''}`;
+    if (/touch-and-go/i.test(said)) return 'touch-and-go';
+    if (/\bpaused\b/i.test(said)) return 'paused';
+  }
+  const stated = PLAN_PAUSE[state.plan?.meta?.id] || {};
+  const byRole = stated[`${slot.ex}@${slot.role}`];
+  if (byRole !== undefined) return byRole;
+  if (stated[slot.ex] !== undefined) return stated[slot.ex];
+  return EXERCISE_PAUSE[slot.ex] ?? null;
+}
 
 /** What this exercise looked like last time, for the prefill and the hint. */
 function lastTime(state, exerciseId) {
@@ -609,7 +1035,7 @@ export function view(ctx) {
   const resolved = isCustom
     ? { effortMode: 'none', accessoryMultiplier: 1, blockType: 'custom' }
     : resolveSession(state.plan, {
-        rotation: state.cycle.sequence,
+        rotation: sessionRotation(state),
         sessionId: state.trainSessionId,
         readiness: state.readiness || 'normal',
       });
@@ -1579,6 +2005,46 @@ function setRow(state, slot, slotIndex, i) {
  * "Log this set" being hidden behind the keyboard means scrolling to save every
  * single set of every session.
  */
+/**
+ * Keep the set being edited, if the editor is closing without a save.
+ *
+ * Called on every sheet close. With the keyboard up, the visible strip above
+ * the editor is the backdrop, and one stray tap there threw away the typed
+ * load, reps, RPE and note. The draft is kept against its row and comes back
+ * when that row's editor is opened again. A save, "Remove this set" and Cancel
+ * end the editing first, so they leave nothing behind.
+ */
+export function keepStepDraft(state) {
+  const c = state.sheetCtx;
+  if (c?.kind !== 'step' || !c.editing) return;
+  c.editing = false;
+  // Only what was actually changed is a draft. An editor opened and closed
+  // untouched keeps nothing, so a prescription that moves later — back-offs
+  // follow the day's single — is never replaced by a stale copy of itself.
+  if (stepFields(c) === c.opened) return;
+  const key = setKey(c.si, c.i);
+  state.stepDrafts = {
+    ...(state.stepDrafts || {}),
+    [key]: { ...c, exerciseId: c.slot.ex, loggedId: state.loggedSets.get(key)?.id ?? null },
+  };
+}
+
+/** What the editor lets you change, as one comparable string. */
+const stepFields = (c) =>
+  JSON.stringify([c.load, c.reps, c.rpe, c.toFailure, c.isAmrap, c.formBreakdown, c.attemptResult, c.isMyoRep,
+    c.isIndexSet, c.velocity, c.note, c.pauseStyle]);
+
+/** End the editing without keeping a draft: the set was saved, removed or cancelled. */
+function endStepEdit(state) {
+  const c = state.sheetCtx;
+  if (c?.kind !== 'step') return;
+  c.editing = false;
+  if (state.stepDrafts) delete state.stepDrafts[setKey(c.si, c.i)];
+}
+
+/** The load box's text: blank for no load, never a 0 nobody typed. */
+const loadBox = (kg, unit) => (Number.isFinite(kg) ? Math.round(toDisplay(kg, unit) * 10) / 10 : '');
+
 function drawStepSheet(ctx) {
   const { state } = ctx;
   const c = state.sheetCtx;
@@ -1586,6 +2052,7 @@ function drawStepSheet(ctx) {
   const unit = state.settings.unit;
   const workingMax = prescriptionMax(state, c.slot).value;
   const bodyweight = bodyweightFor(state, c.slot.ex);
+  c.editing = true;
 
   const field = (key, label, value, step) => `<div class="fcol">
     <label for="in-${key}">${escape(label)}</label>
@@ -1599,11 +2066,16 @@ function drawStepSheet(ctx) {
   openSheet(`<div class="ttl">${escape(exercise.name)} \u00b7 set ${c.i + 1}</div>
 
     <div class="fields">
-      ${field('load', bodyweight ? `Added (${unit})` : `Load (${unit})`, Math.round(toDisplay(c.load ?? 0, unit) * 10) / 10, stepFor(unit, state.settings.increment))}
+      ${field('load', bodyweight ? `Added (${unit})` : `Load (${unit})`, loadBox(c.load, unit), stepFor(unit, state.settings.increment))}
       ${field('reps', 'Reps', c.reps ?? '', 1)}
       ${field('rpe', 'RPE', c.rpe ?? '', 0.5)}
     </div>
 
+    ${
+      c.needsLoad
+        ? `<p class="hint" style="margin:-4px 2px 10px;color:var(--s2)"><b>Enter the load to log this set.</b> A weighted set with no load counts as done but carries no weight and no estimate.</p>`
+        : ''
+    }
     <div class="eff" id="stepEff">${stepReadout(state, c, workingMax)}</div>
     <div id="stepOver">${overshootNote(state, c)}</div>
     ${variationNote(state, c.slot.ex)}
@@ -1656,7 +2128,7 @@ function drawStepSheet(ctx) {
           ? '<button class="big ghost mt" data-act="unlog-step">Remove this set</button><p class="hint" style="text-align:center;margin:6px 0 0">Recoverable from Log → Bin.</p>'
           : ''
       }
-      <button class="big ghost mt" data-act="sheet-close">Cancel</button>
+      <button class="big ghost mt" data-act="step-cancel">Cancel</button>
     </div>`);
 }
 
@@ -1736,13 +2208,26 @@ export const actions = {
      * measurement. v1 showed the slot's nominal six and one tap logged it,
      * fabricating the single most important data point in the plan.
      */
-    if (isAmrapSet(slot, i) || slot.isTest || slot.role === 'attempt') {
+    if (isMeasurementRow(slot, i)) {
       actions['open-step'](ctx, { si: String(slotIndex), i: String(i), field: 'reps' });
       return;
     }
 
     const { load, reps, rpe, toFailure, prescribed } = rowValues(state, slot, slotIndex, i);
-    await ctx.saveSet(slotIndex, i, {
+
+    /*
+     * A weighted set with no load is not a set anyone can use: no tonnage, no
+     * estimate, and it still counts as logged. That is what one tap stored for
+     * an exercise with no max and no history, or after "Clear prescribed". The
+     * editor opens on the load instead. A bodyweight lift with nothing added is
+     * a real set and is logged as one.
+     */
+    if (load == null && !bodyweightFor(state, slot.ex)) {
+      actions['open-step'](ctx, { si: String(slotIndex), i: String(i), field: 'load' });
+      return;
+    }
+
+    const values = {
       load,
       reps,
       rpe,
@@ -1756,8 +2241,35 @@ export const actions = {
       isMyoRep: !!slot.myoReps && i === slot.sets - 1,
       wasPrescribed: load != null && load === prescribed,
       prescribedLoad: prescribed,
-    });
-    startRest(slot.restSec || state.plan.exercises[slot.ex].defaultRestSec);
+    };
+    if (askIfImplausible(ctx, { from: 'tick', si: slotIndex, i, slot, values })) return;
+    await commitTick(ctx, slotIndex, i, slot, values);
+  },
+
+  /** "Save" on the plausibility question: it was right. Never blocked. */
+  async 'plausible-save'(ctx) {
+    const pending = ctx.state.pendingSet;
+    ctx.state.pendingSet = null;
+    if (!pending) return;
+    if (pending.from === 'tick') {
+      closeSheet();
+      await commitTick(ctx, pending.si, pending.i, pending.slot, pending.values);
+      return;
+    }
+    await commitStep(ctx, pending.values);
+  },
+
+  /** "Fix" on the plausibility question: back to the editor, with what was typed. */
+  'plausible-fix'(ctx) {
+    const pending = ctx.state.pendingSet;
+    ctx.state.pendingSet = null;
+    if (!pending) return;
+    if (pending.from === 'tick') {
+      actions['open-step'](ctx, { si: String(pending.si), i: String(pending.i), field: 'load' });
+      return;
+    }
+    ctx.state.sheetCtx.field = 'load';
+    drawStepSheet(ctx);
   },
 
   'open-ex-note'(ctx, data) {
@@ -1851,7 +2363,10 @@ export const actions = {
       field: data.field,
       slot,
       logged: !!values.logged,
-      load: values.load ?? 0,
+      // Blank stays blank. It used to open on 0, so a row showing "—" was
+      // logged as 0 kg by anyone who only changed the reps. Zero added is
+      // still the right start for a bodyweight lift.
+      load: values.load ?? (bodyweightFor(state, slot.ex) ? 0 : null),
       reps: values.reps ?? slot.reps,
       rpe: values.rpe,
       toFailure: values.logged ? !!values.logged.toFailure : values.toFailure,
@@ -1862,10 +2377,34 @@ export const actions = {
       isIndexSet: values.logged ? !!values.logged.isIndexSet : !!slot.idx,
       velocity: values.logged?.velocity ?? null,
       note: values.logged?.note ?? null,
-      pauseStyle: values.logged?.pauseStyle ?? null,
+      // The same defaults a tick stores, from the same functions. A logged set
+      // keeps what it was logged with; a pause style is shown and changeable
+      // above, a grip is chosen on the exercise card.
+      pauseStyle: values.logged ? values.logged.pauseStyle ?? null : defaultPause(state, slot),
+      gripWidth: values.logged?.gripWidth ?? defaultGrip(state, slot, slotIndex),
       prescribed: values.prescribed,
     };
+
+    state.sheetCtx.opened = stepFields(state.sheetCtx);
+
+    // A draft kept for this very row — same set, same exercise, and the logged
+    // row it was editing (if any) still the one there — comes back as it was.
+    const key = setKey(slotIndex, i);
+    const draft = state.stepDrafts?.[key];
+    if (draft) {
+      if (draft.exerciseId === slot.ex && draft.loggedId === (values.logged?.id ?? null)) {
+        state.sheetCtx = { ...draft, slot, field: data.field, logged: !!values.logged, prescribed: values.prescribed };
+      }
+      delete state.stepDrafts[key];
+    }
     drawStepSheet(ctx);
+  },
+
+  /** Cancel means it: the draft goes with the sheet. */
+  'step-cancel'(ctx) {
+    endStepEdit(ctx.state);
+    closeSheet();
+    ctx.render();
   },
 
   /** Steppers now say which of the three fields they move. */
@@ -1941,7 +2480,16 @@ export const actions = {
       <button class="big ghost mt" data-act="sheet-close">Close</button>`);
   },
 
-  /** One tap fills every set of an accessory with last session's numbers. */
+  /**
+   * One tap fills the unlogged sets of an exercise with last session's numbers.
+   *
+   * Only the unlogged ones. It used to save every row, so a set typed in by
+   * hand was replaced by last week's — and on an AMRAP or attempt row it copied
+   * last week's reps or outcome in as this week's measurement, the exact thing
+   * `tick` refuses to do. Those rows are left for the editor. Grip and pause
+   * come from the same defaults a tick stores, so the button used to log a set
+   * no longer decides what the set says about technique.
+   */
   async 'same-as-last'(ctx, data) {
     const { state } = ctx;
     const slotIndex = Number(data.si);
@@ -1950,20 +2498,31 @@ export const actions = {
     if (!previous?.sets?.length) return;
 
     state.exOpen.add(String(slotIndex));
+    let filled = 0;
+    let beaten = null;
     for (let i = 0; i < slot.sets; i++) {
+      if (state.loggedSets.has(setKey(slotIndex, i))) continue;
+      if (isMeasurementRow(slot, i)) continue;
       const source = previous.sets[i] ?? previous.sets[previous.sets.length - 1];
-      await ctx.saveSet(slotIndex, i, {
+      const result = await ctx.saveSet(slotIndex, i, {
         load: source.load,
         reps: source.reps,
         rpe: source.rpe ?? slot.rpe,
         toFailure: isFailureSet(slot, i),
-        isAmrap: isAmrapSet(slot, i),
+        isAmrap: false,
+        formBreakdown: false,
+        gripWidth: defaultGrip(state, slot, slotIndex),
+        pauseStyle: defaultPause(state, slot),
         isMyoRep: !!slot.myoReps && i === slot.sets - 1,
         wasPrescribed: false,
         prescribedLoad: prescriptionFor(state, slot),
       });
+      filled += 1;
+      if (result?.beaten && (!beaten || result.beaten.value > beaten.value)) beaten = result.beaten;
     }
+    if (!filled) return;
     startRest(slot.restSec || state.plan.exercises[slot.ex].defaultRestSec);
+    if (beaten) ctx.celebrate?.(beaten);
   },
 
   /** Made, missed, or tapped again to take it back to unanswered. */
@@ -1988,8 +2547,13 @@ export const actions = {
 
   async 'save-step'(ctx) {
     const c = ctx.state.sheetCtx;
-    ctx.state.exOpen.add(String(c.si));
-    await ctx.saveSet(c.si, c.i, {
+    if (!Number.isFinite(c.load) && !bodyweightFor(ctx.state, c.slot.ex)) {
+      c.needsLoad = true;
+      drawStepSheet(ctx);
+      globalThis.requestAnimationFrame?.(() => document.getElementById('in-load')?.focus?.());
+      return;
+    }
+    const values = {
       // Zero is a real added load on a pull-up, chin-up or dip. v1's `|| null`
       // turned an unweighted set into a blank that produced no e1RM and no
       // tonnage.
@@ -2005,17 +2569,18 @@ export const actions = {
       velocity: c.velocity,
       note: c.note,
       pauseStyle: c.pauseStyle,
+      gripWidth: c.gripWidth ?? null,
       wasPrescribed: c.load != null && c.load === c.prescribed,
       prescribedLoad: c.prescribed,
-    });
-    startRest(c.slot.restSec || ctx.state.plan.exercises[c.slot.ex].defaultRestSec);
-    closeSheet();
-    ctx.render();
+    };
+    if (askIfImplausible(ctx, { from: 'step', si: c.si, i: c.i, slot: c.slot, values })) return;
+    await commitStep(ctx, values);
   },
 
   async 'unlog-step'(ctx) {
     const c = ctx.state.sheetCtx;
     await ctx.removeSet(c.si, c.i);
+    endStepEdit(ctx.state);
     closeSheet();
   },
 
@@ -2405,52 +2970,62 @@ export const actions = {
     return ctx.finishSession();
   },
 
-  /** Start the clock without logging anything. */
   /**
-   * Starting a session that this rotation has already had.
+   * Start the clock without logging anything.
    *
-   * The last line of defence for the misfiling loop. Even with the screen
-   * saying the rotation is finished, you can pick a session and start it — and
-   * you may genuinely want to, after a session that went badly. What you must
-   * not do is start it *believing* you are in the next rotation. So the app
-   * says which rotation the work is about to be filed under, and offers the
-   * advance instead.
+   * Asks first when the rotation says this session is not the one to start —
+   * see `startQuestion`. The first tick, a swap or an added exercise ask the
+   * same question, from `ensureActiveLog`.
    */
   async 'start-session'(ctx) {
-    const { state } = ctx;
-    // A custom workout has no rotation position, so it can never be "already
-    // done this rotation" — it is always allowed to start.
-    const status = isOutsideRotation(state)
-      ? null
-      : state.cycleProgress.positions.find((p) => p.position === state.trainSessionId)?.status;
-
-    if (status === 'complete' || status === 'partial') {
-      const last = state.cycle.sequence >= state.plan.meta.rotations;
-      openSheet(`<div class="ttl">Already done this rotation</div>
-        <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">Session <b>${escape(
-          state.trainSessionId
-        )}</b> is already logged as ${escape(status)} in <b>rotation ${state.cycle.sequence}</b>.</p>
-        <p style="text-align:center;font-size:13px">Starting it now records a second ${escape(
-          state.trainSessionId
-        )} in rotation ${state.cycle.sequence}${
-          last ? '.' : ` — not in rotation ${state.cycle.sequence + 1}.`
-        }</p>
-        ${
-          last
-            ? ''
-            : `<button class="big mt" data-act="advance-cycle">Start rotation ${state.cycle.sequence + 1} first</button>`
-        }
-        <button class="big ghost mt" data-act="do-start-session">Train it in rotation ${state.cycle.sequence} anyway</button>
-        <button class="big ghost mt" data-act="sheet-close">Go back</button>`);
+    const question = startQuestion(ctx.state);
+    if (question && !isAnswered(ctx.state, question)) {
+      askQuestion(ctx.state, question);
       return;
     }
-
     await ctx.startSession();
   },
 
-  async 'do-start-session'(ctx) {
+  /**
+   * The answer to "already done" or "not the first session": train it anyway,
+   * or file it in the previous rotation. Recorded for this session and this
+   * rotation only, then the session starts — and the set whose tick asked the
+   * question is logged, so the answer does not cost a second tap.
+   */
+  async 'start-answer'(ctx, data) {
+    const { state } = ctx;
+    state.startAnswer = { sessionId: state.trainSessionId, sequence: state.cycle.sequence, choice: data.choice };
     closeSheet();
     await ctx.startSession();
+    if (data.si != null && data.i != null) {
+      await actions.tick(ctx, { si: data.si, i: data.i }, { stopPropagation() {} });
+    } else {
+      ctx.render();
+    }
+  },
+
+  /** Close a session that was left open, at its last set. See `finishTimes`. */
+  async 'close-stale'(ctx) {
+    closeSheet();
+    await ctx.finishSession();
+  },
+
+  /** It is still the same session: stop asking about it, and log the set. */
+  async 'keep-stale'(ctx, data) {
+    const { state } = ctx;
+    state.staleAnswered = state.activeLog?.id ?? null;
+    closeSheet();
+    if (data.si != null && data.i != null) {
+      await actions.tick(ctx, { si: data.si, i: data.i }, { stopPropagation() {} });
+    } else {
+      ctx.render();
+    }
+  },
+
+  /** "Open A instead": the rotation's first session, in place of this one. */
+  'start-pick'(ctx, data) {
+    closeSheet();
+    ctx.openSession(data.id);
   },
 
   async 'toggle-timing'(ctx) {
@@ -2473,7 +3048,7 @@ function repaintFields(ctx) {
     const el = document.getElementById(id);
     if (el) el.value = value;
   };
-  set('in-load', Math.round(toDisplay(c.load ?? 0, unit) * 10) / 10);
+  set('in-load', loadBox(c.load, unit));
   set('in-reps', c.reps ?? '');
   set('in-rpe', c.rpe ?? '');
 }

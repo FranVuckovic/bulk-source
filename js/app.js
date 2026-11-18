@@ -43,7 +43,7 @@ import { prescribedSetCount, sortLogsByDate } from './progress.js';
 import { systemLoad, attemptMaxEffect, maxBeforeAttempt } from './calc.js';
 import { checkWorkingMax } from './plausibility.js';
 import { personalBestBefore, bodyweightOn, correctionFor } from './analytics.js';
-import { localDate, nowISO, timeZone, utcOffsetMinutes, daysBetween } from './dates.js';
+import { localDate, localDateOf, nowISO, timeZone, utcOffsetMinutes, daysBetween } from './dates.js';
 import {
   blockFor,
   effortModeFor,
@@ -372,12 +372,25 @@ async function restoreActiveSession() {
     sessionRpe: active.sessionRpe == null ? '' : String(active.sessionRpe),
   };
 
-  state.loggedSets = new Map(
-    state.sets
-      .filter((set) => set.sessionLogId === active.id)
-      .map((set) => [`${set.slotIndex}:${set.setIndex}`, set])
-  );
+  state.loggedSets = train.loggedSetsFor(state.sets, active.id);
   for (const key of state.loggedSets.keys()) state.exOpen.add(key.split(':')[0]);
+}
+
+/**
+ * Re-read the open session after something else changed its records.
+ *
+ * Correcting, deleting or restoring a set in the Log, or moving the session to
+ * another rotation, reloaded the stores and left the Train screen holding the
+ * old log and the old sets: a set deleted in the Log stayed ticked, a restored
+ * one stayed unticked, Finish counted from the stale map, and the next draft
+ * save wrote the stale log back over the move.
+ */
+function rebuildActiveSession() {
+  if (!state.activeLog) return;
+  const stored = state.logs.find((log) => log.id === state.activeLog.id);
+  if (!stored) return;
+  state.activeLog = stored;
+  state.loggedSets = train.loggedSetsFor(state.sets, stored.id);
 }
 
 /**
@@ -431,12 +444,25 @@ async function ensureActiveLog() {
   if (state.activeLog) return state.activeLog;
   if (startingSession) return startingSession;
 
+  /*
+   * The same question the Start button asks, asked here because this is where
+   * every session is opened — the first tick, a swap, an added exercise. Only
+   * Start used to ask, so one tick on a finished rotation filed a second A
+   * into it. Asked, never refused: the answer is recorded and the session
+   * starts where it says.
+   */
+  const question = train.startQuestion(state);
+  if (question && !train.isAnswered(state, question)) throw new train.NeedsAnswer(question);
+  const answer = question ? state.startAnswer : null;
+  const intoPrevious = answer?.choice === 'previous' && question.previous;
+  const cycle = intoPrevious ? state.cycles.find((c) => c.id === question.previous.cycleId) || state.cycle : state.cycle;
+
   // Stable for this one start attempt, but never reused for a later legitimate
   // restart of the same workout. The active-pointer transaction and
   // `startingSession` prevent double opens; a date-level key incorrectly
   // resurrected a discarded session when the user tried again that day.
   const nonce = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const operationId = `start:${state.cycle.id}:${state.trainSessionId}:${nonce}`;
+  const operationId = `start:${cycle.id}:${state.trainSessionId}:${nonce}`;
 
   startingSession = (async () => {
     const { log } = await startSessionAtomic(
@@ -455,10 +481,13 @@ async function ensureActiveLog() {
         // neither carries a rotation position, so neither can satisfy, advance
         // or inflate A–F. `cycleProgress` filters on exactly this.
         rotationPosition: train.isOutsideRotation(state) ? null : state.trainSessionId,
-        cycleId: state.cycle.id,
-        cycleSequence: state.cycle.sequence,
-        blockId: state.block.idx,
-        effortMode: state.effortMode,
+        cycleId: cycle.id,
+        cycleSequence: cycle.sequence,
+        blockId: blockFor(state.plan, cycle.sequence)?.id ?? state.block.idx,
+        effortMode: effortModeFor(state.plan, cycle.sequence),
+        // Started after being told it was a second one in this rotation, or not
+        // the rotation's first letter, and trained here anyway.
+        outOfOrder: answer?.choice === 'anyway',
         readiness: state.readiness || 'normal',
         // Real until said otherwise: a session logged as it happens is the
         // normal case, and the switch beside Finish is for the times it is not.
@@ -489,10 +518,22 @@ async function ensureActiveLog() {
 }
 
 async function saveSet(slotIndex, setIndex, values) {
+  /*
+   * A new set for a session that was left open — another day, or hours after
+   * its last set — is asked about first. Restoring yesterday's open log and
+   * appending to it filed today's sets under yesterday's date, silently.
+   * Correcting a set already in it is not appending, and is not asked about.
+   */
+  if (state.activeLog && !state.loggedSets.has(`${slotIndex}:${setIndex}`) && state.staleAnswered !== state.activeLog.id) {
+    const stale = train.staleSession(state.activeLog, [...state.loggedSets.values()], nowISO());
+    if (stale) throw new train.NeedsAnswer(stale);
+  }
   const log = await ensureActiveLog();
   const slot = train.slotsFor(state)[slotIndex];
   const key = `${slotIndex}:${setIndex}`;
   const existing = state.loggedSets.get(key);
+  // An edit keeps the time the set was logged and records when it was changed.
+  const stamps = train.setStamps(existing, nowISO());
 
   const record = {
     ...(existing ? { id: existing.id } : {}),
@@ -522,10 +563,12 @@ async function saveSet(slotIndex, setIndex, values) {
     note: values.note ?? null,
     wasPrescribed: !!values.wasPrescribed,
     prescribedLoad: values.prescribedLoad ?? null,
-    timestampISO: nowISO(),
-    localDate: todayISO(),
-    timeZone: timeZone(),
-    utcOffsetMinutes: utcOffsetMinutes(),
+    timestampISO: stamps.timestampISO,
+    editedAtISO: stamps.editedAtISO,
+    localDate: existing?.localDate ?? todayISO(),
+    // These describe `timestampISO`, so they stay with it.
+    timeZone: existing?.timeZone ?? timeZone(),
+    utcOffsetMinutes: existing?.utcOffsetMinutes ?? utcOffsetMinutes(),
     /*
      * The one-tap path sends the grip the row is DISPLAYING, which on an
      * untouched slot is the exercise's default rather than an entry in
@@ -539,7 +582,9 @@ async function saveSet(slotIndex, setIndex, values) {
     // that stayed at 90 kg on every set while he went from 86 to 93.
     bodyweightUsed: state.plan.exercises[slot.ex].bodyweightLoaded ? bodyweightOn(state.daily, todayISO(), state.settings.bodyweight) : null,
     variantUsed: slot.swappedFrom ? slot.ex : null,
-    pauseStyle: values.pauseStyle ?? existing?.pauseStyle ?? null,
+    // Taken as sent when the caller says anything about it, null included: the
+    // editor's pause buttons toggle off, and `??` would have kept the old value.
+    pauseStyle: 'pauseStyle' in values ? values.pauseStyle ?? null : existing?.pauseStyle ?? null,
   };
 
   // Was this a record? Ask BEFORE the set is stored, or it beats itself.
@@ -548,7 +593,7 @@ async function saveSet(slotIndex, setIndex, values) {
   // Idempotent: a double tap, or a retried save, resolves to one row because
   // the logical key is a unique index rather than a convention.
   const { set: written } = await putSetIdempotent(state.db, record, {
-    operationId: values.operationId ?? `${record.logicalKey}-${record.timestampISO}`,
+    operationId: values.operationId ?? `${record.logicalKey}-${stamps.stamp}`,
   });
   state.loggedSets.set(key, written);
   // `alive` is not optional here. Reloading the raw store puts every set you
@@ -562,8 +607,12 @@ async function saveSet(slotIndex, setIndex, values) {
   render();
 
   // A question about the working max outranks the celebration: an implausible
-  // attempt is far more likely a typo than a record.
-  if (beaten && asked !== 'asked') celebrate(beaten);
+  // attempt is far more likely a typo than a record. The record itself is
+  // reported, not shown from here: opening the sheet at the end of a save put
+  // it under whoever called, and the set editor closed "the sheet" straight
+  // afterwards — the record sheet — so a record logged in the editor was never
+  // seen. The caller celebrates once its own sheet is out of the way.
+  return { set: written, beaten: asked === 'asked' ? null : beaten };
 }
 
 /**
@@ -733,9 +782,14 @@ async function finishSession() {
 
   // One transaction: the end state and the active pointer move together, so a
   // failure between them cannot leave a finished session looking active.
+  // Finish pressed long after the last set ends the session at that set plus a
+  // rest, and keeps the button time beside it. See `finishTimes`.
+  const times = train.finishTimes([...state.loggedSets.values()], nowISO());
   const { log: finishedLog } = await finishSessionAtomic(state.db, state.activeLog.id, {
-    endedAt: nowISO(),
-    localEndDate: todayISO(),
+    endedAt: times.endedAt,
+    finishPressedAt: times.finishPressedAt,
+    endedAtSource: times.endedAtSource,
+    localEndDate: localDateOf(times.endedAt),
     isPartial: ratio != null && ratio < 0.5,
     completionRatio: ratio,
     prescribedSets: prescribed,
@@ -749,14 +803,9 @@ async function finishSession() {
     (Date.parse(finishedLog.endedAt) - Date.parse(finishedLog.startedAt)) / 60000
   );
 
-  state.activeLog = null;
-  state.loggedSets = new Map();
-  state.cleared = new Set();
-  state.grips = {};
-  state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {}, phaseSwaps: {} };
-  state.swapConfirmed = new Set();
-  state.draft = { note: '', bodyweight: '', sessionRpe: '' };
-  state.exOpen = new Set(['0']);
+  // Everything the session left on screen goes, readiness included: a red day
+  // is about today, not about the next session.
+  train.resetSessionState(state);
   stopRest();
 
   await loadEverything();
@@ -816,6 +865,18 @@ function refreshToday() {
 }
 
 /**
+ * Say so, before anything is tapped, when the open session was left open.
+ *
+ * Asked on boot and when the day rolls over in a resumed app. The same
+ * question a new tick asks; nothing changes until it is answered.
+ */
+function askIfStale() {
+  if (!state.activeLog || state.staleAnswered === state.activeLog.id || sheetIsOpen()) return;
+  const stale = train.staleSession(state.activeLog, [...state.loggedSets.values()], nowISO());
+  if (stale) train.askQuestion(state, stale);
+}
+
+/**
  * Bring the app back to the current day.
  *
  * Called when the app is shown again and on a slow timer, so an app left open
@@ -823,10 +884,14 @@ function refreshToday() {
  */
 async function rollOverIfNeeded() {
   if (!state.db || !refreshToday()) return;
+  // Readiness is about the day. With nothing open, yesterday's answer is not
+  // today's; an open session keeps its own, restored from its log.
+  if (!state.activeLog) state.readiness = 'normal';
   await loadEverything();
   buildHistory();
   resetBodyDraft();
   render();
+  askIfStale();
 }
 
 /**
@@ -1050,6 +1115,7 @@ const ctx = {
   removeSet,
   saveDeviations,
   finishSession,
+  celebrate,
 
   openSession(id) {
     if (state.activeLog && state.activeLog.sessionId !== id) {
@@ -1216,8 +1282,10 @@ const ctx = {
       await softDeleteSession(state.db, id, { reason });
       for (const set of attempts) await applyAttemptMax(set, { ...set, deletedAtISO: nowISO() });
       if (state.activeLog?.id === id) {
-        state.activeLog = null;
-        state.loggedSets = new Map();
+        // The same reset as Finish. Clearing only the log and its sets left the
+        // discarded session's swaps, extras, grips, note and readiness to be
+        // applied to whatever was opened next.
+        train.resetSessionState(state);
         await writeSetting(state.db, 'activeSessionLogId', null);
       }
     } else {
@@ -1257,9 +1325,10 @@ const ctx = {
       store === 'sessionLogs' ? await restoreSession(state.db, key, { today: todayISO() }) : await restoreRow(state.db, store, key);
     await loadEverything();
     // A session discarded by mistake today comes back as the open one. Only
-    // then is the Train screen rebuilt, so restoring anything else leaves a
-    // half-typed note alone.
+    // then is the Train screen rebuilt from scratch; anything else restored
+    // into the open session refreshes it in place.
     if (result?.reopened && !state.activeLog) await restoreActiveSession();
+    else rebuildActiveSession();
     buildHistory();
   },
 
@@ -1380,6 +1449,7 @@ const ctx = {
     if (state.activeLog?.id === logId) state.activeLog = moved;
 
     await loadEverything();
+    rebuildActiveSession();
     buildHistory();
     render();
     return { moved: true, from, to, sessionId: log.sessionId };
@@ -1449,12 +1519,7 @@ const ctx = {
     state.activePlanId = planId;
     state.plan = target;
     state.trainSessionId = null;
-    state.deviations = { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {}, phaseSwaps: {} };
-    state.swapConfirmed = new Set();
-    state.grips = {};
-    state.loggedSets = new Map();
-    state.cleared = new Set();
-    state.exOpen = new Set(['0']);
+    train.resetSessionState(state);
     state.planOpenSession = undefined;
 
     await loadEverything();
@@ -1576,6 +1641,46 @@ const ctx = {
   },
 
   /**
+   * Move a session's end to its last set, plus a rest.
+   *
+   * The other half of the start repair, for the sessions finished hours after
+   * their last set before Finish learned to do this itself. The time Finish
+   * was actually pressed is kept as `finishPressedAt`.
+   */
+  async repairSessionEnd(logId) {
+    const log = state.logs.find((row) => row.id === logId);
+    if (!log) throw new Error('that session no longer exists');
+    if (!log.endedAt) return { moved: false };
+
+    const sets = state.sets.filter((set) => set.sessionLogId === logId);
+    const times = train.finishTimes(sets, log.endedAt);
+    if (times.endedAtSource !== 'last-set') return { moved: false };
+
+    const from = log.endedAt;
+    await put(state.db, 'sessionLogs', {
+      ...log,
+      endedAt: times.endedAt,
+      localEndDate: localDateOf(times.endedAt),
+      finishPressedAt: log.finishPressedAt ?? from,
+      endedAtSource: 'last-set',
+    });
+    await put(state.db, 'auditLog', {
+      atISO: nowISO(), entity: 'sessionLog', entityId: logId, action: 'edit', field: 'endedAt', from, to: times.endedAt,
+    });
+
+    await loadEverything();
+    rebuildActiveSession();
+    buildHistory();
+    render();
+    const start = Date.parse(log.startedAt);
+    return {
+      moved: true,
+      wasSeconds: Number.isFinite(start) ? Math.round((Date.parse(from) - start) / 1000) : null,
+      nowSeconds: Number.isFinite(start) ? Math.round((Date.parse(times.endedAt) - start) / 1000) : null,
+    };
+  },
+
+  /**
    * Reopen a finished session so it can be carried on.
    *
    * For the session ended by a mis-tap with half the work still to do. Refused
@@ -1633,6 +1738,7 @@ const ctx = {
     }
 
     await loadEverything();
+    rebuildActiveSession();
     buildHistory();
     render();
     return { changed: changed.length };
@@ -1644,6 +1750,7 @@ const ctx = {
     await softDeleteRow(state.db, 'sets', setId, { reason });
     if (set) await applyAttemptMax(set, { ...set, deletedAtISO: nowISO() });
     await loadEverything();
+    rebuildActiveSession();
     buildHistory();
     render();
   },
@@ -1766,6 +1873,7 @@ const ctx = {
     await withTransaction(state.db, [...ALL_STORES], 'readwrite', async (handles) => {
       for (const handle of [].concat(handles)) await request(handle.clear());
     });
+    train.resetSessionState(state);
     await adoptStoredState();
   },
 
@@ -1900,6 +2008,9 @@ function onSheetOpen() {
 }
 
 function onSheetClose({ fromBack }) {
+  // Backdrop, back button or anything else: a set half-typed in the editor is
+  // kept for when that row is opened again. See `keepStepDraft`.
+  train.keepStepDraft(state);
   if (!sheetEntry) return;
   sheetEntry = false;
   if (fromBack) return;
@@ -2387,6 +2498,12 @@ function downloadBytes(data, filename, type) {
 }
 
 function showFailure(error) {
+  // Not a failure: a write that needs an answer first. Nothing was saved.
+  if (error instanceof train.NeedsAnswer) {
+    train.askQuestion(state, error.question);
+    return;
+  }
+
   /*
    * A refusal is not a failure. In demo mode every write is turned away at the
    * database on purpose, and reporting that as "that did not save" would read
@@ -2662,6 +2779,7 @@ async function boot() {
   wireDayRollover();
   wireTimerDrag();
   render();
+  askIfStale();
 
   // Asked for after the first render, so the prompt never delays the screen.
   state.storage = { ...(await requestPersistentStorage()), ...(await storageEstimate()) };

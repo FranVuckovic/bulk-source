@@ -961,6 +961,17 @@ export function sessionTiming(log, sets, { now = null } = {}) {
   const startLooksWrong =
     startedBeforeFirstSetSeconds != null && startedBeforeFirstSetSeconds > IMPLAUSIBLE_START_SECONDS;
 
+  /*
+   * The other end. A Finish forgotten and pressed hours later made a quarter of
+   * his sessions report hours they did not take — 446 minutes for 57 of work.
+   * New sessions finished late end at their last set (see `finishTimes` in
+   * ui/train.js); this flags the ones stored before that, and any other end
+   * long after the last set. Only a finished session can have ended late.
+   */
+  const endedAfterLastSetSeconds =
+    log?.endedAt && lastSetAt ? Math.round((Date.parse(log.endedAt) - Date.parse(lastSetAt)) / 1000) : null;
+  const endLooksWrong = endedAfterLastSetSeconds != null && endedAfterLastSetSeconds > LONG_GAP_SECONDS;
+
   const sorted = [...restGaps].sort((a, b) => a - b);
   const reliable = stated === false ? false : !looksBulkEntered;
 
@@ -998,6 +1009,8 @@ export function sessionTiming(log, sets, { now = null } = {}) {
     workingSpanSeconds,
     startedBeforeFirstSetSeconds,
     startLooksWrong,
+    endedAfterLastSetSeconds,
+    endLooksWrong,
     setCount: entries.length,
     // The timeline itself is always returned: when each row was written is a
     // fact either way, and it is what shows you *why* the timing is not real.
