@@ -21,7 +21,7 @@
  *   review; confirming each proposed working max is a deliberate tap.
  */
 
-import { belongsTo } from '../plans.js';
+import { belongsTo, planIdOf } from '../plans.js';
 import { pct, systemLoad, proposeBlockBoundaryMax, proposeMidBlockBump } from '../calc.js';
 import {
   strengthSeries,
@@ -35,13 +35,16 @@ import {
   blockComparison as blockChanges,
   records as recordsFor,
   recordHistory,
+  measurementSeries,
+  bodyweightSeries as cleanBodyweight,
   GAIN_TARGETS,
 } from '../analytics.js';
 import { weeklyLoads, decisionFlags, weekStartISO, daysBetween, shouldDeload } from '../progress.js';
-import { rollUpFromSets, plannedVsCompleted } from '../volume.js';
+import { volumeByRotation, plannedVsCompleted } from '../volume.js';
 import { resolveSession, toDisplaySession } from '../plan.js';
 import { alive } from '../db.js';
 import { addDays } from '../dates.js';
+import { workingMaxInfo } from './train.js';
 import { escape, fmtLoad, fmtNum, toDisplay, flag, subnav, openSheet, closeSheet , fmtLength, toLength, lengthLabel } from './components.js';
 import {
   barChart,
@@ -81,11 +84,15 @@ const CONFIDENCE_WORD = { good: 'a good fit', fair: 'a fair fit', weak: 'a weak 
 /** Soft-deleted rows are not evidence. They are recoverable, not present. */
 const liveRecords = (state) => ({ logs: alive(state.logs), sets: alive(state.sets) });
 
-function bodyweightSeries(state) {
-  return state.daily
-    .filter((d) => Number.isFinite(d.bodyweight))
-    .map((d) => ({ dateISO: d.dateISO, value: d.bodyweight }))
-    .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+/** Weigh-ins with stored typos set aside — see `bodyweightSeries` in analytics. */
+const bodyweightSeries = (state) => cleanBodyweight(state.daily);
+
+/** "Left out: 97 kg on 2026-11-17 (6 kg from …)." — every exclusion, said once. */
+function leftOut(excluded, format) {
+  if (!excluded?.length) return '';
+  return ` <b>Left out as likely typos:</b> ${excluded
+    .map((row) => `${escape(format(row))} on ${escape(row.dateISO)} (${escape(row.reason)})`)
+    .join('; ')}. They are still in the Log, where they can be corrected.`;
 }
 
 /** The gain-rate targets are training content, so they come from the plan. */
@@ -137,15 +144,15 @@ function metrics(state) {
   const change = changeOver(series.points, { weeks: 4 });
   const best = series.points.length ? Math.max(...series.points.map((p) => p.value)) : null;
 
-  const bodyweight = bodyweightSeries(state);
+  const bodyweightClean = bodyweightSeries(state);
+  const bodyweight = bodyweightClean.points;
   const averaged = rollingMean(bodyweight, 7);
   const latestAverage = averaged.length ? averaged[averaged.length - 1].value : null;
   const calendarWeek = state.planProgress.calendarWeek ?? 1;
   const gain = gainRateVerdict(bodyweight, { calendarWeek, targets: gainTargets(state) });
 
-  const waist = state.measurements
-    .filter((m) => Number.isFinite(m.waist))
-    .map((m) => ({ dateISO: m.dateISO, value: m.waist }));
+  const waistClean = measurementSeries(state.measurements, 'waist');
+  const waist = waistClean.points;
 
   const relative = relativeStrengthSnapshot(
     perCycle.length ? perCycle : series.points,
@@ -163,12 +170,14 @@ function metrics(state) {
     change,
     best,
     bodyweight,
+    bodyweightExcluded: bodyweightClean.excluded,
     averaged,
     relative,
     latestAverage,
     calendarWeek,
     gain,
     waist,
+    waistExcluded: waistClean.excluded,
     waistTrend: trend(waist, { label: 'waist' }),
     goal: focus === 'benchComp' ? goalProgress(series.points, { goalKg: GOAL_BENCH_KG }) : null,
   };
@@ -488,8 +497,8 @@ function tiles(state, m, unit) {
 
 function flagsSection(state, m) {
   const flags = decisionFlags({
-    bodyweight: m.bodyweight,
-    e1rmWeekly: m.perCycle.map((p) => ({ weekISO: p.dateISO, value: p.value })),
+    gain: m.gain,
+    strength: m.strength,
     sleep: state.daily.filter((d) => Number.isFinite(d.sleepHours)).map((d) => ({ dateISO: d.dateISO, value: d.sleepHours })),
     niggles: state.niggles.filter((n) => daysBetween(state.cycle.localStartDate || state.todayISO, n.dateISO) >= 0),
     calendarWeek: m.calendarWeek,
@@ -541,6 +550,23 @@ function notableExclusions(excluded) {
   return ` <b>${notable.length}</b> index set${notable.length === 1 ? '' : 's'} could not be used: ${escape(reasons)}.`;
 }
 
+/**
+ * A measured single and an estimate that disagree by more than 5%.
+ *
+ * The single is what counts, and the estimate is set aside — but a 12-rep
+ * grind that "says" 147 beside a pressed 125 is worth seeing, so the gap is
+ * said rather than silently resolved. Only the largest one, once.
+ */
+function disagreementNote(disagreements, unit) {
+  const worst = (disagreements || []).reduce((top, d) => (!top || d.pct > top.pct ? d : top), null);
+  if (!worst) return '';
+  const { estimate, single } = worst;
+  return ` <b>A measured single and an estimate disagree.</b> ${fmtLoad(estimate.load, unit)}×${estimate.reps}${
+    estimate.rpe != null ? ` @${estimate.rpe}` : ''
+  } on ${escape(estimate.dateISO)} estimates ${fmtLoad(estimate.value, unit)} ${unit}, ${fmtNum(worst.pct, 1)}% above the
+  ${fmtLoad(single.value, unit)} ${unit} single on ${escape(single.dateISO)}. The single is what counts.`;
+}
+
 function strengthCard(state, m, unit) {
   if (!m.series.points.length) {
     const why = m.series.excluded.length
@@ -574,7 +600,9 @@ function strengthCard(state, m, unit) {
       unit: ` ${unit}`,
       fit,
       label: (p) =>
-        `${p.dateISO}${p.cycleSequence ? ` · rotation ${p.cycleSequence}` : ''} · ${fmtLoad(p.load, unit)}×${p.reps}${
+        `${p.dateISO}${
+          p.cycleSequence ? ` · ${escape(state.plans?.[p.planId]?.meta?.name || '')} rotation ${p.cycleSequence}` : ''
+        } · ${fmtLoad(p.load, unit)}×${p.reps}${
           p.rpe ? ` @${p.rpe}` : ''
         } → ${fmtNum(p.value, 1)} ${unit}`,
     })}
@@ -588,7 +616,7 @@ function strengthCard(state, m, unit) {
             CONFIDENCE_WORD[m.strength.confidence]
           } across ${m.strength.sampleCount} points.`
         : escape(m.strength.reason) + '.'
-    }${notableExclusions(m.series.excluded)}</p></div>`;
+    }${notableExclusions(m.series.excluded)}${disagreementNote(m.series.disagreements, unit)}</p></div>`;
 }
 
 function bodyweightCard(state, m, unit) {
@@ -620,7 +648,7 @@ function bodyweightCard(state, m, unit) {
             anchor?.dateISO || ''
           )} — being inside it means you are where the plan expects, not merely moving at a plausible speed.`
         : `The corridor is the ${target.lo}–${target.hi} kg/week target. A rate needs ${escape(m.gain.reason || 'more weigh-ins')}.`
-    }</p></div>`;
+    }${leftOut(m.bodyweightExcluded, (row) => `${fmtLoad(row.value, unit)} ${unit}`)}</p></div>`;
 }
 
 function waistCard(m, len = 'cm') {
@@ -636,7 +664,7 @@ function waistCard(m, len = 'cm') {
       m.waistTrend.ok
         ? ` Currently <b>${fmtLength(m.waistTrend.perWeek, len)} ${lu}/week</b> over ${m.waistTrend.spanDays} days.`
         : ''
-    }</p></div>`;
+    }${leftOut(m.waistExcluded, (row) => `${fmtLength(row.value, len)} ${lu}`)}</p></div>`;
 }
 
 export function relativeStrengthSeries(strengthPoints, bodyweightPoints, maxGapDays = 3) {
@@ -770,38 +798,46 @@ function plannedCard(state, m) {
 }
 
 function volumeCard(state, m) {
-  const byCycle = new Map();
-  const logById = new Map(m.logs.map((log) => [log.id, log]));
+  const rotations = volumeByRotation(m.sets, m.logs, {
+    exercises: state.plan.exercises,
+    muscles: state.plan.muscles,
+    planIdOf,
+  }).slice(-14);
+  if (!rotations.length) return `<div class="card">${emptyChart('Nothing logged yet.')}</div>`;
 
-  for (const set of m.sets) {
-    const log = logById.get(set.sessionLogId);
-    if (!log) continue;
-    const key = log.cycleSequence ?? null;
-    if (key == null) continue;
-    if (!byCycle.has(key)) byCycle.set(key, []);
-    byCycle.get(key).push(set);
+  const groups = rotations.map((row) => ({ label: String(row.cycleSequence), values: row.values }));
+  // Which plan each run of bars belongs to, in the order they are drawn.
+  const runs = [];
+  for (const row of rotations) {
+    const last = runs[runs.length - 1];
+    if (last && last.planId === row.planId) last.to = row.cycleSequence;
+    else runs.push({ planId: row.planId, from: row.cycleSequence, to: row.cycleSequence });
   }
-  if (!byCycle.size) return `<div class="card">${emptyChart('Nothing logged yet.')}</div>`;
-
-  const groups = [...byCycle.entries()]
-    .sort(([a], [b]) => a - b)
-    .slice(-14)
-    .map(([sequence, sets]) => ({
-      label: String(sequence),
-      values: rollUpFromSets(sets, state.plan.exercises, state.plan.muscles),
-    }));
+  const planName = (id) => state.plans?.[id]?.meta?.name || id;
+  const legend =
+    runs.length > 1
+      ? ` Left to right: ${runs
+          .map((run) => `${escape(planName(run.planId))} rotation${run.from === run.to ? ` ${run.from}` : `s ${run.from}–${run.to}`}`)
+          .join(', then ')}.`
+      : '';
 
   return `<div class="card">
     ${stackedBars(groups, { keys: Object.keys(ROLL_COLORS), colors: ROLL_COLORS })}
     <p class="hint">One bar per <b>rotation</b>, not per calendar week — a rotation that took nine days is still one
     training unit. Whole-muscle roll-ups from the sets you actually logged, which is what catches the accessories
-    that quietly stopped happening a month ago.</p></div>`;
+    that quietly stopped happening a month ago.${legend}</p></div>`;
 }
 
 function sessionLoadChart(state) {
-  const loads = weeklyLoads(alive(state.logs));
+  const { weeks: loads, excluded } = weeklyLoads(alive(state.logs), alive(state.sets));
+  const leftOutNote = excluded.length
+    ? `<p class="hint" style="margin-top:8px"><b>${excluded.length} session${excluded.length === 1 ? '' : 's'} left out</b>
+       because the minutes are not real: ${escape(
+         [...new Set(excluded.map((row) => row.reason))].join(', ')
+       )}. Mark the timing as real in the Log, or fix the finish time, and it counts.</p>`
+    : '';
   if (!loads.length) {
-    return emptyChart('Needs a session RPE and a finish time — both come free once you finish a session.');
+    return emptyChart('Needs a session RPE and a finish time — both come free once you finish a session.') + leftOutNote;
   }
   const items = loads.map((l) => ({ label: l.weekISO.slice(5), value: Math.round(l.value) }));
   const latest = items[items.length - 1];
@@ -816,7 +852,7 @@ function sessionLoadChart(state) {
          }.</p>`
       : '';
 
-  return `${barChart(items, { color: 'var(--s1)', unit: 'sRPE × min', average: true })}${change}`;
+  return `${barChart(items, { color: 'var(--s1)', unit: 'sRPE × min', average: true })}${change}${leftOutNote}`;
 }
 
 /**
@@ -887,7 +923,7 @@ function recordsCard(state, m, unit, { onlyExerciseId = null, excludeExerciseId 
           <span class="g">${
             step.gain == null
               ? 'first'
-              : `+${fmtNum(step.gain, 1)} after ${step.daysSince} day${step.daysSince === 1 ? '' : 's'}`
+              : `+${fmtLoad(step.gain, unit)} after ${step.daysSince} day${step.daysSince === 1 ? '' : 's'}`
           }</span>
           <span class="set">${fmtLoad(step.load, unit)} ${escape(unit)} × ${step.reps} rep${
             step.reps === 1 ? '' : 's'
@@ -895,7 +931,7 @@ function recordsCard(state, m, unit, { onlyExerciseId = null, excludeExerciseId 
       })
       .join('')}
       <p class="hint" style="margin:6px 0 0">${steps.length} record${steps.length === 1 ? '' : 's'} on this lift,
-      ${fmtNum(steps[steps.length - 1].value - steps[0].value, 1)} ${escape(unit)} from the first to the latest over
+      ${fmtLoad(steps[steps.length - 1].value - steps[0].value, unit)} ${escape(unit)} from the first to the latest over
       ${Math.round(
         (Date.parse(`${steps[steps.length - 1].dateISO}T00:00:00Z`) -
           Date.parse(`${steps[0].dateISO}T00:00:00Z`)) /
@@ -915,7 +951,8 @@ function recordsCard(state, m, unit, { onlyExerciseId = null, excludeExerciseId 
   const setLine = (r) => {
     const exercise = state.plan.exercises[r.exerciseId];
     if (!exercise?.bodyweightLoaded) return `${fmtLoad(r.load, unit)} ${unit} × ${r.reps} rep${r.reps === 1 ? '' : 's'}`;
-    const bodyweight = state.settings.bodyweight;
+    // The bodyweight that set was estimated on, not today's setting.
+    const bodyweight = r.bodyweightUsed ?? state.settings.bodyweight;
     return `+${fmtLoad(r.load, unit)} ${unit} × ${r.reps} rep${r.reps === 1 ? '' : 's'} · ${fmtLoad(
       systemLoad(r.load, bodyweight),
       unit
@@ -976,9 +1013,10 @@ function blockCard(state, m, unit) {
 
   return `<div class="card block-comparison">
     ${rows
-      .sort((a, b) => a.blockId - b.blockId)
       .map((row) => {
-        const block = state.plan.blocks.find((candidate) => candidate.id === row.blockId);
+        // A block number means something only inside its own plan.
+        const blocks = (state.plans?.[row.planId] || state.plan).blocks || [];
+        const block = blocks.find((candidate) => candidate.id === row.blockId);
         const isCalibration = block?.type === 'baseline';
         const change = toDisplay(row.change, unit);
         return `<div class="block-row">
@@ -1079,12 +1117,12 @@ function measurementsCard(state) {
     ['armL', 'Arm L'], ['armR', 'Arm R'], ['quadL', 'Quad L'], ['quadR', 'Quad R'], ['neck', 'Neck'],
   ];
 
+  const excluded = [];
   const rows = sites
     .map(([id, label]) => {
-      const points = state.measurements
-        .filter((m) => Number.isFinite(m[id]))
-        .map((m) => ({ dateISO: m.dateISO, value: m[id] }))
-        .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+      const series = measurementSeries(state.measurements, id);
+      excluded.push(...series.excluded.map((row) => ({ ...row, label })));
+      const points = series.points;
       if (points.length < 2) return null;
 
       const firstPoint = points[0];
@@ -1110,10 +1148,7 @@ function measurementsCard(state) {
 
   const requestedFocus = state.measurementFocus || 'chest';
   const focus = rows.find((row) => row.id === requestedFocus) || rows[0];
-  const bodyweight = state.daily
-    .filter((d) => Number.isFinite(d.bodyweight))
-    .map((d) => ({ dateISO: d.dateISO, value: d.bodyweight }))
-    .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+  const bodyweight = bodyweightSeries(state).points;
   const weightByDate = new Map(bodyweight.map((point) => [point.dateISO, point.value]));
   const comparison = focus.points.map((point) => {
     let weight = weightByDate.get(point.dateISO) ?? null;
@@ -1182,7 +1217,10 @@ function measurementsCard(state) {
         )
         .join('')}
     </tbody></table>
-    <p class="hint">All tape values are centimetres. A rate needs at least three readings across fourteen days. Tape changes describe circumference, not body composition: repeat the same landmarks and tension before treating a difference as real.</p></div>`;
+    <p class="hint">All tape values are centimetres. A rate needs at least three readings across fourteen days. Tape changes describe circumference, not body composition: repeat the same landmarks and tension before treating a difference as real.${leftOut(
+      excluded,
+      (row) => `${row.label} ${fmtLength(row.value, len)} ${lu}`
+    )}</p></div>`;
 }
 
 /** Total weight moved — useless for programming, oddly compelling at 6am. */
@@ -1273,15 +1311,28 @@ function deloadCard(state, m) {
  * four.
  */
 export function maxRows(state) {
+  const activePlanId = state.plan.meta?.id ?? 'fopip-v2';
   const blockFrom = state.block.from ?? 1;
   const blockTo = state.block.to ?? state.cycle.sequence;
 
   return trackedLifts(state).map((lift) => {
-    const stored = state.maxes.get(lift.id)?.workingMax ?? state.plan.meta.seedWorkingMaxes[lift.id] ?? null;
+    // The number prescriptions actually use — confirmed, else by ratio, else
+    // your recent sets, else the seed. Reading only "confirmed or seed" here
+    // proposed changes against a number no prescription was using.
+    const info = workingMaxInfo(state, lift.id);
+    const stored = info?.value ?? null;
     const points = e1rmPoints(state, lift.id);
 
+    // The block is the active plan's: the other plan's rotations with the same
+    // numbers are months away and are not evidence about this block.
     const inBlock = points
-      .filter((point) => point.cycleSequence != null && point.cycleSequence >= blockFrom && point.cycleSequence <= blockTo)
+      .filter(
+        (point) =>
+          point.planId === activePlanId &&
+          point.cycleSequence != null &&
+          point.cycleSequence >= blockFrom &&
+          point.cycleSequence <= blockTo
+      )
       .map((point) => ({
         e1rm: point.value,
         // The "week" the protocol counts in is a rotation of the plan.
@@ -1302,6 +1353,7 @@ export function maxRows(state) {
     return {
       ...lift,
       workingMax: stored,
+      workingMaxSource: info?.source ?? null,
       observed,
       bestObservation,
       observations: inBlock,

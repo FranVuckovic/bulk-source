@@ -476,7 +476,11 @@ export function timeChart(points, {
   fit = null,
   label = (p) => `${shortDate(p.dateISO)} · ${num(p.value)}${unit}`,
 } = {}) {
-  const clean = (points || []).filter((p) => Number.isFinite(p.value) && p.dateISO);
+  // Drawn in date order whatever order it was handed. Points out of order put
+  // the axis's first day after its last and drew lines outside the card.
+  const clean = (points || [])
+    .filter((p) => Number.isFinite(p.value) && p.dateISO)
+    .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
   if (!clean.length) return emptyChart('Nothing logged yet.');
   if (clean.length === 1) {
     return `<div class="chart-empty">One point so far — <b>${num(clean[0].value)}${escape(unit)}</b> on ${escape(
@@ -656,7 +660,9 @@ export function groupedBars(groups, { series, height = 210, unit = 'sets' } = {}
  * bodyweight line instead of pairing it with the wrong week's strength.
  */
 export function indexedByDate(rows, { names, colors, height = 200 } = {}) {
-  const usable = rows.filter((row) => row.a != null || row.b != null);
+  const usable = rows
+    .filter((row) => row.a != null || row.b != null)
+    .sort((x, y) => x.dateISO.localeCompare(y.dateISO));
   if (usable.length < 3) return emptyChart('Needs a few weeks of both bodyweight and index sets.');
 
   const baseA = usable.find((r) => r.a != null)?.a;

@@ -518,6 +518,57 @@ export function prescription(slot, workingMax, increment = DEFAULT_INCREMENT, op
  * about what you can lift.
  */
 
+/* ── A made attempt and the working max ───────────────────────────────── */
+
+const isLiveMade = (set) =>
+  !!set && !set.deletedAtISO && set.attemptResult === 'made' && Number.isFinite(set.load);
+
+/**
+ * What saving, editing or deleting an attempt set does to the working max.
+ *
+ * A made attempt writes the working max — the button is the confirmation, and
+ * a weight he pressed is better evidence than any estimate. It used to write on
+ * every save of a made set, so editing its note appended another history row,
+ * and nothing undid it: un-marking the attempt, or deleting the set, left the
+ * max it wrote prescribing every bench load.
+ *
+ *   'write'   it became made, or a made attempt's load or bodyweight changed
+ *   'revert'  a made attempt stopped being one: un-marked, or deleted
+ *   'none'    anything else, including re-saving a made attempt unchanged
+ */
+export function attemptMaxEffect(before, after) {
+  const was = isLiveMade(before);
+  const is = isLiveMade(after);
+  if (is && (!was || before.load !== after.load || (before.bodyweightUsed ?? null) !== (after.bodyweightUsed ?? null))) {
+    return 'write';
+  }
+  if (was && !is) return 'revert';
+  return 'none';
+}
+
+/**
+ * The working max to go back to when the attempt that set it is undone.
+ *
+ * Only when that attempt is still what the current max came from — if a later
+ * confirmation replaced it, undoing the attempt changes nothing. The value is
+ * the newest history row written by anything else: `maxHistory` is append-only,
+ * so the number in force before the attempt is always still there. With none,
+ * the max is cleared and prescriptions fall back to ratio, evidence or seed.
+ *
+ * Returns null when there is nothing to undo, else { workingMax, sourceSetId }.
+ */
+export function maxBeforeAttempt(history, current, setId) {
+  if (current?.sourceSetId == null || current.sourceSetId !== setId) return null;
+  const ordered = [...(history || [])].sort((a, b) =>
+    String(a.setAtISO ?? '').localeCompare(String(b.setAtISO ?? '')) || (a.id ?? 0) - (b.id ?? 0)
+  );
+  for (let i = ordered.length - 1; i >= 0; i--) {
+    if (ordered[i].sourceSetId === setId) continue;
+    return { workingMax: ordered[i].workingMax ?? null, sourceSetId: ordered[i].sourceSetId ?? null };
+  }
+  return { workingMax: null, sourceSetId: null };
+}
+
 /** Mid-block bump needs observed above this multiple of the working max. */
 export const MID_BLOCK_BUMP_RATIO = 1.05;
 

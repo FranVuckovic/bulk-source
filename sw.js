@@ -40,6 +40,7 @@ const SHELL = [
   './js/plan.js',
   './js/plans.js',
   './js/library.js',
+  './js/plausibility.js',
   './js/progress.js',
   './js/volume.js',
   './js/ui/body.js',

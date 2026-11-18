@@ -39,22 +39,17 @@ import {
   checkIntegrity,
   ALL_STORES,
 } from './db.js';
-import {
-  rotationPosition,
-  blockProgress,
-  planProgress,
-  prescribedSetCount,
-  isPartialSession,
-  sortLogsByDate,
-} from './progress.js';
-import { e1rm, systemLoad, estimateForSet, isHighConfidence } from './calc.js';
+import { prescribedSetCount, sortLogsByDate } from './progress.js';
+import { systemLoad, attemptMaxEffect, maxBeforeAttempt } from './calc.js';
+import { checkWorkingMax } from './plausibility.js';
+import { personalBestBefore, bodyweightOn, correctionFor } from './analytics.js';
 import { localDate, nowISO, timeZone, utcOffsetMinutes, daysBetween } from './dates.js';
 import {
   blockFor,
   effortModeFor,
   resolveSession,
   toDisplaySession,
-  validatePlan,
+  assertPlansValid,
   withCustomExercises,
   customExerciseId,
 } from './plan.js';
@@ -540,14 +535,15 @@ async function saveSet(slotIndex, setIndex, values) {
      */
     gripWidth: values.gripWidth ?? state.grips[`${state.trainSessionId}-${slotIndex}`] ?? null,
     // Stored per set: without it, a pull-up log stops being interpretable the
-    // moment your bodyweight changes.
-    bodyweightUsed: state.plan.exercises[slot.ex].bodyweightLoaded ? state.settings.bodyweight : null,
+    // moment your bodyweight changes. His weigh-ins, not the Settings figure —
+    // that stayed at 90 kg on every set while he went from 86 to 93.
+    bodyweightUsed: state.plan.exercises[slot.ex].bodyweightLoaded ? bodyweightOn(state.daily, todayISO(), state.settings.bodyweight) : null,
     variantUsed: slot.swappedFrom ? slot.ex : null,
     pauseStyle: values.pauseStyle ?? existing?.pauseStyle ?? null,
   };
 
   // Was this a record? Ask BEFORE the set is stored, or it beats itself.
-  const beaten = personalBestBefore(record);
+  const beaten = personalBestBefore(record, state.sets, { exercises: state.plan.exercises, logs: state.logs });
 
   // Idempotent: a double tap, or a retried save, resolves to one row because
   // the logical key is a unique index rather than a convention.
@@ -561,62 +557,101 @@ async function saveSet(slotIndex, setIndex, values) {
   // that was fixed for the dated stores and missed here.
   state.sets = alive(await getAll(state.db, 'sets'));
 
-  /*
-   * A made attempt writes the working max, because the button that marks it
-   * made is the confirmation — a measured single is better evidence than any
-   * estimate the app can compute, and every prescription in the plan, the five
-   * bench variations included, is derived from this one number.
-   *
-   * It is not gated on being higher. If a lower single is what he actually
-   * pressed, that is what is true, and `maxHistory` is append-only, so nothing
-   * is lost by writing it.
-   */
-  if (written.attemptResult === 'made' && Number.isFinite(written.load)) {
-    await confirmWorkingMax(
-      state.db,
-      {
-        exerciseId: written.exerciseId,
-        workingMax: systemLoad(written.load, written.bodyweightUsed || 0),
-        conf: state.plan.exercises[written.exerciseId]?.maxConf ?? 'high',
-        setAtISO: nowISO(),
-        sourceSetId: written.id,
-        blockId: state.block.idx,
-      },
-      'measured-single'
-    );
-    state.maxes = new Map((await getAll(state.db, 'maxes')).map((m) => [m.exerciseId, m]));
-  }
+  const asked = await applyAttemptMax(existing, written);
 
   render();
 
-  if (beaten) celebrate(beaten);
+  // A question about the working max outranks the celebration: an implausible
+  // attempt is far more likely a typo than a record.
+  if (beaten && asked !== 'asked') celebrate(beaten);
 }
 
 /**
- * The best e1RM this lift has ever shown, and whether this set beat it.
+ * What a change to an attempt set does to the working max.
  *
- * Only high-confidence tracked lifts qualify: a curl "record" from a formula
- * known to fail on isolation work is not a record. Existing sets are read from
- * state, which is why this has to run before the new one lands.
+ * A made attempt writes the working max, because the button that marks it
+ * made is the confirmation — a measured single is better evidence than any
+ * estimate the app can compute, and every prescription in the plan, the five
+ * bench variations included, is derived from this one number. It is not
+ * gated on being higher: if a lower single is what he actually pressed, that
+ * is what is true.
+ *
+ * Three things it did not do. It wrote on every save of a made set, so
+ * editing the note appended another history row. It had no sanity check, so
+ * 1325 for 132.5 became the max for every bench load. And nothing undid it:
+ * un-marking the attempt or deleting the set left its max in place. Now it
+ * writes only when the attempt becomes made or its load changes, asks first
+ * when the new max is far from the current one, and restores the previous
+ * max — through the append-only history, so the undo is itself recorded —
+ * when the attempt is un-made or deleted.
  */
-function personalBestBefore(record) {
-  const exercise = state.plan.exercises[record.exerciseId];
-  if (!exercise?.tracksMax || exercise.maxConf !== 'high') return null;
-  if (record.load == null || !record.reps) return null;
+async function applyAttemptMax(before, after) {
+  const effect = attemptMaxEffect(before, after);
+  if (effect === 'write') return writeAttemptMax(after);
+  if (effect === 'revert') return revertAttemptMax(before);
+  return 'none';
+}
 
-  const value = e1rm(systemLoad(record.load, record.bodyweightUsed || 0), record.reps, record.rpe ?? 8);
-  if (value == null) return null;
-
-  let best = 0;
-  for (const set of state.sets) {
-    if (set.exerciseId !== record.exerciseId || set.id === record.id) continue;
-    if (set.load == null || !set.reps) continue;
-    const previous = e1rm(systemLoad(set.load, set.bodyweightUsed || 0), set.reps, set.rpe ?? 8);
-    if (previous != null && previous > best) best = previous;
+async function writeAttemptMax(set, { confirmed = false } = {}) {
+  const workingMax = systemLoad(set.load, set.bodyweightUsed || 0);
+  const exercise = state.plan.exercises[set.exerciseId];
+  if (!confirmed) {
+    const unit = state.settings.unit;
+    const current = train.workingMaxInfo(state, set.exerciseId)?.value ?? null;
+    const check = checkWorkingMax(workingMax, current, {
+      name: exercise?.name?.split(' (')[0] || 'this lift',
+      fmt: (kg) => `${Math.round(toDisplay(kg, unit) * 10) / 10} ${unit}`,
+    });
+    if (!check.ok) {
+      openSheet(`<div class="ttl">Check this number</div>
+        <p style="text-align:center;margin:14px 0 4px;font-size:14px;color:var(--ink)">${escape(check.message)}</p>
+        <p style="text-align:center;font-size:13px">The set is saved either way. This only decides whether it becomes the working max.</p>
+        <button class="big mt" data-act="confirm-attempt-max" data-id="${escape(String(set.id))}">Save as the working max</button>
+        <button class="big ghost mt" data-act="sheet-close">Fix the set first</button>`);
+      return 'asked';
+    }
   }
+  await confirmWorkingMax(
+    state.db,
+    {
+      exerciseId: set.exerciseId,
+      workingMax,
+      conf: exercise?.maxConf ?? 'high',
+      setAtISO: nowISO(),
+      sourceSetId: set.id,
+      blockId: state.block.idx,
+    },
+    'measured-single'
+  );
+  state.maxes = new Map((await getAll(state.db, 'maxes')).map((m) => [m.exerciseId, m]));
+  state.maxHistory = await getAll(state.db, 'maxHistory');
+  return 'written';
+}
 
-  if (!best || value <= best) return null;
-  return { name: exercise.name, value, previous: best, gain: value - best };
+async function revertAttemptMax(set) {
+  const current = state.maxes.get(set.exerciseId) || null;
+  const history = (await getAll(state.db, 'maxHistory')).filter((row) => row.exerciseId === set.exerciseId);
+  const previous = maxBeforeAttempt(history, current, set.id);
+  if (!previous) return 'none';
+  await confirmWorkingMax(
+    state.db,
+    {
+      exerciseId: set.exerciseId,
+      workingMax: previous.workingMax,
+      conf: state.plan.exercises[set.exerciseId]?.maxConf ?? 'high',
+      setAtISO: nowISO(),
+      sourceSetId: previous.sourceSetId,
+      blockId: state.block.idx,
+    },
+    'attempt undone'
+  );
+  await put(state.db, 'auditLog', {
+    atISO: nowISO(), entity: 'max', entityId: set.exerciseId, action: 'revert', field: 'workingMax',
+    from: current?.workingMax ?? null, to: previous.workingMax, reason: `attempt set ${set.id} no longer made`,
+  });
+  state.maxes = new Map((await getAll(state.db, 'maxes')).map((m) => [m.exerciseId, m]));
+  state.maxHistory = await getAll(state.db, 'maxHistory');
+  return 'reverted';
 }
 
 function celebrate(pr) {
@@ -627,7 +662,7 @@ function celebrate(pr) {
       unit
     )} ${unit}</p>
     <p style="text-align:center;font-size:13px;margin:0 0 4px">estimated max · ${escape(pr.name)}</p>
-    <p style="text-align:center;font-size:14px;color:var(--goodtx);font-weight:650">+${fmtNum(pr.gain, 1)} ${unit} on your previous best of ${fmtLoad(
+    <p style="text-align:center;font-size:14px;color:var(--goodtx);font-weight:650">+${fmtLoad(pr.gain, unit)} ${unit} on your previous best of ${fmtLoad(
       pr.previous,
       unit
     )}</p>
@@ -652,6 +687,7 @@ async function removeSet(slotIndex, setIndex) {
   const existing = state.loggedSets.get(key);
   if (existing) {
     await softDeleteRow(state.db, 'sets', existing.id, { reason: 'removed from the set editor' });
+    await applyAttemptMax(existing, { ...existing, deletedAtISO: nowISO() });
     state.loggedSets.delete(key);
     state.sets = alive(await getAll(state.db, 'sets'));
     state.deleted = await deletedRecords(state.db);
@@ -1176,7 +1212,9 @@ const ctx = {
    */
   async deleteEntry(kind, id, { reason = null } = {}) {
     if (kind === 'session') {
+      const attempts = state.sets.filter((set) => set.sessionLogId === id && set.attemptResult === 'made');
       await softDeleteSession(state.db, id, { reason });
+      for (const set of attempts) await applyAttemptMax(set, { ...set, deletedAtISO: nowISO() });
       if (state.activeLog?.id === id) {
         state.activeLog = null;
         state.loggedSets = new Map();
@@ -1570,6 +1608,16 @@ const ctx = {
     const set = state.sets.find((row) => row.id === setId);
     if (!set) throw new Error('that set no longer exists');
 
+    // What follows from the change comes with it: a set moved to another lift
+    // takes that lift's bodyweight rule, and RIR follows RPE.
+    const log = state.logs.find((row) => row.id === set.sessionLogId);
+    patch = correctionFor(set, patch, {
+      exercises: state.plan.exercises,
+      daily: state.daily,
+      fallbackBodyweight: state.settings.bodyweight,
+      dateISO: (log?.localDate || log?.dateISO || '').slice(0, 10) || null,
+    });
+
     const changed = Object.entries(patch).filter(([key, value]) => (set[key] ?? null) !== (value ?? null));
     if (!changed.length) return { changed: 0 };
 
@@ -1577,6 +1625,7 @@ const ctx = {
     // nothing derived has to be corrected alongside them. That is the whole
     // reason nothing derived is ever stored.
     await put(state.db, 'sets', { ...set, ...patch });
+    await applyAttemptMax(set, { ...set, ...patch });
     for (const [field, to] of changed) {
       await put(state.db, 'auditLog', {
         atISO: nowISO(), entity: 'set', entityId: setId, action: 'edit', field, from: set[field] ?? null, to: to ?? null,
@@ -1591,7 +1640,9 @@ const ctx = {
 
   /** Remove one set, recoverably. */
   async deleteSet(setId, { reason = null } = {}) {
+    const set = state.sets.find((row) => row.id === setId);
     await softDeleteRow(state.db, 'sets', setId, { reason });
+    if (set) await applyAttemptMax(set, { ...set, deletedAtISO: nowISO() });
     await loadEverything();
     buildHistory();
     render();
@@ -1989,6 +2040,14 @@ function wireBackButton() {
 const globalActions = {
   'reload-app'() {
     location.reload();
+  },
+
+  /** "Save as the working max" on the question a far-off made attempt asks. */
+  async 'confirm-attempt-max'(ctx, data) {
+    const set = state.sets.find((row) => String(row.id) === String(data.id));
+    closeSheet();
+    if (set && set.attemptResult === 'made' && !set.deletedAtISO) await writeAttemptMax(set, { confirmed: true });
+    render();
   },
 
   /**
@@ -2532,6 +2591,10 @@ async function boot() {
     if (!response.ok) throw new Error(`Could not load the plan ${file.id} (${response.status} ${response.statusText}).`);
     loaded.push(await response.json());
   }
+  const planned = withSharedLibrary(loaded);
+  // A plan that contradicts itself stops here, with the problems named,
+  // before the database is opened. The library is checked by its own tests.
+  assertPlansValid(planned);
   /*
    * The exercise library goes into every plan, after the plans have shared
    * theirs: a plan's own definition of an id always wins, so nothing already
@@ -2547,7 +2610,7 @@ async function boot() {
   } catch (error) {
     console.warn('Could not load the exercise library.', error);
   }
-  const shared = withSharedLibrary(loaded).map((plan) => withExerciseLibrary(plan, library));
+  const shared = planned.map((plan) => withExerciseLibrary(plan, library));
   // Kept without custom exercises merged in, so a restore can merge its own.
   state.basePlans = shared;
   // The demo seeds whichever plan is active, so it needs one before settings

@@ -351,6 +351,7 @@ function todaysSingle(state, slot) {
   let best = null;
   for (const set of state.loggedSets?.values?.() || []) {
     if (set.exerciseId !== slot.ex || set.reps !== 1 || set.rpe == null || set.load == null || set.formBreakdown) continue;
+    if (set.attemptResult === 'missed') continue; // a weight he failed is not today's max
     if (slot.slotIndex != null && set.slotIndex >= slot.slotIndex) continue;
     const value = e1rm(systemLoad(set.load, set.bodyweightUsed || 0), 1, Math.min(10, set.rpe));
     if (value != null && (!best || value > best.value)) best = { value, set };
