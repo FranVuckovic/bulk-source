@@ -497,6 +497,8 @@ async function saveSet(slotIndex, setIndex, values) {
   const slot = train.slotsFor(state)[slotIndex];
   const key = `${slotIndex}:${setIndex}`;
   const existing = state.loggedSets.get(key);
+  // An edit keeps the time the set was logged and records when it was changed.
+  const stamps = train.setStamps(existing, nowISO());
 
   const record = {
     ...(existing ? { id: existing.id } : {}),
@@ -526,10 +528,12 @@ async function saveSet(slotIndex, setIndex, values) {
     note: values.note ?? null,
     wasPrescribed: !!values.wasPrescribed,
     prescribedLoad: values.prescribedLoad ?? null,
-    timestampISO: nowISO(),
-    localDate: todayISO(),
-    timeZone: timeZone(),
-    utcOffsetMinutes: utcOffsetMinutes(),
+    timestampISO: stamps.timestampISO,
+    editedAtISO: stamps.editedAtISO,
+    localDate: existing?.localDate ?? todayISO(),
+    // These describe `timestampISO`, so they stay with it.
+    timeZone: existing?.timeZone ?? timeZone(),
+    utcOffsetMinutes: existing?.utcOffsetMinutes ?? utcOffsetMinutes(),
     /*
      * The one-tap path sends the grip the row is DISPLAYING, which on an
      * untouched slot is the exercise's default rather than an entry in
@@ -553,7 +557,7 @@ async function saveSet(slotIndex, setIndex, values) {
   // Idempotent: a double tap, or a retried save, resolves to one row because
   // the logical key is a unique index rather than a convention.
   const { set: written } = await putSetIdempotent(state.db, record, {
-    operationId: values.operationId ?? `${record.logicalKey}-${record.timestampISO}`,
+    operationId: values.operationId ?? `${record.logicalKey}-${stamps.stamp}`,
   });
   state.loggedSets.set(key, written);
   // `alive` is not optional here. Reloading the raw store puts every set you

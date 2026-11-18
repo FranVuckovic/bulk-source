@@ -105,6 +105,24 @@ export function resetSessionState(state) {
   state.staleAnswered = null;
 }
 
+/**
+ * When a set happened, and when it was last corrected.
+ *
+ * `timestampISO` is the moment the set was first logged and an edit never
+ * moves it. Every save used to re-stamp it, so fixing an RPE at the end of the
+ * session moved that set to the end — and every rest gap, duration and
+ * "logged live?" judgement built on the timestamps was wrong in a way nothing
+ * could detect. `editedAtISO` says when it was changed instead.
+ *
+ * `stamp` is what the save's operation id is built from. It must change on an
+ * edit: built from the kept timestamp, the edit would carry the first save's
+ * operation id and the idempotency check would hand back the old row.
+ */
+export function setStamps(existing, now) {
+  if (!existing?.timestampISO) return { timestampISO: now, editedAtISO: null, stamp: now };
+  return { timestampISO: existing.timestampISO, editedAtISO: now, stamp: now };
+}
+
 /** True for the blank ad-hoc session and for any saved custom workout. */
 export const isOutsideRotation = (state, id = state.trainSessionId) =>
   id === CUSTOM_SESSION_ID || customWorkoutById(state, id) != null;

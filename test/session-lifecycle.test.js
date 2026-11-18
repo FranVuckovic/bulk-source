@@ -14,8 +14,10 @@ import { readFileSync } from 'node:fs';
 
 import { withSharedLibrary } from '../js/plans.js';
 import { newCycle, cycleProgress } from '../js/cycle.js';
-import { actions, slotsFor, resetSessionState, defaultPause } from '../js/ui/train.js';
+import { actions, slotsFor, resetSessionState, defaultPause, setStamps } from '../js/ui/train.js';
 import { stopRest } from '../js/ui/components.js';
+import { createFakeEnv } from './helpers/fake-indexeddb.js';
+import { openDatabase, getAll, putSetIdempotent, logicalSetKey } from '../js/db.js';
 
 const load = (path) => JSON.parse(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'));
 const [V2, FLOPIP] = withSharedLibrary([load('data/plan-fopip-v2.json'), load('data/plan-flopip-2.json')]);
@@ -298,6 +300,57 @@ test('UI-04: editing a logged set keeps the pause it was logged with', async () 
     assert.equal(ctx.saved[0].pauseStyle, 'touch-and-go');
     assert.equal(ctx.saved[0].gripWidth, 'Index on rings (wide)');
   });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Tracking #1 · Editing a set does not move it in time
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('Tracking #1: an edit keeps the time the set was logged, and says when it was edited', () => {
+  // saveSet re-stamped `timestampISO` on every save. Fixing an RPE at the end
+  // of the session moved that set to the end, so "logged late" and "edited
+  // late" could not be told apart and every duration and rest gap lied.
+  const first = setStamps(null, '2026-11-17T17:00:00.000Z');
+  assert.deepEqual(first, {
+    timestampISO: '2026-11-17T17:00:00.000Z',
+    editedAtISO: null,
+    stamp: '2026-11-17T17:00:00.000Z',
+  });
+  const edit = setStamps({ timestampISO: '2026-11-17T17:00:00.000Z', editedAtISO: null }, '2026-11-17T19:10:00.000Z');
+  assert.equal(edit.timestampISO, '2026-11-17T17:00:00.000Z');
+  assert.equal(edit.editedAtISO, '2026-11-17T19:10:00.000Z');
+  // The operation id is built from `stamp`. Built from the kept timestamp, an
+  // edit would carry the original save's operation id, and the idempotency
+  // check would return the old row and drop the edit.
+  assert.notEqual(edit.stamp, first.stamp);
+});
+
+test('Tracking #1: an edited set reaches the database with its first timestamp', async () => {
+  const env = createFakeEnv();
+  const db = await openDatabase({ indexedDB: env.indexedDB, name: 'bulk' });
+  const key = logicalSetKey(1, 0, 0);
+  const base = { sessionLogId: 1, logicalKey: key, exerciseId: 'benchComp', slotIndex: 0, setIndex: 0 };
+
+  const s1 = setStamps(null, '2026-11-17T17:00:00.000Z');
+  const { set: one } = await putSetIdempotent(db, { ...base, load: 100, reps: 5, rpe: 8, ...s1, stamp: undefined }, {
+    operationId: `${key}-${s1.stamp}`,
+  });
+  const s2 = setStamps(one, '2026-11-17T19:10:00.000Z');
+  await putSetIdempotent(db, { ...base, id: one.id, load: 100, reps: 5, rpe: 9, ...s2, stamp: undefined }, {
+    operationId: `${key}-${s2.stamp}`,
+  });
+
+  const [row] = await getAll(db, 'sets');
+  assert.equal(row.rpe, 9, 'the edit was dropped');
+  assert.equal(row.timestampISO, '2026-11-17T17:00:00.000Z');
+  assert.equal(row.editedAtISO, '2026-11-17T19:10:00.000Z');
+});
+
+test('Tracking #1: saveSet stamps through setStamps and builds its operation id from the stamp', () => {
+  const save = appBody('async function saveSet(');
+  assert.match(save, /train\.setStamps\(existing, nowISO\(\)\)/);
+  assert.doesNotMatch(save, /timestampISO: nowISO\(\)/, 'saveSet still re-stamps every save');
+  assert.match(save, /operationId: values\.operationId \?\? `\$\{record\.logicalKey\}-\$\{stamps\.stamp\}`/);
 });
 
 test('UI-03: a new civil date with no session open starts at normal readiness', () => {
