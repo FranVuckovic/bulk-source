@@ -11,6 +11,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+import { withSharedLibrary } from '../js/plans.js';
+import { newCycle } from '../js/cycle.js';
+import { slotsFor, rowValues } from '../js/ui/train.js';
 import {
   eligibleForStrength,
   strengthSeries,
@@ -79,4 +82,109 @@ test('H1: a session’s best estimate is not its missed attempt', () => {
   const analysis = sessionAnalysis(h1Logs[1], [missed, bench(3, 2, { load: 100, reps: 5, rpe: 8 })], { exercises });
   const row = analysis.exercises.find((r) => r.exerciseId === 'benchComp');
   assert.ok(row.bestEstimate < 124, `bestEstimate ${row.bestEstimate} came from the missed attempt`);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   H4 · one gate for every number that claims a max
+   ═══════════════════════════════════════════════════════════════════════ */
+
+// The audit's case: a measured 125 single, then a week later the fixed-100 kg
+// AMRAP ground out to 12 reps at RPE 10. The table calls that 147.1 and four
+// pipelines gave four answers: 147.1, 130.2, 136 and a "+16.9 kg record".
+const h4Logs = [log(1, '2026-11-06'), log(2, '2026-11-13', { cycleSequence: 5 })];
+const single = bench(1, 1, { load: 125, reps: 1, rpe: 10 });
+const amrap = bench(2, 2, { load: 100, reps: 12, rpe: 10, isAmrap: true, isIndexSet: false });
+const amrapIndexed = { ...amrap, isIndexSet: true };
+
+test('H4: a measured single outranks an estimate in the same window, and the gap is reported', () => {
+  const row = bestEstimates([single, amrap], { exercises, logs: h4Logs }).find((r) => r.exerciseId === 'benchComp');
+  assert.equal(row.value, 125, 'the Plan list ranked a 12-rep estimate above a weight he pressed');
+  assert.ok(row.disagreement, 'a 17.7% disagreement was not reported');
+  assert.ok(row.disagreement.pct > 15 && row.disagreement.pct < 20);
+  assert.equal(row.disagreement.estimate.reps, 12);
+});
+
+test('H4: every pipeline that claims a bench max gives the same answer for the same sets', () => {
+  const sets = [single, amrapIndexed];
+  const series = strengthSeries(sets, { exercises, logs: h4Logs, exerciseId: 'benchComp' });
+  const best = Math.max(...series.points.map((p) => p.value));
+  const record = records(sets, { exercises, logs: h4Logs }).estimated.find((r) => r.exerciseId === 'benchComp');
+  const listed = bestEstimates(sets, { exercises, logs: h4Logs }).find((r) => r.exerciseId === 'benchComp');
+  const evidence = recentEvidenceMax(sets, h4Logs, 'benchComp', { todayISO: '2026-11-18' });
+  const history = recordHistory(sets, { exercises, logs: h4Logs }).estimated.benchComp;
+
+  assert.equal(best, 125, 'strength series');
+  assert.equal(record.value, 125, 'records');
+  assert.equal(listed.value, 125, 'best-estimate list');
+  assert.equal(evidence.value, 125, 'evidence max — this one moves prescriptions');
+  assert.equal(history[history.length - 1].value, 125, 'record staircase');
+  assert.ok(series.disagreements.length === 1, 'the series hid the disagreement');
+  const excluded = series.excluded.find((row) => row.id === 2);
+  assert.match(excluded.reason, /measured single/, 'the AMRAP vanished without a reason');
+});
+
+test('H4: an AMRAP a week after a measured single opens no record sheet', () => {
+  const beaten = personalBestBefore({ ...amrapIndexed, id: undefined, localDate: '2026-11-13' }, [single], { exercises, logs: h4Logs });
+  assert.equal(beaten, null, 'the "+16.9 kg record" sheet came from a 12-rep estimate');
+});
+
+test('H4: a set with no RPE never claims a record — no RPE 8 is invented for it', () => {
+  // v1 mapped a missing RPE onto the RPE 8 column, which calc.js itself calls
+  // a fabricated record. The PR check and session analysis still did it.
+  const prior = bench(1, 1, { load: 100, reps: 5, rpe: 8 });
+  const unrated = { exerciseId: 'benchComp', isIndexSet: true, load: 110, reps: 5, rpe: null, localDate: '2026-11-13' };
+  assert.equal(personalBestBefore(unrated, [prior], { exercises, logs: h4Logs }), null);
+  const analysis = sessionAnalysis(h4Logs[1], [{ ...unrated, id: 9, sessionLogId: 2 }], { exercises });
+  assert.equal(analysis.exercises[0].bestEstimate, null, 'session analysis estimated an unrated set at RPE 8');
+});
+
+test('H4: a form-breakdown set cannot open the record sheet', () => {
+  const prior = bench(1, 1, { load: 100, reps: 5, rpe: 8 });
+  const ground = { exerciseId: 'benchComp', isIndexSet: true, load: 115, reps: 5, rpe: 9, formBreakdown: true, localDate: '2026-11-13' };
+  assert.equal(personalBestBefore(ground, [prior], { exercises, logs: h4Logs }), null);
+});
+
+test('H4: a set that is not an index set or a measured single claims no record', () => {
+  const prior = bench(1, 1, { load: 100, reps: 5, rpe: 8 });
+  const backoff = { exerciseId: 'benchComp', isIndexSet: false, load: 105, reps: 5, rpe: 8, localDate: '2026-11-13' };
+  assert.equal(personalBestBefore(backoff, [prior], { exercises, logs: h4Logs }), null, 'the Records card would not list it');
+  const beaten = personalBestBefore({ ...backoff, isIndexSet: true }, [prior], { exercises, logs: h4Logs });
+  assert.ok(beaten && beaten.gain > 0, 'a genuine index-set record still celebrates');
+});
+
+test('H4: the record staircase ignores form-breakdown sets too, as the Records card does', () => {
+  const ground = bench(3, 2, { load: 140, reps: 1, rpe: 10, formBreakdown: true });
+  const history = recordHistory([single, ground], { exercises, logs: h4Logs });
+  assert.ok(history.heaviest.benchComp.every((step) => step.load !== 140));
+  assert.ok(history.estimated.benchComp.every((step) => step.load !== 140));
+});
+
+test('H4: the evidence max prefers measured singles in its window over the median of estimates', () => {
+  const sets = [single, bench(3, 2, { load: 110, reps: 5, rpe: 9 })]; // ≈ 129.9 estimate
+  const evidence = recentEvidenceMax(sets, h4Logs, 'benchComp', { todayISO: '2026-11-18' });
+  assert.equal(evidence.value, 125);
+  assert.equal(evidence.source, 'measured-single');
+});
+
+test('H1: back-offs are not worked out from a missed single', () => {
+  // The back-off basis is today's single. A missed attempt keeps the prefilled
+  // 1 rep @10, so a failed 135 would set the back-offs as if he had pressed it.
+  const [, plan] = withSharedLibrary([FOPIP, FLOPIP]);
+  const state = {
+    plan,
+    cycle: newCycle(plan, { sequence: 4, startedAtISO: null, localStartDate: null }),
+    trainSessionId: 'E', readiness: 'normal',
+    deviations: { swaps: {}, extras: [], addedSets: {}, exerciseNotes: {}, phaseSwaps: {} },
+    loggedSets: new Map(), exOpen: new Set(), cleared: new Set(), grips: {},
+    settings: { unit: 'kg', increment: 2.5, bodyweight: 90 },
+    maxes: new Map([['benchComp', { exerciseId: 'benchComp', workingMax: 125 }]]),
+    sets: [], logs: [], todayISO: '2026-10-10', lastByExercise: new Map(), activeLog: { id: 99 },
+  };
+  const slots = slotsFor(state);
+  const b = slots.findIndex((slot) => slot.id === 'E3');
+  const before = rowValues(state, slots[b], b, 0).prescribed;
+  state.loggedSets.set('0:0', {
+    exerciseId: 'benchComp', slotIndex: 0, setIndex: 0, load: 135, reps: 1, rpe: 10, attemptResult: 'missed',
+  });
+  assert.equal(rowValues(state, slotsFor(state)[b], b, 0).prescribed, before);
 });

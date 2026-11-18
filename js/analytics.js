@@ -34,15 +34,153 @@ import { daysBetween, weekStart } from './dates.js';
 export const isMissedAttempt = (set) => set?.attemptResult === 'missed';
 
 /**
+ * A single he actually pressed: a made attempt, or one rep at RPE 10.
+ *
+ * Better evidence than any estimate the table can compute from a set of
+ * eight — it is the thing the estimate is trying to guess.
+ */
+export const isMeasuredSingle = (set) =>
+  !!set && set.reps === 1 && set.load != null && !isMissedAttempt(set) && (set.attemptResult === 'made' || set.rpe === 10);
+
+/** How close in time a measured single has to be to outrank an estimate. */
+export const MEASURED_WINDOW_DAYS = 14;
+
+/** An estimate this much above the measured single it lost to is reported. */
+export const DISAGREEMENT_PCT = 5;
+
+/**
+ * The one gate every number that claims a max goes through.
+ *
+ * There used to be five, and they answered "what is my bench max" five ways:
+ * the PR check and session analysis invented RPE 8 for a set with no rating,
+ * the PR check let a form-breakdown set celebrate, nothing but the attempt
+ * ladder knew a missed attempt from a made one, and the Plan list labelled a
+ * 12-rep grind "high confidence" above the single he had pressed a week
+ * earlier. Each pipeline still chooses how strict to be — Records want index
+ * sets, the Plan list shows rough estimates marked as rough — but the reasons a
+ * set cannot speak for strength are decided here, once.
+ *
+ *   requireIndex    an index set, or a measured single (which is better)
+ *   requireTracked  a lift whose estimates are trustworthy (maxConf 'high')
+ *   requireHigh     a high-confidence estimate — off by default only for the
+ *                   Plan list, which marks its rough rows
+ *
+ * Returns { ok: true, estimate, measured } or { ok: false, reason }.
+ */
+export function maxEvidence(
+  set,
+  { exercise, requireIndex = false, requireTracked = false, requireHigh = true, bodyweight = 0 } = {}
+) {
+  const no = (reason) => ({ ok: false, reason });
+  if (!set) return no('missing');
+  if (set.deletedAtISO) return no('deleted');
+  // A set the lifter marked as form breakdown happened, counts as volume and
+  // stays in the Log — but it may not speak for his strength.
+  if (set.formBreakdown) return no('form breakdown');
+  if (isMissedAttempt(set)) return no('a missed attempt');
+  if (!exercise) return no('unknown exercise');
+  const measured = isMeasuredSingle(set);
+  if (requireIndex && !set.isIndexSet && !measured) return no('not an index set');
+  if (requireTracked && (!exercise.tracksMax || exercise.maxConf !== 'high')) {
+    return no('estimates on this lift are indicative only');
+  }
+  if (set.load == null || !set.reps) return no('incomplete set');
+
+  let estimate = estimateForSet(set, { bodyweight });
+  // A made attempt is a weight he pressed. With no effort rating it is still
+  // at least that weight, which is a measurement rather than a formula.
+  if (set.attemptResult === 'made' && set.reps === 1 && !isHighConfidence(estimate)) {
+    estimate = {
+      value: systemLoad(set.load, set.bodyweightUsed ?? bodyweight),
+      method: 'measured',
+      confidence: 'high',
+      reason: null,
+    };
+  }
+  if (!estimate?.value) return no(noEstimateReason(set.load, set.reps, set.rpe, { short: true }) || 'no usable effort rating');
+  if (requireHigh && !isHighConfidence(estimate)) return no(estimate.reason || 'no usable effort rating');
+  return { ok: true, estimate, measured };
+}
+
+/**
+ * Measured singles first.
+ *
+ * Within `windowDays` of a measured single, an estimate may not claim a higher
+ * max than the best single there — the single is what the estimate was trying
+ * to guess, and it is right there. Estimates at or below it stay: they do not
+ * contradict it. An outranked estimate more than `DISAGREEMENT_PCT` above the
+ * single is reported, because a 12-rep grind that "says" 147 beside a pressed
+ * 125 is worth knowing about — it is how the RPE table's reach shows up.
+ *
+ * Candidates are { value, dateISO, measured, ... }. Returns the ones kept, the
+ * ones outranked (each with `by` and `pct`) and the reportable disagreements.
+ */
+export function preferMeasured(candidates, { windowDays = MEASURED_WINDOW_DAYS, threshold = DISAGREEMENT_PCT } = {}) {
+  const singles = (candidates || []).filter((c) => c.measured && c.dateISO);
+  const kept = [];
+  const outranked = [];
+  const disagreements = [];
+
+  for (const candidate of candidates || []) {
+    if (candidate.measured || !singles.length || !candidate.dateISO) {
+      kept.push(candidate);
+      continue;
+    }
+    const near = singles.filter((single) => {
+      const gap = daysBetween(single.dateISO, candidate.dateISO);
+      return gap != null && Math.abs(gap) <= windowDays;
+    });
+    if (!near.length) {
+      kept.push(candidate);
+      continue;
+    }
+    const by = near.reduce((best, single) => (single.value > best.value ? single : best));
+    if (candidate.value <= by.value) {
+      kept.push(candidate);
+      continue;
+    }
+    const pct = (candidate.value / by.value - 1) * 100;
+    outranked.push({ ...candidate, by, pct });
+    if (pct > threshold) disagreements.push({ estimate: candidate, single: by, pct });
+  }
+
+  return { kept, outranked, disagreements };
+}
+
+/** The reason an outranked estimate is set aside, said the same way everywhere. */
+const OUTRANKED = 'a measured single within two weeks outranks it';
+
+/** What a disagreement looks like to a screen: plain numbers, no set objects. */
+const describeDisagreement = ({ estimate, single, pct }) => ({
+  pct,
+  estimate: {
+    value: estimate.value, dateISO: estimate.dateISO, setId: estimate.set?.id ?? null,
+    load: estimate.set?.load ?? null, reps: estimate.set?.reps ?? null, rpe: estimate.set?.rpe ?? null,
+  },
+  single: {
+    value: single.value, dateISO: single.dateISO, setId: single.set?.id ?? null,
+    load: single.set?.load ?? null, rpe: single.set?.rpe ?? null,
+  },
+});
+
+const dateOfSet = (set, byLog) => {
+  const log = byLog.get(set.sessionLogId);
+  return (log?.localDate || log?.dateISO || set.localDate || '').slice(0, 10) || null;
+};
+
+/**
  * Which sets may be used as evidence about strength, and why the others cannot.
  *
  * The rules are the plan's own: index sets on high-confidence lifts, performed
  * under the standard technique, not during a deload, and with an effort rating
- * the RPE table can actually express.
+ * the RPE table can actually express. The set-level rules are `maxEvidence`'s,
+ * shared with every other pipeline that claims a max; an estimate that a
+ * measured single nearby outranks is set aside with that reason, and the
+ * disagreement, if it is large, comes back in `disagreements`.
  */
 export function eligibleForStrength(sets, { exercises, logs = [] }) {
   const byLog = new Map(logs.map((log) => [log.id, log]));
-  const included = [];
+  const candidates = [];
   const excluded = [];
 
   for (const set of sets || []) {
@@ -50,28 +188,42 @@ export function eligibleForStrength(sets, { exercises, logs = [] }) {
     const log = byLog.get(set.sessionLogId);
     const reject = (reason) => excluded.push({ id: set.id, exerciseId: set.exerciseId, reason });
 
-    if (set.deletedAtISO) { reject('deleted'); continue; }
-    // The gate that makes the flag mean something: a set marked as form
-    // breakdown cannot move a working max, and the exclusion is reported with
-    // its reason like every other one here.
-    if (set.formBreakdown) { reject('form breakdown'); continue; }
-    if (isMissedAttempt(set)) { reject('a missed attempt'); continue; }
-    if (!exercise) { reject('unknown exercise'); continue; }
-    if (!set.isIndexSet) { reject('not an index set'); continue; }
-    if (!exercise.tracksMax || exercise.maxConf !== 'high') { reject('estimates on this lift are indicative only'); continue; }
-    if (set.load == null || !set.reps) { reject('incomplete set'); continue; }
+    const gate = maxEvidence(set, { exercise, requireIndex: true, requireTracked: true });
+    if (!gate.ok) { reject(gate.reason); continue; }
     if (!log) { reject('its session record is gone'); continue; }
     if (log.deletedAtISO) { reject('the session was deleted'); continue; }
     if (log.isDeload || log.effortMode === 'none') { reject('deload rotation'); continue; }
     if (set.substitutionReason || set.variantUsed) { reject('a substitute was used'); continue; }
 
-    const estimate = estimateForSet(set);
-    if (!isHighConfidence(estimate)) { reject(estimate?.reason || 'no usable effort rating'); continue; }
-
-    included.push({ set, estimate, log });
+    candidates.push({
+      set, estimate: gate.estimate, log, measured: gate.measured,
+      value: gate.estimate.value, dateISO: dateOfSet(set, byLog),
+    });
   }
 
-  return { included, excluded };
+  // Measured singles are ranked per lift: a pull-up single says nothing about
+  // a bench estimate.
+  const byLift = new Map();
+  for (const candidate of candidates) {
+    if (!byLift.has(candidate.set.exerciseId)) byLift.set(candidate.set.exerciseId, []);
+    byLift.get(candidate.set.exerciseId).push(candidate);
+  }
+  const outrankedIds = new Set();
+  const disagreements = [];
+  for (const group of byLift.values()) {
+    const ranked = preferMeasured(group);
+    for (const row of ranked.outranked) {
+      outrankedIds.add(row.set.id);
+      excluded.push({ id: row.set.id, exerciseId: row.set.exerciseId, reason: OUTRANKED });
+    }
+    disagreements.push(...ranked.disagreements.map(describeDisagreement));
+  }
+
+  const included = candidates
+    .filter((candidate) => !outrankedIds.has(candidate.set.id))
+    .map(({ set, estimate, log, measured }) => ({ set, estimate, log, measured }));
+
+  return { included, excluded, disagreements };
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -80,13 +232,13 @@ export function eligibleForStrength(sets, { exercises, logs = [] }) {
 
 /** e1RM points for one lift: { dateISO, cycleSequence, value }, oldest first. */
 export function strengthSeries(sets, { exercises, logs, exerciseId }) {
-  const { included, excluded } = eligibleForStrength(
+  const { included, excluded, disagreements } = eligibleForStrength(
     sets.filter((set) => set.exerciseId === exerciseId),
     { exercises, logs }
   );
 
   const points = included
-    .map(({ set, estimate, log }) => ({
+    .map(({ set, estimate, log, measured }) => ({
       dateISO: (log?.localDate || log?.dateISO || set.localDate || '').slice(0, 10),
       cycleSequence: log?.cycleSequence ?? null,
       blockId: log?.blockId ?? null,
@@ -96,11 +248,12 @@ export function strengthSeries(sets, { exercises, logs, exerciseId }) {
       reps: set.reps,
       load: set.load,
       rpe: set.rpe,
+      measured: !!measured,
     }))
     .filter((point) => point.dateISO)
     .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
 
-  return { points, excluded, sampleCount: points.length };
+  return { points, excluded, disagreements, sampleCount: points.length };
 }
 
 /**
@@ -433,18 +586,30 @@ export function sessionAnalysis(log, sets, { exercises = {}, logs = [], allSets 
       reps: 0,
       topLoad: null,
       bestEstimate: null,
+      bestIsMeasured: false,
       bestDifficulty: null,
     };
     entry.sets.push(set);
     entry.tonnage += setTonnage;
     entry.reps += set.reps || 0;
-    if (entry.topLoad == null || total > entry.topLoad) entry.topLoad = total;
+    if (!isMissedAttempt(set) && (entry.topLoad == null || total > entry.topLoad)) entry.topLoad = total;
 
-    const estimate = isMissedAttempt(set) ? null : e1rm(total, set.reps, Math.min(10, set.rpe ?? 8));
-    if (estimate != null && (entry.bestEstimate == null || estimate > entry.bestEstimate)) {
-      entry.bestEstimate = estimate;
+    // No invented RPE 8 for an unrated set, no missed attempt, no form
+    // breakdown: the same gate as every other max claim. Inside one session a
+    // measured single outranks an estimate, as it does everywhere else.
+    const gate = maxEvidence(set, { exercise: exercise || {}, bodyweight });
+    if (gate.ok) {
+      const value = gate.estimate.value;
+      const better =
+        entry.bestEstimate == null ||
+        (gate.measured && !entry.bestIsMeasured) ||
+        (gate.measured === entry.bestIsMeasured && value > entry.bestEstimate);
+      if (better) {
+        entry.bestEstimate = value;
+        entry.bestIsMeasured = gate.measured;
+      }
     }
-    const hard = setDifficulty(total, set.reps);
+    const hard = isMissedAttempt(set) ? null : setDifficulty(total, set.reps);
     if (hard != null && (entry.bestDifficulty == null || hard > entry.bestDifficulty)) {
       entry.bestDifficulty = hard;
     }
@@ -687,14 +852,32 @@ export function sessionTiming(log, sets, { now = null } = {}) {
  * Each rung carries what it gained on the one below and how long it took, both
  * of which are facts about the pair rather than about either one.
  */
+/**
+ * Estimated-max candidates per lift, through the shared gate and ranked so that
+ * a measured single outranks an estimate beside it. Records, the record
+ * staircase and the PR check all read this, so they cannot disagree.
+ */
+function recordCandidates(sets, { exercises, byLog }) {
+  const byLift = new Map();
+  for (const set of sets || []) {
+    const gate = maxEvidence(set, { exercise: exercises[set.exerciseId], requireIndex: true, requireTracked: true });
+    if (!gate.ok) continue;
+    const dateISO = dateOfSet(set, byLog);
+    if (!dateISO) continue;
+    if (!byLift.has(set.exerciseId)) byLift.set(set.exerciseId, []);
+    byLift.get(set.exerciseId).push({ set, value: gate.estimate.value, measured: gate.measured, dateISO });
+  }
+  const out = new Map();
+  for (const [id, group] of byLift) out.set(id, preferMeasured(group));
+  return out;
+}
+
+/** Heaviest load ever handled: every lift, no estimate, but only lifts he made. */
+const countsAsHandled = (set) =>
+  !set.deletedAtISO && set.load != null && set.reps && !set.formBreakdown && !isMissedAttempt(set);
+
 export function recordHistory(sets, { exercises, logs }) {
   const byLog = new Map(logs.map((log) => [log.id, log]));
-
-  const dated = (sets || [])
-    .filter((set) => !set.deletedAtISO && set.load != null && set.reps && !isMissedAttempt(set))
-    .map((set) => ({ set, dateISO: (byLog.get(set.sessionLogId)?.localDate || byLog.get(set.sessionLogId)?.dateISO || '').slice(0, 10) }))
-    .filter((row) => row.dateISO)
-    .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
 
   const heaviest = new Map();
   const estimated = new Map();
@@ -712,30 +895,27 @@ export function recordHistory(sets, { exercises, logs }) {
     map.set(key, list);
   };
 
-  for (const { set, dateISO } of dated) {
-    const exercise = exercises[set.exerciseId];
-    if (!exercise) continue;
+  const dated = (sets || [])
+    .filter(countsAsHandled)
+    .map((set) => ({ set, dateISO: dateOfSet(set, byLog) }))
+    .filter((row) => row.dateISO && exercises[row.set.exerciseId])
+    .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
 
+  for (const { set, dateISO } of dated) {
     const heavyList = heaviest.get(set.exerciseId);
     const bestLoad = heavyList ? heavyList[heavyList.length - 1].value : -Infinity;
     if (set.load > bestLoad) {
       push(heaviest, set.exerciseId, { dateISO, value: set.load, load: set.load, reps: set.reps, rpe: set.rpe ?? null });
     }
+  }
 
-    if (set.isIndexSet && exercise.maxConf === 'high') {
-      const estimate = estimateForSet(set);
-      if (isHighConfidence(estimate)) {
-        const list = estimated.get(set.exerciseId);
-        const best = list ? list[list.length - 1].value : -Infinity;
-        if (estimate.value > best) {
-          push(estimated, set.exerciseId, {
-            dateISO,
-            value: estimate.value,
-            load: set.load,
-            reps: set.reps,
-            rpe: set.rpe ?? null,
-          });
-        }
+  for (const [exerciseId, ranked] of recordCandidates(sets, { exercises, byLog })) {
+    const ordered = [...ranked.kept].sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+    for (const { set, value, dateISO } of ordered) {
+      const list = estimated.get(exerciseId);
+      const best = list ? list[list.length - 1].value : -Infinity;
+      if (value > best) {
+        push(estimated, exerciseId, { dateISO, value, load: set.load, reps: set.reps, rpe: set.rpe ?? null });
       }
     }
   }
@@ -751,19 +931,15 @@ export function records(sets, { exercises, logs }) {
   const byLog = new Map(logs.map((log) => [log.id, log]));
   const heaviest = new Map();
   const bestEstimate = new Map();
+  const disagreements = [];
 
   for (const set of sets || []) {
-    if (set.deletedAtISO || set.load == null || !set.reps) continue;
-    // A set the lifter marked as form breakdown happened, counts as volume and
-    // stays in the Log — but it may not claim a record. A ground-out rep with a
-    // bounce is not the same lift as the one the record would be compared with.
-    if (set.formBreakdown) continue;
-    // A weight he failed is neither his heaviest nor his best.
-    if (isMissedAttempt(set)) continue;
+    // A form-breakdown set happened and counts as volume, and a missed attempt
+    // was work — but neither may claim a record.
+    if (!countsAsHandled(set)) continue;
     const exercise = exercises[set.exerciseId];
     if (!exercise) continue;
-    const log = byLog.get(set.sessionLogId);
-    const dateISO = (log?.localDate || log?.dateISO || '').slice(0, 10);
+    const dateISO = dateOfSet(set, byLog);
     if (!dateISO) continue;
 
     // Heaviest load ever handled, for any rep count. True of every exercise.
@@ -778,25 +954,27 @@ export function records(sets, { exercises, logs }) {
         dateISO,
       });
     }
+  }
 
-    // Estimated max, only where the estimate means something.
-    if (set.isIndexSet && exercise.maxConf === 'high') {
-      const estimate = estimateForSet(set);
-      if (isHighConfidence(estimate)) {
-        const best = bestEstimate.get(set.exerciseId);
-        if (!best || estimate.value > best.value) {
-          bestEstimate.set(set.exerciseId, {
-            exerciseId: set.exerciseId, name: exercise.name, value: estimate.value,
-            load: set.load, reps: set.reps, rpe: set.rpe ?? null, dateISO,
-          });
-        }
+  // Estimated max, only where the estimate means something.
+  for (const [exerciseId, ranked] of recordCandidates(sets, { exercises, byLog })) {
+    const exercise = exercises[exerciseId];
+    for (const { set, value, dateISO, measured } of ranked.kept) {
+      const best = bestEstimate.get(exerciseId);
+      if (!best || value > best.value) {
+        bestEstimate.set(exerciseId, {
+          exerciseId, name: exercise.name, value, measured,
+          load: set.load, reps: set.reps, rpe: set.rpe ?? null, dateISO,
+        });
       }
     }
+    disagreements.push(...ranked.disagreements.map((row) => ({ exerciseId, ...describeDisagreement(row) })));
   }
 
   return {
     heaviest: [...heaviest.values()].sort((a, b) => b.dateISO.localeCompare(a.dateISO)),
     estimated: [...bestEstimate.values()].sort((a, b) => b.dateISO.localeCompare(a.dateISO)),
+    disagreements,
   };
 }
 
@@ -817,15 +995,19 @@ export function records(sets, { exercises, logs }) {
 export function bestEstimates(sets, { exercises, logs, bodyweight = 0 } = {}) {
   const byLog = new Map((logs || []).map((log) => [log.id, log]));
   const rows = new Map();
+  const candidates = new Map();
 
   const row = (id, name) => {
     if (!rows.has(id)) {
       rows.set(id, {
         exerciseId: id, name, value: null, load: null, reps: null, rpe: null, dateISO: null,
-        confidence: null, samples: 0, estimable: 0, excluded: [],
+        confidence: null, measured: false, disagreement: null, samples: 0, estimable: 0, excluded: [],
       });
     }
     return rows.get(id);
+  };
+  const note = (here, why) => {
+    if (why && !here.excluded.includes(why)) here.excluded.push(why);
   };
 
   for (const set of sets || []) {
@@ -836,32 +1018,41 @@ export function bestEstimates(sets, { exercises, logs, bodyweight = 0 } = {}) {
     const here = row(set.exerciseId, exercise.name);
     here.samples += 1;
 
-    if (set.formBreakdown) {
-      if (!here.excluded.includes('form breakdown')) here.excluded.push('form breakdown');
-      continue;
-    }
-    if (isMissedAttempt(set)) {
-      if (!here.excluded.includes('a missed attempt')) here.excluded.push('a missed attempt');
-      continue;
-    }
-
-    const estimate = estimateForSet(set, { bodyweight: exercise.bodyweightLoaded ? bodyweight : 0 });
-    if (!estimate?.value) {
-      const why = noEstimateReason(set.load, set.reps, set.rpe, { short: true });
-      if (why && !here.excluded.includes(why)) here.excluded.push(why);
+    // Rough estimates are allowed here and marked as rough on the screen; the
+    // reasons a set cannot speak for strength at all are the shared ones.
+    const gate = maxEvidence(set, {
+      exercise,
+      requireHigh: false,
+      bodyweight: exercise.bodyweightLoaded ? bodyweight : 0,
+    });
+    if (!gate.ok) {
+      note(here, gate.reason);
       continue;
     }
 
     here.estimable += 1;
-    if (here.value != null && estimate.value <= here.value) continue;
+    if (!candidates.has(set.exerciseId)) candidates.set(set.exerciseId, []);
+    candidates.get(set.exerciseId).push({
+      set, estimate: gate.estimate, value: gate.estimate.value, measured: gate.measured, dateISO: dateOfSet(set, byLog),
+    });
+  }
 
-    const log = byLog.get(set.sessionLogId);
-    here.value = estimate.value;
-    here.load = set.load;
-    here.reps = set.reps;
-    here.rpe = set.rpe ?? null;
-    here.confidence = estimate.confidence;
-    here.dateISO = (log?.localDate || log?.dateISO || '').slice(0, 10) || null;
+  for (const [exerciseId, group] of candidates) {
+    const here = rows.get(exerciseId);
+    const ranked = preferMeasured(group);
+    const best = ranked.kept.reduce((top, candidate) => (!top || candidate.value > top.value ? candidate : top), null);
+    if (!best) continue;
+    here.value = best.value;
+    here.load = best.set.load;
+    here.reps = best.set.reps;
+    here.rpe = best.set.rpe ?? null;
+    here.confidence = best.estimate.confidence;
+    here.measured = best.measured;
+    here.dateISO = best.dateISO;
+    if (ranked.outranked.some((row) => row.value > best.value)) note(here, OUTRANKED);
+    // The largest reportable gap, said once per lift.
+    const worst = ranked.disagreements.reduce((top, d) => (!top || d.pct > top.pct ? d : top), null);
+    here.disagreement = worst ? describeDisagreement(worst) : null;
   }
 
   return [...rows.values()]
@@ -943,13 +1134,14 @@ export function recentEvidenceMax(
   sets,
   logs,
   exerciseId,
-  { todayISO = null, days = 42, excludeLogId = null } = {}
+  { todayISO = null, days = 42, excludeLogId = null, exercises = null } = {}
 ) {
   const byLog = new Map((logs || []).map((log) => [log.id, log]));
   const bestBySession = new Map();
+  const singleBySession = new Map();
 
   for (const set of sets || []) {
-    if (set.exerciseId !== exerciseId || set.deletedAtISO || set.formBreakdown || isMissedAttempt(set)) continue;
+    if (set.exerciseId !== exerciseId) continue;
     if (excludeLogId != null && set.sessionLogId === excludeLogId) continue;
     const log = byLog.get(set.sessionLogId);
     if (!log || log.deletedAtISO) continue;
@@ -958,20 +1150,43 @@ export function recentEvidenceMax(
       const age = daysBetween(dateISO, todayISO);
       if (age == null || age < 0 || age > days) continue;
     }
-    const estimate = estimateForSet(set);
-    if (!isHighConfidence(estimate)) continue;
+    const gate = maxEvidence(set, { exercise: exercises?.[exerciseId] || { tracksMax: true } });
+    if (!gate.ok) continue;
+    const value = gate.estimate.value;
     const previous = bestBySession.get(set.sessionLogId);
-    if (!previous || estimate.value > previous.value) {
-      bestBySession.set(set.sessionLogId, { value: estimate.value, dateISO, set });
+    if (!previous || value > previous.value) bestBySession.set(set.sessionLogId, { value, dateISO, set });
+    if (gate.measured) {
+      const held = singleBySession.get(set.sessionLogId);
+      if (!held || value > held.value) singleBySession.set(set.sessionLogId, { value, dateISO, set });
     }
   }
 
   const rows = [...bestBySession.values()].sort((a, b) => a.dateISO.localeCompare(b.dateISO));
   if (!rows.length) return null;
-  const values = rows.map((row) => row.value).sort((a, b) => a - b);
-  const mid = Math.floor(values.length / 2);
-  const value = values.length % 2 ? values[mid] : (values[mid - 1] + values[mid]) / 2;
-  return { value, sessions: rows.length, fromISO: rows[0].dateISO, toISO: rows[rows.length - 1].dateISO, rows };
+  const median = (list) => {
+    const values = list.map((row) => row.value).sort((a, b) => a - b);
+    const mid = Math.floor(values.length / 2);
+    return values.length % 2 ? values[mid] : (values[mid - 1] + values[mid]) / 2;
+  };
+
+  // Measured singles in the window outrank estimates: the same rule as every
+  // other max claim. Still the median, of the singles this time, for the same
+  // reason as before — one excellent day is noise.
+  const singles = [...singleBySession.values()];
+  const fromEstimates = median(rows);
+  const value = singles.length ? median(singles) : fromEstimates;
+  const gapPct = singles.length ? (fromEstimates / value - 1) * 100 : 0;
+
+  return {
+    value,
+    source: singles.length ? 'measured-single' : 'estimates',
+    measuredSessions: singles.length,
+    disagreement: Math.abs(gapPct) > DISAGREEMENT_PCT ? { pct: gapPct, estimates: fromEstimates, singles: value } : null,
+    sessions: rows.length,
+    fromISO: rows[0].dateISO,
+    toISO: rows[rows.length - 1].dateISO,
+    rows,
+  };
 }
 
 /**
@@ -983,23 +1198,27 @@ export function recentEvidenceMax(
  * to fail on isolation work is not a record. Asked BEFORE the set is stored, or
  * it beats itself.
  */
-export function personalBestBefore(record, sets, { exercises = {} } = {}) {
+export function personalBestBefore(record, sets, { exercises = {}, logs = [] } = {}) {
   const exercise = exercises[record?.exerciseId];
-  if (!exercise?.tracksMax || exercise.maxConf !== 'high') return null;
-  if (record.load == null || !record.reps) return null;
-  if (isMissedAttempt(record)) return null;
+  const gate = maxEvidence(record, { exercise, requireIndex: true, requireTracked: true });
+  if (!gate.ok) return null;
 
-  const value = e1rm(systemLoad(record.load, record.bodyweightUsed || 0), record.reps, record.rpe ?? 8);
-  if (value == null) return null;
+  const byLog = new Map((logs || []).map((log) => [log.id, log]));
+  const others = (sets || []).filter((set) => set.exerciseId === record.exerciseId && (record.id == null || set.id !== record.id));
+  const ranked = recordCandidates(others, { exercises, byLog }).get(record.exerciseId);
+  const prior = ranked?.kept || [];
+  const best = prior.reduce((top, candidate) => (!top || candidate.value > top.value ? candidate : top), null);
+  if (!best) return null;
 
-  let best = 0;
-  for (const set of sets || []) {
-    if (set.exerciseId !== record.exerciseId || set.id === record.id) continue;
-    if (set.load == null || !set.reps || isMissedAttempt(set)) continue;
-    const previous = e1rm(systemLoad(set.load, set.bodyweightUsed || 0), set.reps, set.rpe ?? 8);
-    if (previous != null && previous > best) best = previous;
+  const value = gate.estimate.value;
+  const dateISO = (record.localDate || '').slice(0, 10) || null;
+  // An estimate that a measured single within two weeks already
+  // outranks is not a record, whatever the table says about it.
+  if (!gate.measured && dateISO) {
+    const { outranked } = preferMeasured([...prior, { value, dateISO, measured: false, set: record }]);
+    if (outranked.some((row) => row.set === record)) return null;
   }
 
-  if (!best || value <= best) return null;
-  return { name: exercise.name, value, previous: best, gain: value - best };
+  if (value <= best.value) return null;
+  return { name: exercise.name, value, previous: best.value, gain: value - best.value };
 }

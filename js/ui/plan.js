@@ -405,7 +405,13 @@ function bestList(state) {
         <td class="bv">${escape(fmtLoad(row.value, unit))}<span class="bu">${escape(unit)}</span></td>
         <td class="bf">${escape(fmtLoad(row.load, unit))} × ${row.reps}${
           row.rpe == null ? '' : ` @${escape(String(row.rpe))}`
-        }<br><span class="bd">${escape(row.dateISO || '—')}</span></td>
+        }<br><span class="bd">${escape(row.dateISO || '—')}</span>${
+          row.disagreement
+            ? `<br><span class="bd">an estimate ${Math.round(row.disagreement.pct)}% higher, from ${escape(
+                fmtLoad(row.disagreement.estimate.load, unit)
+              )} × ${row.disagreement.estimate.reps}, was outranked by a measured single</span>`
+            : ''
+        }</td>
       </tr>`
         )
         .join('')}</tbody></table>

@@ -541,6 +541,23 @@ function notableExclusions(excluded) {
   return ` <b>${notable.length}</b> index set${notable.length === 1 ? '' : 's'} could not be used: ${escape(reasons)}.`;
 }
 
+/**
+ * A measured single and an estimate that disagree by more than 5%.
+ *
+ * The single is what counts, and the estimate is set aside — but a 12-rep
+ * grind that "says" 147 beside a pressed 125 is worth seeing, so the gap is
+ * said rather than silently resolved. Only the largest one, once.
+ */
+function disagreementNote(disagreements, unit) {
+  const worst = (disagreements || []).reduce((top, d) => (!top || d.pct > top.pct ? d : top), null);
+  if (!worst) return '';
+  const { estimate, single } = worst;
+  return ` <b>A measured single and an estimate disagree.</b> ${fmtLoad(estimate.load, unit)}×${estimate.reps}${
+    estimate.rpe != null ? ` @${estimate.rpe}` : ''
+  } on ${escape(estimate.dateISO)} estimates ${fmtLoad(estimate.value, unit)} ${unit}, ${fmtNum(worst.pct, 1)}% above the
+  ${fmtLoad(single.value, unit)} ${unit} single on ${escape(single.dateISO)}. The single is what counts.`;
+}
+
 function strengthCard(state, m, unit) {
   if (!m.series.points.length) {
     const why = m.series.excluded.length
@@ -588,7 +605,7 @@ function strengthCard(state, m, unit) {
             CONFIDENCE_WORD[m.strength.confidence]
           } across ${m.strength.sampleCount} points.`
         : escape(m.strength.reason) + '.'
-    }${notableExclusions(m.series.excluded)}</p></div>`;
+    }${notableExclusions(m.series.excluded)}${disagreementNote(m.series.disagreements, unit)}</p></div>`;
 }
 
 function bodyweightCard(state, m, unit) {
