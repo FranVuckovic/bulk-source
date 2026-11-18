@@ -340,7 +340,7 @@ function verdict(state, m, unit) {
 
   // 1 · is the bulk running at the intended rate
   if (m.gain.ok) {
-    const band = `${m.gain.target.lo}–${m.gain.target.hi} kg/week`;
+    const band = `${fmtNum(toDisplay(m.gain.target.lo, unit), 2)}–${fmtNum(toDisplay(m.gain.target.hi, unit), 2)} ${unit}/week`;
     // Off the band is not the same as off the rails: the severity follows the
     // action, so a line that says "nothing to do yet" does not wear a warning.
     const acting = /kcal/.test(m.gain.action);
@@ -351,7 +351,7 @@ function verdict(state, m, unit) {
         : m.gain.status === 'under'
           ? 'Gaining slower than the band'
           : 'Gaining faster than the band',
-      `${fmtNum(m.gain.perWeek, 2)} kg/week against a ${band} target for week ${m.calendarWeek}. ${m.gain.action}`,
+      `${fmtNum(toDisplay(m.gain.perWeek, unit), 2)} ${unit}/week against a ${band} target for week ${m.calendarWeek}. ${m.gain.action}`,
       m.gain,
     ]);
   } else {
@@ -370,8 +370,8 @@ function verdict(state, m, unit) {
       ratio == null
         ? ['info', 'Lean-bulk ratio', 'Bodyweight is not rising, so there is no ratio to take.', m.waistTrend]
         : ratio < 0.35
-          ? ['ok', 'The gain is running lean', `Waist rising ${fmtNum(m.waistTrend.perWeek, 2)} cm/week against ${fmtNum(m.gain.perWeek, 2)} kg/week — about ${Math.round(ratio * 100)}% as fast. Weight up, waist nearly flat, is what it is supposed to look like.`, m.waistTrend]
-          : ['warn', 'Waist rising fast relative to bodyweight', `${fmtNum(m.waistTrend.perWeek, 2)} cm per ${fmtNum(m.gain.perWeek, 2)} kg. Slow the bulk regardless of what the scale says.`, m.waistTrend]
+          ? ['ok', 'The gain is running lean', `Waist rising ${fmtNum(m.waistTrend.perWeek, 2)} cm/week against ${fmtNum(toDisplay(m.gain.perWeek, unit), 2)} ${unit}/week — about ${Math.round((ratio / toDisplay(1, unit)) * 100)}% as fast. Weight up, waist nearly flat, is what it is supposed to look like.`, m.waistTrend]
+          : ['warn', 'Waist rising fast relative to bodyweight', `${fmtNum(m.waistTrend.perWeek, 2)} cm per ${fmtNum(toDisplay(m.gain.perWeek, unit), 2)} ${unit}. Slow the bulk regardless of what the scale says.`, m.waistTrend]
     );
   }
 
@@ -489,7 +489,7 @@ function tiles(state, m, unit) {
     <div class="tile"><div class="k">Bodyweight 7d</div><div class="v">${
       m.latestAverage == null ? '—' : fmtLoad(m.latestAverage, unit)
     }<small> ${unit}</small></div><div class="d${m.gain.ok && m.gain.perWeek > 0 ? ' up' : ''}">${
-      m.gain.ok ? `${m.gain.perWeek >= 0 ? '+' : ''}${fmtNum(m.gain.perWeek, 2)} kg/wk` : 'needs a few weigh-ins'
+      m.gain.ok ? `${m.gain.perWeek >= 0 ? '+' : ''}${fmtNum(toDisplay(m.gain.perWeek, unit), 2)} ${unit}/wk` : 'needs a few weigh-ins'
     }</div></div>
     <div class="tile"><div class="k">Strength / kg</div><div class="v">${
       strengthPerKg == null ? '—' : fmtNum(strengthPerKg, 2)
@@ -498,7 +498,9 @@ function tiles(state, m, unit) {
 }
 
 function flagsSection(state, m) {
+  const unit = state.settings.unit;
   const flags = decisionFlags({
+    rate: (kg) => `${fmtNum(toDisplay(kg, unit), 2)} ${unit}/week`,
     gain: m.gain,
     strength: m.strength,
     sleep: state.daily.filter((d) => Number.isFinite(d.sleepHours)).map((d) => ({ dateISO: d.dateISO, value: d.sleepHours })),
@@ -638,18 +640,18 @@ function bodyweightCard(state, m, unit) {
       color: 'var(--s2)',
       unit: ` ${unit}`,
       corridor: anchor
-        ? { fromDateISO: anchor.dateISO, value: toDisplay(anchor.value, unit), lo: target.lo, hi: target.hi }
+        ? { fromDateISO: anchor.dateISO, value: toDisplay(anchor.value, unit), lo: toDisplay(target.lo, unit), hi: toDisplay(target.hi, unit) }
         : null,
       label: (p) => `${p.dateISO} · ${fmtNum(p.value, 1)} ${unit} (${p.samples}-day average)`,
     })}
     <p class="hint">${
       m.gain.ok
-        ? `Gaining <b>${fmtNum(m.gain.perWeek, 2)} kg/week</b> over the last ${m.gain.spanDays} days, ${
+        ? `Gaining <b>${fmtNum(toDisplay(m.gain.perWeek, unit), 2)} ${unit}/week</b> over the last ${m.gain.spanDays} days, ${
             CONFIDENCE_WORD[m.gain.confidence]
-          }. The shaded corridor is the ${target.lo}–${target.hi} kg/week target running from ${escape(
+          }. The shaded corridor is the ${fmtNum(toDisplay(target.lo, unit), 2)}–${fmtNum(toDisplay(target.hi, unit), 2)} ${unit}/week target running from ${escape(
             anchor?.dateISO || ''
           )} — being inside it means you are where the plan expects, not merely moving at a plausible speed.`
-        : `The corridor is the ${target.lo}–${target.hi} kg/week target. A rate needs ${escape(m.gain.reason || 'more weigh-ins')}.`
+        : `The corridor is the ${fmtNum(toDisplay(target.lo, unit), 2)}–${fmtNum(toDisplay(target.hi, unit), 2)} ${unit}/week target. A rate needs ${escape(m.gain.reason || 'more weigh-ins')}.`
     }${leftOut(m.bodyweightExcluded, (row) => `${fmtLoad(row.value, unit)} ${unit}`)}</p></div>`;
 }
 

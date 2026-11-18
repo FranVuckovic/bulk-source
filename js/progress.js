@@ -363,11 +363,14 @@ export const FLAG_RULES = Object.freeze({
  * already computed — `gain` from `gainRateVerdict`, `strength` from `trend` —
  * with those functions' minimum sample rules, so the screen has one answer.
  */
-export function decisionFlags({ gain = null, strength = null, sleep = [], niggles = [], calendarWeek = 1 } = {}) {
+export function decisionFlags({ gain = null, strength = null, sleep = [], niggles = [], calendarWeek = 1, rate = null } = {}) {
   const flags = [];
+  // A gain rate as the screen writes it. Kilograms unless the caller says
+  // otherwise: pounds mode showed "0.23 kg/week" beside a weight in lb.
+  const perWeek = rate || ((kg) => `${kg.toFixed(2)} kg/week`);
 
   if (gain?.ok) {
-    const band = `${gain.target.lo}–${gain.target.hi} kg/week band for week ${calendarWeek}`;
+    const band = `${perWeek(gain.target.lo).replace(/ .*/, '')}–${perWeek(gain.target.hi)} band for week ${calendarWeek}`;
     const acting = /kcal/.test(gain.action);
     const title =
       gain.status === 'in'
@@ -380,7 +383,7 @@ export function decisionFlags({ gain = null, strength = null, sleep = [], niggle
       metric: 'gain',
       status: gain.status,
       title,
-      detail: `${gain.perWeek.toFixed(2)} kg/week against the ${band}. ${gain.action}`,
+      detail: `${perWeek(gain.perWeek)} against the ${band}. ${gain.action}`,
     });
   }
 
@@ -389,7 +392,7 @@ export function decisionFlags({ gain = null, strength = null, sleep = [], niggle
       kind: 'bad',
       metric: 'strength',
       title: 'e1RM flat while bodyweight rises',
-      detail: `No strength trend across ${strength.sampleCount} rotations while gaining ${gain.perWeek.toFixed(2)} kg/week. That is a recovery or programming problem, not a food problem — send the export.`,
+      detail: `No strength trend across ${strength.sampleCount} rotations while gaining ${perWeek(gain.perWeek)}. That is a recovery or programming problem, not a food problem — send the export.`,
     });
   }
 

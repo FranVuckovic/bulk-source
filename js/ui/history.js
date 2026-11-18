@@ -25,6 +25,7 @@ import {
   flag,
   openSheet,
   closeSheet,
+  toDisplay,
   questionSheet,
   questionFmt,
   SET_TYPO_NOTE,
@@ -67,6 +68,13 @@ const longDate = (iso) => {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${Number(day)} ${months[Number(month) - 1]} ${year}`;
 };
+
+/**
+ * A weigh-in in the display unit. Two decimals, because his scale reads to
+ * 0.05 kg and the list is where a typo is spotted; it said "91.05 kg" in
+ * pounds mode.
+ */
+const weighInText = (kg, unit) => `${fmtNum(toDisplay(kg, unit), 2).replace(/0$/, '')} ${unit}`;
 
 const minutesBetween = (from, to) =>
   from && to ? Math.round((Date.parse(to) - Date.parse(from)) / 60000) : null;
@@ -122,7 +130,9 @@ export function entries(state, { deleted = false } = {}) {
       dateISO: dayOf(row.dateISO),
       title: 'Daily',
       summary: [
-        row.bodyweight == null ? null : `${row.bodyweight} kg${scaleLabel(row) ? ` (${scaleLabel(row)})` : ''}`,
+        row.bodyweight == null
+          ? null
+          : `${weighInText(row.bodyweight, state.settings.unit)}${scaleLabel(row) ? ` (${scaleLabel(row)})` : ''}`,
         row.bodyfatPct == null ? null : `${row.bodyfatPct}% bf`,
         row.sleepHours == null ? null : `${row.sleepHours} h sleep`,
         row.steps == null ? null : `${row.steps} steps`,
@@ -226,7 +236,7 @@ function deletedEntries(state) {
         dateISO: dayOf(row.dateISO || row.localDate || entry.deletedAtISO),
         title,
         summary: `deleted ${dayOf(entry.deletedAtISO)}${
-          row.bodyweight != null ? ` · ${fmtNum(row.bodyweight, 1)} kg` : ''
+          row.bodyweight != null ? ` · ${weighInText(row.bodyweight, state.settings.unit)}` : ''
         }${row.waist != null ? ` · waist ${row.waist}` : ''}`,
         record: row,
         sets: [],
@@ -411,7 +421,7 @@ function recoveryList(state) {
   const label = (entry) => {
     const row = entry.row;
     if (entry.store === 'sessionLogs') return `Session ${row.sessionId ?? '—'}${row.cycleSequence ? ` · rotation ${row.cycleSequence}` : ''}`;
-    if (entry.store === 'daily') return `Weigh-in${Number.isFinite(row.bodyweight) ? ` · ${fmtNum(row.bodyweight, 1)} kg` : ''}`;
+    if (entry.store === 'daily') return `Weigh-in${Number.isFinite(row.bodyweight) ? ` · ${weighInText(row.bodyweight, state.settings.unit)}` : ''}`;
     if (entry.store === 'measurements') return 'Tape measurements';
     if (entry.store === 'niggles') return `Niggle · ${row.site ?? ''}`;
     // A set used to fall through to the media label below and read "Form

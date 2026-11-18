@@ -894,3 +894,40 @@ test('N7: Summary draws every bench figure from liftStanding (wiring)', () => {
   const tiles = progress.slice(progress.indexOf('function tiles('), progress.indexOf('function flagsSection('));
   assert.doesNotMatch(tiles, /m\.best \/ /, 'the tile divides by its own bodyweight');
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   N11 · pounds mode says pounds
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('N11: the Log lists a weigh-in in the display unit', async () => {
+  // "91.05 kg (Home scale)" in pounds mode.
+  const { entries } = await import('../js/ui/history.js');
+  const state = {
+    plan: { sessions: [], exercises: {} }, logs: [], sets: [], measurements: [], niggles: [], media: [],
+    daily: [{ id: 1, dateISO: '2026-11-17', bodyweight: 91.05, scale: 'home' }],
+    settings: { unit: 'lb' },
+  };
+  const row = entries(state).find((entry) => entry.kind === 'daily');
+  assert.match(row.summary, /^200\.73 lb/);
+  assert.doesNotMatch(row.summary, /kg/);
+  state.settings.unit = 'kg';
+  assert.match(entries(state).find((entry) => entry.kind === 'daily').summary, /^91\.05 kg/, 'the scale’s 0.05 is kept in kg');
+});
+
+test('N11: the gain-rate flag says pounds in pounds mode', async () => {
+  const { decisionFlags } = await import('../js/progress.js');
+  const gain = { ok: true, perWeek: 0.23, status: 'under', action: 'Nothing to do yet.', target: { lo: 0.4, hi: 0.5 } };
+  const lb = (kg) => `${(kg * 2.2046226218).toFixed(2)} lb/week`;
+  const flag = decisionFlags({ gain, strength: { ok: false }, calendarWeek: 6, rate: lb }).find((f) => f.metric === 'gain');
+  assert.match(flag.detail, /^0\.51 lb\/week against the 0\.88–1\.10 lb\/week band/);
+  assert.doesNotMatch(flag.detail, /kg/);
+});
+
+test('N11: Progress writes gain rates and the corridor in the display unit (wiring)', () => {
+  // The tile read "200.8 lb" over "+0.23 kg/wk", and the Body chart's target
+  // corridor added kg/week slopes to a line drawn in pounds.
+  const progress = readFileSync(new URL('../js/ui/progress.js', import.meta.url), 'utf8');
+  const kgRates = progress.split('\n').filter((line) => /kg\/w(ee)?k/.test(line) && !/GOAL_BENCH_KG|m\.goal/.test(line));
+  assert.deepEqual(kgRates, [], 'a rate is written in kg whatever the unit');
+  assert.match(progress, /lo: toDisplay\(target\.lo, unit\), hi: toDisplay\(target\.hi, unit\)/, 'the corridor slope is not converted');
+});

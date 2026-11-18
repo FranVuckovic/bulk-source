@@ -724,6 +724,7 @@ export const actions = {
         .filter(Boolean)
         .sort((x, y) => x.dateISO.localeCompare(y.dateISO));
       const days = Math.round((Date.parse(b.dateISO) - Date.parse(a.dateISO)) / 86400000);
+      const unit = ctx.state.settings.unit;
       const weightAt = (iso) => ctx.state.daily.find((d) => d.dateISO === iso)?.bodyweight ?? null;
       const from = weightAt(a.dateISO);
       const to = weightAt(b.dateISO);
@@ -735,7 +736,7 @@ export const actions = {
         </div>
         <p class="hint" style="text-align:center;margin:0">${days} days apart${
           from != null && to != null
-            ? ` · ${fmtNum(from, 1)} → ${fmtNum(to, 1)} kg, ${to - from >= 0 ? '+' : ''}${fmtNum(to - from, 1)} kg`
+            ? ` · ${fmtLoad(from, unit)} → ${fmtLoad(to, unit)} ${unit}, ${to - from >= 0 ? '+' : ''}${fmtLoad(to - from, unit)} ${unit}`
             : ''
         }. Same light and same spot is what makes two photos comparable; a different room is a different photo.</p>
         <button class="big ghost mt" data-act="sheet-close">Close</button>`);

@@ -31,6 +31,7 @@ import {
   platesFor,
   pct,
   AMRAP_FRACTION,
+  ATTEMPT_STEP,
 } from '../calc.js';
 import {
   resolveSession,
@@ -1518,7 +1519,7 @@ const calibrationCard = () => `<div class="card" style="border-color:var(--s2);b
  * states and does not change with your strength, so it travels across
  * rotations; the kilograms do not, and are shown only for this rotation.
  */
-function loadBasis(slot) {
+function loadBasis(slot, unit = 'kg') {
   if (!slot) return '';
   /*
    * These branches mirror `prescribedLoad` exactly, and deliberately ignore
@@ -1527,8 +1528,8 @@ function loadBasis(slot) {
    * bench triple says 0.86 and is prescribed from the table — so reading it
    * here would put a percentage on screen that the app does not use.
    */
-  if (slot.role === 'attempt') return 'last attempt made, plus 2.5 kg';
-  if (Number.isFinite(slot.fixedLoad)) return `fixed ${slot.fixedLoad} kg \u2014 it does not move with your max`;
+  if (slot.role === 'attempt') return `last attempt made, plus ${fmtLoad(ATTEMPT_STEP, unit)} ${unit}`;
+  if (Number.isFinite(slot.fixedLoad)) return `fixed ${fmtLoad(slot.fixedLoad, unit)} ${unit} \u2014 it does not move with your max`;
   if (slot.amrap) return `${Math.round(AMRAP_FRACTION * 100)}% of working max`;
   if (slot.pctTop) return `${Math.round(slot.pctTop * 100)}% of today's top single`;
   if (slot.pctBasis === 'topSingleRpe') return "from today's top single, to the target RPE";
@@ -1547,10 +1548,10 @@ const repsText = (slot) =>
   slot.amrap ? 'max' : slot.repsLow === slot.repsHigh ? String(slot.repsLow) : `${slot.repsLow}–${slot.repsHigh}`;
 
 /** One prescription, with the badges that change what a set means. */
-function shapeCell(slot) {
+function shapeCell(slot, unit = 'kg') {
   if (!slot) return '<i>not prescribed</i>';
   const rest = restText(slot.restSec);
-  const parts = [loadBasis(slot), rest, slot.effort || ''].filter(Boolean);
+  const parts = [loadBasis(slot, unit), rest, slot.effort || ''].filter(Boolean);
   return `<b>${slot.sets} × ${escape(repsText(slot))} @ RPE ${slot.rpe}</b>${
     slot.amrap ? '<span class="badge amr">AMRAP</span>' : ''
   }${slot.idx ? '<span class="badge idx">INDEX</span>' : ''}${
@@ -1585,7 +1586,7 @@ function phaseTable(state, slotId, here, { slotIndex, borrowed, main }) {
         canBorrow ? ' pick' : ''
       }"${attrs}>
         <td>${escape(range)}</td>
-        <td>${shapeCell(phase.slot)}</td>
+        <td>${shapeCell(phase.slot, state.settings.unit)}</td>
         <td>${escape(phase.blocks.join(' · '))}${canBorrow ? '<span class="take">use</span>' : ''}</td>
       </tr>`;
     })
@@ -2776,7 +2777,7 @@ export const actions = {
                .map(
                  (entry) => `<tr>
                    <td>${escape(entry.sessionId)}</td>
-                   <td>${shapeCell(entry.slot)}</td>
+                   <td>${shapeCell(entry.slot, state.settings.unit)}</td>
                    <td>${escape(entry.slot.label || entry.slot.role)}</td>
                  </tr>`
                )
