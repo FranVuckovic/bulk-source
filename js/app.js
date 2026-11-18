@@ -542,7 +542,9 @@ async function saveSet(slotIndex, setIndex, values) {
     // moment your bodyweight changes.
     bodyweightUsed: state.plan.exercises[slot.ex].bodyweightLoaded ? state.settings.bodyweight : null,
     variantUsed: slot.swappedFrom ? slot.ex : null,
-    pauseStyle: values.pauseStyle ?? existing?.pauseStyle ?? null,
+    // Taken as sent when the caller says anything about it, null included: the
+    // editor's pause buttons toggle off, and `??` would have kept the old value.
+    pauseStyle: 'pauseStyle' in values ? values.pauseStyle ?? null : existing?.pauseStyle ?? null,
   };
 
   // Was this a record? Ask BEFORE the set is stored, or it beats itself.

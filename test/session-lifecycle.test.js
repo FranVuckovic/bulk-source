@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 
 import { withSharedLibrary } from '../js/plans.js';
 import { newCycle, cycleProgress } from '../js/cycle.js';
-import { actions, slotsFor, resetSessionState } from '../js/ui/train.js';
+import { actions, slotsFor, resetSessionState, defaultPause } from '../js/ui/train.js';
 import { stopRest } from '../js/ui/components.js';
 
 const load = (path) => JSON.parse(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'));
@@ -216,6 +216,88 @@ test('UI-02/03: finish, discard, plan switch and erase all go through the one re
   const discard = appBody("async 'confirm-discard-session'");
   assert.match(discard, /deleteEntry\('session'/);
   assert.doesNotMatch(discard, /state\.deviations\s*=/);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   UI-04 · Pause style and grip: one default, whichever way the set is logged
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const slotOf = (plan, sessionId, sequence, predicate) => {
+  const state = trainState(plan, sessionId, { sequence });
+  return slotsFor(state).find(predicate);
+};
+
+test('UI-04: each plan gets the pause style its own text states for competition bench', () => {
+  // The one-tap path stamped every bench* lift "paused" — pin press and speed
+  // bench included — while FOPIP's own plan says its competition bench is
+  // always touch-and-go. FLOPIP 2 says the opposite, slot by slot.
+  const v2 = trainState(V2, 'A', { sequence: 2 });
+  const fl = trainState(FLOPIP, 'E', { sequence: 4 });
+  const flSlot = (pred) => slotsFor(fl).find(pred);
+
+  assert.equal(defaultPause(fl, flSlot((s) => s.role === 'top_single')), 'paused');
+  assert.equal(defaultPause(fl, flSlot((s) => s.role === 'backoff')), 'paused', 'a FLOPIP slot with no pause text');
+  assert.equal(defaultPause(v2, slotOf(V2, 'A', 2, (s) => s.role === 'backoff')), 'touch-and-go');
+  assert.equal(defaultPause(v2, slotOf(V2, 'E', 4, (s) => s.ex === 'benchComp')), 'touch-and-go');
+  // FOPIP's AMRAP and attempt are paused by that plan's own statement.
+  assert.equal(defaultPause(v2, slotOf(V2, 'C', 2, (s) => s.amrap)), 'paused');
+  assert.equal(defaultPause(v2, slotOf(V2, 'C', 2, (s) => s.role === 'attempt')), 'paused');
+});
+
+test('UI-04: long-pause is paused, pin press and speed bench have no pause style', () => {
+  const v2 = trainState(V2, 'A', { sequence: 4 });
+  assert.equal(defaultPause(v2, slotOf(V2, 'E', 4, (s) => s.ex === 'benchPause')), 'paused');
+  assert.equal(defaultPause(v2, slotOf(V2, 'C', 4, (s) => s.ex === 'benchPin')), null);
+  assert.equal(defaultPause(v2, slotOf(V2, 'F', 4, (s) => s.ex === 'benchSpeed')), null);
+  const fl = trainState(FLOPIP, 'D', { sequence: 4 });
+  assert.equal(defaultPause(fl, slotsFor(fl).find((s) => s.ex === 'benchPause')), 'paused');
+});
+
+test('UI-04: a swapped slot does not inherit the planned lift\'s pause text', () => {
+  // FLOPIP B1 is labelled "paused" and the label survives a swap. A pin press
+  // swapped into it is still not a paused lift.
+  const state = trainState(FLOPIP, 'B', { sequence: 4 });
+  state.deviations.swaps[0] = 'benchPin';
+  const slot = slotsFor(state)[0];
+  assert.equal(slot.ex, 'benchPin');
+  assert.equal(defaultPause(state, slot), null);
+});
+
+test('UI-04: the set editor stores the same pause and grip as a tick', async () => {
+  // The editor — 95% of logged sets — opened with pause null and sent no grip,
+  // so 147 of 153 competition-bench sets in the real log have neither.
+  for (const [plan, sessionId, sequence, expected] of [
+    [V2, 'A', 4, 'touch-and-go'],
+    [FLOPIP, 'E', 4, 'paused'],
+  ]) {
+    const state = trainState(plan, sessionId, { sequence });
+    const si = slotsFor(state).findIndex((s) => s.role === 'backoff');
+    await withFakeDocument(async () => {
+      const ctx = recordingCtx(state);
+      await actions.tick(ctx, { si: String(si), i: '0' }, { stopPropagation() {} });
+      actions['open-step'](ctx, { si: String(si), i: '1', field: 'reps' });
+      await actions['save-step'](ctx);
+      const [ticked, edited] = ctx.saved;
+      assert.equal(ticked.pauseStyle, expected);
+      assert.equal(edited.pauseStyle, expected, `${plan.meta.id}: the editor stored a different pause`);
+      assert.equal(edited.gripWidth, plan.exercises.benchComp.grips[0], 'the editor stored no grip');
+      assert.equal(edited.gripWidth, ticked.gripWidth);
+    });
+  }
+});
+
+test('UI-04: editing a logged set keeps the pause it was logged with', async () => {
+  const state = trainState(FLOPIP, 'E', { sequence: 4 });
+  const si = slotsFor(state).findIndex((s) => s.role === 'backoff');
+  state.loggedSets.set(`${si}:0`, { id: 5, load: 100, reps: 5, rpe: 8, pauseStyle: 'touch-and-go', gripWidth: 'Index on rings (wide)' });
+  await withFakeDocument(async () => {
+    const ctx = recordingCtx(state);
+    actions['open-step'](ctx, { si: String(si), i: '0', field: 'rpe' });
+    assert.equal(state.sheetCtx.pauseStyle, 'touch-and-go');
+    await actions['save-step'](ctx);
+    assert.equal(ctx.saved[0].pauseStyle, 'touch-and-go');
+    assert.equal(ctx.saved[0].gripWidth, 'Index on rings (wide)');
+  });
 });
 
 test('UI-03: a new civil date with no session open starts at normal readiness', () => {

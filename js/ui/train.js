@@ -472,8 +472,58 @@ const defaultGrip = (state, slot, slotIndex) => {
   return state.grips[`${state.trainSessionId}-${slotIndex}`] || exercise.grips[0];
 };
 
-/** Every competition-bench set in this plan is paused; say so rather than guess later. */
-const defaultPause = (state, slot) => (tracksPause(slot.ex) ? 'paused' : null);
+/*
+ * What each plan says about how its bench lifts are performed.
+ *
+ * The two plans disagree about the competition bench, and each is right about
+ * itself. FOPIP v2: "The competition bench is always controlled touch-and-go.
+ * All paused competition-grip work lives in the long-pause lift" — except its
+ * AMRAP ("a fixed 100 kg, paused") and the weekly attempt ("Paused, spotted",
+ * the note plan.js writes on it). FLOPIP 2 writes "paused" on every
+ * competition-bench slot, Sunday volume, Friday single, AMRAP and test alike
+ * (docs/training-plan-flopip-2.md).
+ *
+ * Keyed `exercise` or `exercise@role`; the role entry wins.
+ */
+const PLAN_PAUSE = Object.freeze({
+  'fopip-v2': { benchComp: 'touch-and-go', 'benchComp@amrap': 'paused', 'benchComp@attempt': 'paused' },
+  'flopip-2': { benchComp: 'paused' },
+});
+
+/*
+ * What a lift is, whatever the plan. Long-pause is paused by definition. Pin
+ * press starts from the pins and speed bench is about bar speed, so neither has
+ * a pause style worth stamping. Anything else is left for the lifter to say.
+ */
+const EXERCISE_PAUSE = Object.freeze({ benchPause: 'paused', benchPin: null, benchSpeed: null });
+
+/**
+ * The pause style a bench set is stored with unless you choose another.
+ *
+ * One source, used by the tick, by "same as last time" and by the set editor.
+ * The tick used to stamp "paused" on every exercise whose id began with
+ * `bench` and the editor stamped nothing, so the same set got a different
+ * stored value depending on which button logged it.
+ *
+ * In order: a pause style the slot states as a field; a slot whose own text
+ * says paused or touch-and-go (FLOPIP writes it there) — unless it has been
+ * swapped, because the label survives a swap and a pin press in a slot
+ * labelled "paused" is still a pin press; the plan's statement; the lift's.
+ */
+export function defaultPause(state, slot) {
+  if (!slot || !tracksPause(slot.ex)) return null;
+  if (PAUSE_STYLES.includes(slot.pauseStyle)) return slot.pauseStyle;
+  if (!slot.swappedFrom) {
+    const said = `${slot.label || ''} ${slot.note || ''}`;
+    if (/touch-and-go/i.test(said)) return 'touch-and-go';
+    if (/\bpaused\b/i.test(said)) return 'paused';
+  }
+  const stated = PLAN_PAUSE[state.plan?.meta?.id] || {};
+  const byRole = stated[`${slot.ex}@${slot.role}`];
+  if (byRole !== undefined) return byRole;
+  if (stated[slot.ex] !== undefined) return stated[slot.ex];
+  return EXERCISE_PAUSE[slot.ex] ?? null;
+}
 
 /** What this exercise looked like last time, for the prefill and the hint. */
 function lastTime(state, exerciseId) {
@@ -1869,7 +1919,11 @@ export const actions = {
       isIndexSet: values.logged ? !!values.logged.isIndexSet : !!slot.idx,
       velocity: values.logged?.velocity ?? null,
       note: values.logged?.note ?? null,
-      pauseStyle: values.logged?.pauseStyle ?? null,
+      // The same defaults a tick stores, from the same functions. A logged set
+      // keeps what it was logged with; a pause style is shown and changeable
+      // above, a grip is chosen on the exercise card.
+      pauseStyle: values.logged ? values.logged.pauseStyle ?? null : defaultPause(state, slot),
+      gripWidth: values.logged?.gripWidth ?? defaultGrip(state, slot, slotIndex),
       prescribed: values.prescribed,
     };
     drawStepSheet(ctx);
@@ -2032,6 +2086,7 @@ export const actions = {
       velocity: c.velocity,
       note: c.note,
       pauseStyle: c.pauseStyle,
+      gripWidth: c.gripWidth ?? null,
       wasPrescribed: c.load != null && c.load === c.prescribed,
       prescribedLoad: c.prescribed,
     });
