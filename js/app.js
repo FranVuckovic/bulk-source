@@ -668,7 +668,7 @@ function celebrate(pr) {
       unit
     )} ${unit}</p>
     <p style="text-align:center;font-size:13px;margin:0 0 4px">estimated max · ${escape(pr.name)}</p>
-    <p style="text-align:center;font-size:14px;color:var(--goodtx);font-weight:650">+${fmtNum(pr.gain, 1)} ${unit} on your previous best of ${fmtLoad(
+    <p style="text-align:center;font-size:14px;color:var(--goodtx);font-weight:650">+${fmtLoad(pr.gain, unit)} ${unit} on your previous best of ${fmtLoad(
       pr.previous,
       unit
     )}</p>

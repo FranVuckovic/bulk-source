@@ -917,7 +917,7 @@ function recordsCard(state, m, unit, { onlyExerciseId = null, excludeExerciseId 
           <span class="g">${
             step.gain == null
               ? 'first'
-              : `+${fmtNum(step.gain, 1)} after ${step.daysSince} day${step.daysSince === 1 ? '' : 's'}`
+              : `+${fmtLoad(step.gain, unit)} after ${step.daysSince} day${step.daysSince === 1 ? '' : 's'}`
           }</span>
           <span class="set">${fmtLoad(step.load, unit)} ${escape(unit)} × ${step.reps} rep${
             step.reps === 1 ? '' : 's'
@@ -925,7 +925,7 @@ function recordsCard(state, m, unit, { onlyExerciseId = null, excludeExerciseId 
       })
       .join('')}
       <p class="hint" style="margin:6px 0 0">${steps.length} record${steps.length === 1 ? '' : 's'} on this lift,
-      ${fmtNum(steps[steps.length - 1].value - steps[0].value, 1)} ${escape(unit)} from the first to the latest over
+      ${fmtLoad(steps[steps.length - 1].value - steps[0].value, unit)} ${escape(unit)} from the first to the latest over
       ${Math.round(
         (Date.parse(`${steps[steps.length - 1].dateISO}T00:00:00Z`) -
           Date.parse(`${steps[0].dateISO}T00:00:00Z`)) /

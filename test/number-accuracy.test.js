@@ -742,3 +742,34 @@ test('UI-06: the exercise list is sorted and leaves out retired lifts', async ()
     assert.ok(!names.some((n) => retired.includes(n.replace(/&amp;/g, '&'))), 'retired lifts were offered');
   });
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   UI-11 · a pound label is on a pound number
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('UI-11: record gains are converted before they are labelled lb', async () => {
+  const { view } = await import('../js/ui/progress.js');
+  const [, plan] = withSharedLibrary([FOPIP, FLOPIP]);
+  const logs = [log(60, '2026-10-01', { cycleSequence: 1 }), log(61, '2026-10-20', { cycleSequence: 3 })];
+  const sets = [bench(60, 60, { load: 100, reps: 5, rpe: 8 }), bench(61, 61, { load: 105, reps: 5, rpe: 8 })];
+  const state = {
+    plan, plans: { 'flopip-2': plan }, logs, sets, daily: [], measurements: [], niggles: [], media: [],
+    maxes: new Map([['benchComp', { exerciseId: 'benchComp', workingMax: 125 }]]),
+    cycle: { sequence: 4, id: 'c4', localStartDate: '2026-10-28' },
+    settings: { unit: 'lb', increment: 2.5, bodyweight: 90 },
+    todayISO: '2026-11-18', progressLift: 'benchComp', progressSection: 'strength',
+    block: { idx: 3, from: 4, to: 10, name: 'Accumulation' },
+    blockProgress: { blockDone: 0, sessionTarget: 5, readyForReview: false },
+    planProgress: { calendarWeek: 10, pace: null },
+  };
+  const html = view({ state, render() {} });
+  // 123.3 → 129.5 kg is +6.2 kg, which is +13.6 lb.
+  assert.match(html, /\+13\.6 after 19 days/, 'a kilogram gain was printed beside pound values');
+  assert.doesNotMatch(html, /\+6\.2 after/);
+  assert.doesNotMatch(html, /NaN|undefined|\[object Object\]/);
+});
+
+test('UI-11: the record sheet converts its gain too (wiring)', () => {
+  const app = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(app, /\+\$\{fmtNum\(pr\.gain/, 'the PR sheet labels a kg gain with the display unit');
+});
